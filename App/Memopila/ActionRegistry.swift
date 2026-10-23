@@ -23,13 +23,15 @@ struct ActionItem: Identifiable {
         ActionItem(id: "divider." + id, title: "", isDivider: true)
     }
 
-    /// Leaves with their menu path, for the ⌘K panel.
-    func flattened(prefix: String = "") -> [ActionItem] {
+    /// Leaves with their menu path, for the ⌘K panel. A disabled submenu disables its leaves.
+    func flattened(prefix: String = "", inheritedReason: String? = nil) -> [ActionItem] {
         guard !isDivider else { return [] }
         let path = prefix.isEmpty ? title : prefix + " ▸ " + title
-        guard children.isEmpty else { return children.flatMap { $0.flattened(prefix: path) } }
+        let reason = disabledReason ?? inheritedReason
+        guard children.isEmpty else { return children.flatMap { $0.flattened(prefix: path, inheritedReason: reason) } }
         var leaf = self
         leaf.title = path
+        leaf.disabledReason = reason
         return [leaf]
     }
 }
@@ -353,12 +355,32 @@ enum FormatNames {
     }
 }
 
+@MainActor
 enum RetentionText {
-    static func duration(minutes: Int) -> String {
+    private static let days = formatter(.day)
+    private static let hours = formatter(.hour)
+    private static let minutes = formatter(.minute)
+
+    static func duration(minutes value: Int) -> String {
+        let formatter = value % 1_440 == 0 ? days : value % 60 == 0 ? hours : minutes
+        return formatter.string(from: TimeInterval(value * 60)) ?? "\(value) min"
+    }
+
+    private static func formatter(_ unit: NSCalendar.Unit) -> DateComponentsFormatter {
         let formatter = DateComponentsFormatter()
         formatter.unitsStyle = .full
-        formatter.allowedUnits = minutes % 1_440 == 0 ? [.day] : minutes % 60 == 0 ? [.hour] : [.minute]
-        return formatter.string(from: TimeInterval(minutes * 60)) ?? "\(minutes) min"
+        formatter.allowedUnits = [unit]
+        return formatter
+    }
+}
+
+/// Builds a card's menu only when SwiftUI shows it, not on every grid pass (§7.3).
+struct CardContextMenu: View {
+    let card: HistoryCard
+    let model: AppModel
+
+    var body: some View {
+        ActionMenuItems(items: ActionRegistry.cardActions(card, model: model))
     }
 }
 

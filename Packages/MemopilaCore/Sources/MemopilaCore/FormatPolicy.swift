@@ -21,8 +21,10 @@ public struct FormatRule: Sendable, Equatable, Codable {
         self.maxSizeMiB = maxSizeMiB
     }
 
-    /// app + type > app only > type only. `nil` for a rule that constrains nothing (ignored).
+    /// app + type > app only > type only. `nil` for a rule that constrains nothing, or whose type
+    /// pattern is empty (a half-edited rule must not turn into "every type"), is ignored.
     var precedenceLevel: Int? {
+        if typePattern?.isEmpty == true { return nil }
         switch (appBundleID != nil, typePattern != nil) {
         case (true, true): 3
         case (true, false): 2

@@ -291,9 +291,7 @@ private struct HistoryGrid: View {
                             .id(card.id)
                             .onTapGesture(count: 2) { model.restore(card.id) }
                             .simultaneousGesture(TapGesture().onEnded { model.history.selectedID = card.id })
-                            .contextMenu {
-                                ActionMenuItems(items: ActionRegistry.cardActions(card, model: model))
-                            }
+                            .contextMenu { CardContextMenu(card: card, model: model) }
                             .accessibilityAction(named: Text("Copy to Clipboard")) { model.restore(card.id) }
                             .accessibilityAction(named: Text("Preview")) { model.present(.preview(card.id)) }
                             .onAppear { model.history.cardAppeared(card) }

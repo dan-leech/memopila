@@ -76,6 +76,15 @@ struct FormatPolicyTests {
         #expect(policy.plan(itemTypes: [[.html]], app: nil).items.first?.slots == [.bytes(.html)])
     }
 
+    @Test func ruleWithAnEmptyTypePatternIsIgnored() {
+        for isPrefix in [false, true] {
+            let policy = FormatPolicy(rules: [FormatRule(appBundleID: "com.apple.Safari", typePattern: "", isPrefix: isPrefix, action: .skip)])
+            let plan = policy.plan(itemTypes: [[.utf8PlainText, .html]], app: "com.apple.Safari")
+            #expect(plan.items.first?.slots.map(\.type) == [.utf8PlainText, .html])
+            #expect(plan.skippedTypes.isEmpty)
+        }
+    }
+
     @Test func ruleWithoutAppOrTypeIsIgnored() {
         let policy = FormatPolicy(rules: [FormatRule(action: .skip)])
         #expect(policy.plan(itemTypes: [[.html]], app: nil).items.first?.slots == [.bytes(.html)])

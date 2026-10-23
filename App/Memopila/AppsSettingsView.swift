@@ -269,8 +269,8 @@ struct FormatRulesEditor: View {
                     get: { settings.formatRules.indices.contains(index) ? settings.formatRules[index].typePattern ?? "" : "" },
                     set: { value in
                         guard settings.formatRules.indices.contains(index) else { return }
-                        let trimmed = value.trimmingCharacters(in: .whitespaces)
-                        settings.formatRules[index].typePattern = trimmed.isEmpty ? nil : trimmed
+                        // An empty pattern stays empty: the policy ignores it instead of matching every type.
+                        settings.formatRules[index].typePattern = value.trimmingCharacters(in: .whitespaces)
                     }
                 ))
                 .font(.callout.monospaced())

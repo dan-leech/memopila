@@ -16,7 +16,9 @@ final class HistoryModel {
     }
     private(set) var cards: [HistoryCard] = []
     private(set) var totalCount = 0
-    var selectedID: UUID?
+    var selectedID: UUID? {
+        didSet { if !isApplyingLoadedSelection { selectionRevision += 1 } }
+    }
     private(set) var apps: [AppSummary] = []
     private(set) var types: [DisplayType] = []
     private(set) var collections: [CollectionSummary] = []
@@ -29,6 +31,13 @@ final class HistoryModel {
     @ObservationIgnored private let store: ClipboardStore
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var searchTask: Task<Void, Never>?
+    @ObservationIgnored private var isSearchPending = false
+    @ObservationIgnored private var reloadTask: Task<Void, Never>?
+    @ObservationIgnored private var sidebarTask: Task<Void, Never>?
+    /// Bumped by every selection change that did not come from a load, so a load that finishes
+    /// late does not undo the user's ↑ ↓ or click.
+    @ObservationIgnored private var selectionRevision = 0
+    @ObservationIgnored private var isApplyingLoadedSelection = false
     @ObservationIgnored private var isLoadingMore = false
     @ObservationIgnored private var isActive = false
     @ObservationIgnored private var isStale = true
@@ -59,12 +68,16 @@ final class HistoryModel {
 
     // MARK: Lifecycle
 
-    /// Panel opens: fresh search, selection on the first card (§8.1).
+    /// Panel opens: fresh search, selection on the first card (§8.1). Cards still loaded from the
+    /// last open stay visible and navigable until the reload replaces them.
     func activate() {
         isActive = true
         if !search.isEmpty { search = "" }
         searchTask?.cancel()
+        isSearchPending = false
+        applyLoadedSelection(cards.first?.id)
         reload(selectFirst: true)
+        reloadSidebar()
     }
 
     func deactivate() {
@@ -84,40 +97,81 @@ final class HistoryModel {
 
     /// Something in the store changed. Reloads now if the panel is visible, else on next open.
     func storeDidChange() {
-        if isActive { reload(selectFirst: false) } else { isStale = true }
+        guard isActive else {
+            isStale = true
+            return
+        }
+        reload(selectFirst: false)
+        reloadSidebar(after: .milliseconds(300))
+    }
+
+    /// Waits until the grid shows the results for the current search, so ↩ and ⌘1…⌘9 act on
+    /// what the user typed rather than on the previous query (§3.4).
+    func settle() async {
+        if isSearchPending {
+            searchTask?.cancel()
+            isSearchPending = false
+            reload(selectFirst: true)
+        }
+        var pending = reloadTask
+        while let task = pending {
+            await task.value
+            pending = reloadTask == task ? nil : reloadTask
+        }
     }
 
     // MARK: Loading
 
+    /// Cards and count for the current query. The sidebar lists scan the whole history, so they
+    /// reload separately (on open and after store changes), never per keystroke (§8.6).
     func reload(selectFirst: Bool) {
         generation += 1
         let generation = generation
+        let revision = selectionRevision
         let query = query
         let limit = min(max(Self.pageSize, cards.count), Self.maxReloadCount)
-        Task {
+        reloadTask = Task {
             do {
                 async let page = store.page(query, offset: 0, limit: limit)
                 async let count = store.count(query)
-                async let apps = store.apps()
-                async let types = store.displayTypes()
-                async let collections = store.collections()
-                let result = try await (page, count, apps, types, collections)
-                let memberships = try await store.memberships(of: result.0.map(\.id))
+                let (loaded, total) = try await (page, count)
+                let memberships = try await store.memberships(of: loaded.map(\.id))
                 guard generation == self.generation else { return }
-                cards = result.0
+                cards = loaded
                 self.memberships = memberships
-                totalCount = result.1
-                self.apps = result.2
-                self.types = result.3
-                self.collections = result.4
+                totalCount = total
                 loadError = nil
                 isStale = false
-                if selectFirst || selectedIndex == nil { selectedID = cards.first?.id }
+                let userMoved = revision != selectionRevision
+                if (selectFirst && !userMoved) || selectedIndex == nil { applyLoadedSelection(cards.first?.id) }
             } catch {
                 guard generation == self.generation else { return }
                 loadError = error.localizedDescription
             }
         }
+    }
+
+    private func reloadSidebar(after delay: Duration = .zero) {
+        sidebarTask?.cancel()
+        sidebarTask = Task {
+            if delay > .zero {
+                try? await Task.sleep(for: delay)
+                guard !Task.isCancelled else { return }
+            }
+            async let apps = store.apps()
+            async let types = store.displayTypes()
+            async let collections = store.collections()
+            guard let result = try? await (apps, types, collections), !Task.isCancelled else { return }
+            self.apps = result.0
+            self.types = result.1
+            self.collections = result.2
+        }
+    }
+
+    private func applyLoadedSelection(_ id: UUID?) {
+        isApplyingLoadedSelection = true
+        selectedID = id
+        isApplyingLoadedSelection = false
     }
 
     /// Next page when one of the last cards appears.
@@ -143,9 +197,11 @@ final class HistoryModel {
 
     private func scheduleSearch() {
         searchTask?.cancel()
+        isSearchPending = true
         searchTask = Task {
             try? await Task.sleep(for: .milliseconds(80))
             guard !Task.isCancelled else { return }
+            isSearchPending = false
             reload(selectFirst: true)
         }
     }

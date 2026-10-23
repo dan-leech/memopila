@@ -86,9 +86,13 @@ final class ClipboardMonitor {
         if let current, NSPasteboard.general.changeCount != current.changeCount {
             self.current = nil
         }
-        let decision = coordinator.tick(accessAllowed: !isCaptureBlocked, now: Date()) {
+        // Tick a copy: writing back an unchanged coordinator would still notify every observer
+        // four times a second (menu bar icon, banners) through the @Observable accessor.
+        var next = coordinator
+        let decision = next.tick(accessAllowed: !isCaptureBlocked, now: Date()) {
             NSPasteboard.general.changeCount
         }
+        if next != coordinator { coordinator = next }
         switch decision {
         case .startReader(let readerSeq):
             startReader(readerSeq: readerSeq, saveAnyway: false)
@@ -104,12 +108,15 @@ final class ClipboardMonitor {
         }
     }
 
-    private func startReader(readerSeq: Int, saveAnyway: Bool) {
+    /// - Parameter expectedChangeCount: *Save anyway* reads only the change its red card shows;
+    ///   any other count is treated as unstable.
+    private func startReader(readerSeq: Int, saveAnyway: Bool, expectedChangeCount: Int? = nil) {
         let reader = SnapshotReader(context: captureContext(saveAnyway: saveAnyway))
         let frontmost = NSWorkspace.shared.frontmostApplication
         let titleSource = AccessibilityBridge.isTrusted ? frontmost.map { ($0.processIdentifier, $0.bundleIdentifier) } : nil
         Task.detached(priority: .userInitiated) { [weak self] in
-            let outcome = reader.read(GeneralPasteboardSource())
+            var outcome = reader.read(GeneralPasteboardSource())
+            if let expectedChangeCount, outcome.changeCount != expectedChangeCount { outcome = .unstable }
             var enrichment: IngestEnrichment?
             if case .captured(let snapshot) = outcome {
                 var title: String?
@@ -205,7 +212,7 @@ final class ClipboardMonitor {
             return
         }
         isSavingAnyway = true
-        startReader(readerSeq: coordinator.opSeq, saveAnyway: true)
+        startReader(readerSeq: coordinator.opSeq, saveAnyway: true, expectedChangeCount: current.changeCount)
     }
 
     func dismissCurrent() { current = nil }

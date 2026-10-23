@@ -168,14 +168,19 @@ final class AppModel {
     // MARK: Panel lifecycle (§8.1, §7.3)
 
     func panelWillShow() {
-        previousApp = NSWorkspace.shared.frontmostApplication.flatMap {
-            $0.bundleIdentifier == ClipboardMonitor.ownBundleID ? nil : $0
-        } ?? previousApp
+        refreshPreviousApp()
         purgeTask?.cancel()
         present(nil)
         toasts.dismiss()
         history.activate()
         focusSearchToken += 1
+    }
+
+    /// The app that keeps the focus behind the non-activating panel: the target of Paste after restore.
+    func refreshPreviousApp() {
+        previousApp = NSWorkspace.shared.frontmostApplication.flatMap {
+            $0.bundleIdentifier == ClipboardMonitor.ownBundleID ? nil : $0
+        } ?? previousApp
     }
 
     func panelDidClose() {
@@ -253,15 +258,22 @@ final class AppModel {
 
     // MARK: Restore (§3.4)
 
+    /// ↩ / ⇧↩: waits for a pending search so the restored card is the one the results show.
     func restoreSelected(variant: RestoreVariant = .original) {
-        guard let id = history.selectedID ?? history.cards.first?.id else { return }
-        restore(id, variant: variant)
+        Task {
+            await history.settle()
+            guard let id = history.selectedID ?? history.cards.first?.id else { return }
+            await performRestore(id, variant: variant)
+        }
     }
 
     func restoreVisible(_ index: Int) {
-        guard let card = history.card(at: index) else { return }
-        history.selectedID = card.id
-        restore(card.id)
+        Task {
+            await history.settle()
+            guard let card = history.card(at: index) else { return }
+            history.selectedID = card.id
+            await performRestore(card.id, variant: .original)
+        }
     }
 
     func restore(_ id: UUID, variant: RestoreVariant = .original) {
@@ -310,10 +322,14 @@ final class AppModel {
             toasts.error(message)
         case .written:
             let target = previousApp
-            if !isPinned { panel.close() }
+            if isPinned {
+                // Pinned: the panel stays visible but gives the key focus back to the target app.
+                if settings.pasteAfterRestore { _ = target?.activate() }
+            } else {
+                panel.close()
+            }
             if settings.pasteAfterRestore {
-                // After the panel gave up key status; the event goes straight to the previous app.
-                try? await Task.sleep(for: .milliseconds(60))
+                try? await Task.sleep(for: .milliseconds(80))
                 AccessibilityBridge.paste(to: target)
             }
             try? await store.markUsed(id, at: Date())

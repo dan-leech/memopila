@@ -97,6 +97,11 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     // MARK: NSWindowDelegate
 
+    /// A pinned panel can be focused again from any app: that app is the new paste target (§3.4).
+    func windowDidBecomeKey(_ notification: Notification) {
+        model.refreshPreviousApp()
+    }
+
     func windowDidResignKey(_ notification: Notification) {
         // Pin keeps the window on screen when focus moves to another app (§8.1).
         if !model.isPinned { close() }
@@ -150,6 +155,8 @@ final class PanelController: NSObject, NSWindowDelegate {
     // MARK: Keyboard (§8.3)
 
     private func handleKey(_ event: NSEvent) -> Bool {
+        // An input method is composing (Japanese, Chinese, Korean…): ↩, arrows and Esc belong to it.
+        if let textView = panel?.firstResponder as? NSTextView, textView.hasMarkedText() { return false }
         let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
         let key = KeyPress(event)
 
@@ -273,6 +280,16 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// selection restores the selected card instead.
     private func forwardEditCommand(_ key: KeyPress, flags: NSEvent.ModifierFlags) -> Bool? {
         guard let textView = panel?.firstResponder as? NSTextView else { return nil }
+        switch (key.letter, flags) {
+        case ("z", .command):
+            if let manager = textView.undoManager, manager.canUndo { manager.undo() }
+            return true
+        case ("z", [.command, .shift]):
+            if let manager = textView.undoManager, manager.canRedo { manager.redo() }
+            return true
+        default:
+            break
+        }
         let selector: Selector
         switch (key.letter, flags) {
         case ("x", .command): selector = #selector(NSText.cut(_:))
@@ -281,8 +298,6 @@ final class PanelController: NSObject, NSWindowDelegate {
             selector = #selector(NSText.copy(_:))
         case ("v", .command): selector = #selector(NSText.paste(_:))
         case ("a", .command): selector = #selector(NSText.selectAll(_:))
-        case ("z", .command): selector = Selector(("undo:"))
-        case ("z", [.command, .shift]): selector = Selector(("redo:"))
         default: return nil
         }
         return NSApp.sendAction(selector, to: textView, from: nil)
@@ -306,10 +321,17 @@ struct KeyPress {
 
     var isReturn: Bool { code == kVK_Return || code == kVK_ANSI_KeypadEnter }
 
+    /// From the physical key, so ⌘1…⌘9 also work on layouts where the digit row types symbols (AZERTY).
     var digit: Int? {
-        guard let letter, let value = letter.wholeNumberValue, (0...9).contains(value) else { return nil }
-        return value
+        Self.digitKeys[code]
     }
+
+    private static let digitKeys: [Int: Int] = [
+        kVK_ANSI_0: 0, kVK_ANSI_1: 1, kVK_ANSI_2: 2, kVK_ANSI_3: 3, kVK_ANSI_4: 4,
+        kVK_ANSI_5: 5, kVK_ANSI_6: 6, kVK_ANSI_7: 7, kVK_ANSI_8: 8, kVK_ANSI_9: 9,
+        kVK_ANSI_Keypad0: 0, kVK_ANSI_Keypad1: 1, kVK_ANSI_Keypad2: 2, kVK_ANSI_Keypad3: 3, kVK_ANSI_Keypad4: 4,
+        kVK_ANSI_Keypad5: 5, kVK_ANSI_Keypad6: 6, kVK_ANSI_Keypad7: 7, kVK_ANSI_Keypad8: 8, kVK_ANSI_Keypad9: 9,
+    ]
 
     private static let ansiLetters: [Int: Character] = [
         kVK_ANSI_A: "a", kVK_ANSI_C: "c", kVK_ANSI_D: "d", kVK_ANSI_E: "e", kVK_ANSI_F: "f", kVK_ANSI_K: "k",

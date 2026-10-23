@@ -204,7 +204,10 @@ struct PreviewOverlay: View {
         isLoading = true
         styledText = nil
         image = nil
-        details = await model.details(id)
+        let loaded = await model.details(id)
+        // `.task(id:)` cancels a load for a card the user already moved past; never let it overwrite.
+        guard !Task.isCancelled else { return }
+        details = loaded
         guard let details else {
             isLoading = false
             return
@@ -215,7 +218,9 @@ struct PreviewOverlay: View {
         switch details.card.displayType {
         case .image, .pdf:
             isLoading = false
-            image = await model.previewImage(id, maxPixelSize: 1_600)
+            let loadedImage = await model.previewImage(id, maxPixelSize: 1_600)
+            guard !Task.isCancelled else { return }
+            image = loadedImage
         default:
             await restyle()
             isLoading = false
@@ -233,6 +238,7 @@ struct PreviewOverlay: View {
         case .language(let language): language
         }
         let ranges = await CodeStyler.ranges(text, language: language)
+        guard !Task.isCancelled, details.card.id == self.details?.card.id else { return }
         styledText = CodeStyler.attributed(text, ranges: ranges)
     }
 }
