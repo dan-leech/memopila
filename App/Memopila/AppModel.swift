@@ -46,6 +46,8 @@ final class AppModel {
     private let recognition: RecognitionService
     /// The history file could not be opened; history is kept in memory until relaunch.
     let storeOpenError: String?
+    /// The previous history could not be opened and was moved here; a new one started (§7.2).
+    private(set) var storeMovedAside: URL?
 
     private(set) var overlay: PanelOverlay?
     private(set) var actionsState: ActionsPanelState?
@@ -73,15 +75,19 @@ final class AppModel {
         let settings = SettingsStore()
         self.settings = settings
         var openError: String?
+        var movedAside: URL?
         let store: ClipboardStore
         do {
-            store = try ClipboardStore(url: ClipboardStore.defaultURL)
+            let opened = try ClipboardStore.openRecovering(at: ClipboardStore.defaultURL)
+            store = opened.store
+            movedAside = opened.movedTo
         } catch {
             openError = error.localizedDescription
             // In-memory fallback keeps the app usable; the banner says history is not kept.
             store = try! ClipboardStore(url: nil)
         }
         storeOpenError = openError
+        storeMovedAside = movedAside
         self.store = store
         monitor = ClipboardMonitor(settings: settings, store: store)
         history = HistoryModel(store: store)
@@ -602,6 +608,10 @@ final class AppModel {
         panel.close()
         NSApp.activate()
         if let openWindowAction { openWindowAction(id: DiagnosticsView.windowID) }
+    }
+
+    func dismissStoreRecovery() {
+        storeMovedAside = nil
     }
 
     func applyActivationPolicy() {

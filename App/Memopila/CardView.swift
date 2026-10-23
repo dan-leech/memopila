@@ -60,8 +60,30 @@ struct CardView: View {
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
+    /// A credential (§3.10): the card shows its kind and first characters only.
+    private var secretKind: SecretKind? {
+        card.sensitiveKind.flatMap(SecretKind.init(rawValue:))
+    }
+
     @ViewBuilder
     private var content: some View {
+        if let secretKind {
+            VStack(alignment: .leading, spacing: 6) {
+                Label(secretKind.cardTitle, systemImage: "key.fill")
+                    .font(.callout.weight(.semibold))
+                    .foregroundStyle(.orange)
+                Text(SecretDetector.maskedPreview(of: card.preview))
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        } else {
+            unmaskedContent
+        }
+    }
+
+    @ViewBuilder
+    private var unmaskedContent: some View {
         switch card.displayType {
         case .image, .pdf:
             if let image {
@@ -155,8 +177,10 @@ struct CardView: View {
     private var metric: String {
         switch card.displayType {
         case .text, .richText, .url, .mixed:
-            if let length = card.textLength { return String(localized: "\(length) characters") }
-            return ByteCount.string(card.payloadSizeBytes)
+            guard let length = card.textLength else { return ByteCount.string(card.payloadSizeBytes) }
+            let characters = String(localized: "\(length) characters")
+            if let lines = card.lineCount, lines > 1 { return String(localized: "\(lines) lines") + ", " + characters }
+            return characters
         case .image:
             if let width = card.pixelWidth, let height = card.pixelHeight { return "\(width) × \(height) px" }
             return ByteCount.string(card.payloadSizeBytes)
@@ -175,7 +199,11 @@ struct CardView: View {
     private var accessibilityText: String {
         var parts = [card.displayType.title]
         if let title = card.customTitle { parts.append(title) }
-        if !card.preview.isEmpty { parts.append(String(card.preview.prefix(120))) }
+        if let secretKind {
+            parts.append(secretKind.cardTitle)
+        } else if !card.preview.isEmpty {
+            parts.append(String(card.preview.prefix(120)))
+        }
         if card.displayType == .file { parts.append(card.filePaths.map { URL(fileURLWithPath: $0).lastPathComponent }.joined(separator: ", ")) }
         parts.append(metric)
         if let name = card.sourceAppName { parts.append(String(localized: "from \(name)")) }

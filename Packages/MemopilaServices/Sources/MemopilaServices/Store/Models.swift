@@ -23,6 +23,10 @@ final class ClipboardRecord {
     /// Decoded text, ≤ 10 000 scalars; part of `searchText`.
     var textIndex: String
     var textLength: Int?
+    /// Lines of the full text, for the card footer.
+    var lineCount: Int?
+    /// `SecretKind` raw value when the text holds a credential (§3.10): the card masks it.
+    var sensitiveKind: String?
     /// Everything search matches: text, title, recognized text, app, source page, file names (§8.6).
     var searchText: String
     var customTitle: String?
@@ -145,6 +149,15 @@ final class RecordTag {
 }
 
 enum StoreSchema {
+    static var models: [any PersistentModel.Type] { StoreSchemaV1.models }
+}
+
+/// The first released history schema. Additive changes up to now migrate automatically
+/// (lightweight); the first change after a release freezes these models in this namespace, adds
+/// `StoreSchemaV2` and a `SchemaMigrationPlan` listing both (PLAN §7.2).
+enum StoreSchemaV1: VersionedSchema {
+    static var versionIdentifier: Schema.Version { Schema.Version(1, 0, 0) }
+
     static var models: [any PersistentModel.Type] {
         [ClipboardRecord.self, PayloadRepresentation.self, RecordThumbnail.self, CollectionModel.self, RecordTag.self]
     }

@@ -299,6 +299,58 @@
         }
       }
     },
+    "%lld lines": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld line"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld lines"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld строка"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld строки"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld строк"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld строки"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lldd": {
       "localizations": {
         "ru": {
@@ -375,6 +427,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Правило для приложения и типа важнее правила для приложения, а оно важнее правила для типа. «Префикс» подходит ко всем типам, которые начинаются с этого текста."
+          }
+        }
+      }
+    },
+    "AWS access key": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключ доступа AWS"
+          }
+        }
+      }
+    },
+    "AWS access keys": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключи доступа AWS"
           }
         }
       }
@@ -547,6 +619,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Выполняется другое изменение. Повторите попытку."
+          }
+        }
+      }
+    },
+    "Anthropic key": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключ Anthropic"
+          }
+        }
+      }
+    },
+    "Anthropic keys": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключи Anthropic"
           }
         }
       }
@@ -757,6 +849,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Захват приостановлен: ошибка хранилища (%@)."
+          }
+        }
+      }
+    },
+    "Card number": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Номер карты"
+          }
+        }
+      }
+    },
+    "Card numbers": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Номера карт"
           }
         }
       }
@@ -1463,6 +1575,66 @@
         }
       }
     },
+    "GitHub token": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токен GitHub"
+          }
+        }
+      }
+    },
+    "GitHub tokens": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токены GitHub"
+          }
+        }
+      }
+    },
+    "GitLab token": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токен GitLab"
+          }
+        }
+      }
+    },
+    "GitLab tokens": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токены GitLab"
+          }
+        }
+      }
+    },
+    "Google API key": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключ Google API"
+          }
+        }
+      }
+    },
+    "Google API keys": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключи Google API"
+          }
+        }
+      }
+    },
     "Hide Sidebar": {
       "localizations": {
         "ru": {
@@ -1589,6 +1761,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Элементов в истории"
+          }
+        }
+      }
+    },
+    "JWT": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JWT"
+          }
+        }
+      }
+    },
+    "JWTs": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JWT"
           }
         }
       }
@@ -2063,6 +2255,26 @@
         }
       }
     },
+    "OpenAI key": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключ OpenAI"
+          }
+        }
+      }
+    },
+    "OpenAI keys": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключи OpenAI"
+          }
+        }
+      }
+    },
     "PDF": {
       "localizations": {
         "ru": {
@@ -2243,6 +2455,26 @@
         }
       }
     },
+    "Private key": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приватный ключ"
+          }
+        }
+      }
+    },
+    "Private keys": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приватные ключи"
+          }
+        }
+      }
+    },
     "Quit Memopila": {
       "localizations": {
         "ru": {
@@ -2299,6 +2531,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Распознавать текст на изображениях и в отсканированных PDF"
+          }
+        }
+      }
+    },
+    "Recognized types": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Распознаваемые типы"
           }
         }
       }
@@ -2513,6 +2755,16 @@
         }
       }
     },
+    "Save as usual": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранять как обычно"
+          }
+        }
+      }
+    },
     "Save failed: %@": {
       "localizations": {
         "ru": {
@@ -2539,6 +2791,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Сохранять · до %lld МБ"
+          }
+        }
+      }
+    },
+    "Save, delete after %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранять, удалять через %@"
           }
         }
       }
@@ -2633,6 +2895,16 @@
         }
       }
     },
+    "Secrets": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Секреты"
+          }
+        }
+      }
+    },
     "Settings": {
       "localizations": {
         "ru": {
@@ -2679,6 +2951,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Показать боковую панель"
+          }
+        }
+      }
+    },
+    "Show in Finder": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать в Finder"
           }
         }
       }
@@ -2763,6 +3045,26 @@
         }
       }
     },
+    "Slack token": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токен Slack"
+          }
+        }
+      }
+    },
+    "Slack tokens and webhooks": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токены и вебхуки Slack"
+          }
+        }
+      }
+    },
     "Sort Lines A→Z": {
       "localizations": {
         "ru": {
@@ -2833,6 +3135,26 @@
         }
       }
     },
+    "Stripe key": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключ Stripe"
+          }
+        }
+      }
+    },
+    "Stripe keys": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключи Stripe"
+          }
+        }
+      }
+    },
     "Text": {
       "localizations": {
         "ru": {
@@ -2899,6 +3221,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Файл больше недоступен."
+          }
+        }
+      }
+    },
+    "The history could not be opened, so a new one was started. The old files are kept in “%@”.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Историю не удалось открыть, поэтому начата новая. Старые файлы сохранены в «%@»."
           }
         }
       }
@@ -3039,6 +3371,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Каждое Слово С Заглавной"
+          }
+        }
+      }
+    },
+    "Tokens, keys, JWTs and card numbers are recognized on this Mac. Saved secrets are masked on cards (open the preview to see one) and deleted on time; ⌘D keeps one for good.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токены, ключи, JWT и номера карт распознаются на этом Mac. Сохранённые секреты скрыты на карточках (полностью видны в просмотре) и удаляются в срок; ⌘D оставляет секрет насовсем."
           }
         }
       }
@@ -3223,6 +3565,16 @@
         }
       }
     },
+    "When a copy contains a secret": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Если в копии есть секрет"
+          }
+        }
+      }
+    },
     "Won't save from %@": {
       "localizations": {
         "ru": {
@@ -3269,6 +3621,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "macOS спрашивает разрешение, прежде чем приложения читают буфер обмена в фоне. Выберите для Memopila «Всегда разрешать»; другие менеджеры буфера обмена могут конкурировать за этот доступ."
+          }
+        }
+      }
+    },
+    "npm token": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токен npm"
+          }
+        }
+      }
+    },
+    "npm tokens": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токены npm"
           }
         }
       }

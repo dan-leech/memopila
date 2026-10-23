@@ -42,6 +42,43 @@ struct ClipboardStoreTests {
         #expect(cards.first?.sourceAppName == "Editor")
         #expect(cards.first?.copyCount == 1)
         #expect(cards.first?.storedTypes == ["public.utf8-plain-text"])
+        #expect(cards.first?.lineCount == 1)
+        #expect(cards.first?.sensitiveKind == nil)
+    }
+
+    @Test func lineCountIgnoresTrailingBreaks() {
+        #expect(TextStats.lineCount("") == 1)
+        #expect(TextStats.lineCount("a") == 1)
+        #expect(TextStats.lineCount("a\n") == 1)
+        #expect(TextStats.lineCount("a\nb") == 2)
+        #expect(TextStats.lineCount("a\r\nb\r\n\r\n") == 2)
+        #expect(TextStats.lineCount("a\n\nb") == 3)
+    }
+
+    @Test func sensitiveKindIsStoredAndKeptOnMerge() async throws {
+        let store = try ClipboardStore(url: nil)
+        var secret = snapshot("token-like")
+        secret.sensitiveKind = .jwt
+        guard case .committed(let id) = await ingest(store, secret) else { Issue.record("not committed"); return }
+        #expect(try await store.card(id)?.sensitiveKind == "jwt")
+        #expect(await ingest(store, snapshot("token-like", at: 2_000)) == .merged(id))
+        #expect(try await store.card(id)?.sensitiveKind == "jwt", "a later copy without detection does not unmask it")
+    }
+
+    @Test func unreadableStoreIsMovedAsideNotDeleted() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: "memopila-recover-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appending(path: "History.store")
+        try Data("not a database".utf8).write(to: url)
+
+        let (store, movedTo) = try ClipboardStore.openRecovering(at: url, now: Date(timeIntervalSince1970: 0))
+        let backup = try #require(movedTo)
+        #expect(FileManager.default.fileExists(atPath: backup.appending(path: "History.store").path))
+        guard case .committed = await ingest(store, snapshot("fresh start")) else { Issue.record("new store must work"); return }
+
+        let (_, second) = try ClipboardStore.openRecovering(at: url)
+        #expect(second == nil, "a healthy store opens in place")
     }
 
     @Test func windowTitleFollowsTheRecordSourcePageSetting() async throws {

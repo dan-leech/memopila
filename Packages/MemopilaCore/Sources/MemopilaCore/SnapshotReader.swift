@@ -28,6 +28,10 @@ public struct CaptureContext: Sendable {
     public var ignoreRemoteClipboard: Bool
     /// *Save anyway* (§3.2.3): size limit raised to the hard max, all declared types kept.
     public var saveAnyway: Bool
+    /// Copied credentials (§3.10).
+    public var secretPolicy: SecretPolicy
+    /// Kinds the user left on in Settings.
+    public var secretKinds: Set<SecretKind>
 
     public init(
         profiles: AppProfiles = AppProfiles(),
@@ -36,7 +40,9 @@ public struct CaptureContext: Sendable {
         panelIsKey: Bool = false,
         ownBundleID: String,
         ignoreRemoteClipboard: Bool = false,
-        saveAnyway: Bool = false
+        saveAnyway: Bool = false,
+        secretPolicy: SecretPolicy = .off,
+        secretKinds: Set<SecretKind> = Set(SecretKind.allCases)
     ) {
         self.profiles = profiles
         self.formatPolicy = formatPolicy
@@ -45,6 +51,8 @@ public struct CaptureContext: Sendable {
         self.ownBundleID = ownBundleID
         self.ignoreRemoteClipboard = ignoreRemoteClipboard
         self.saveAnyway = saveAnyway
+        self.secretPolicy = secretPolicy
+        self.secretKinds = secretKinds
     }
 }
 
@@ -54,6 +62,8 @@ public enum SkipReason: Sendable, Equatable {
     case strictIdentity
     case remoteClipboard
     case empty
+    /// The text contains a credential and the policy is *Don't save* (§3.10).
+    case secret(SecretKind)
 }
 
 public enum NotSavedReason: Sendable, Equatable {
@@ -89,6 +99,8 @@ public struct OwnedSnapshot: Sendable, Equatable {
     public var displayType: DisplayType
     public var skippedTypes: [PasteboardType]
     public var sourceURL: String?
+    /// A credential was found in the text (§3.10): the card masks it.
+    public var sensitiveKind: SecretKind?
 
     public init(
         changeCount: Int,
@@ -100,7 +112,8 @@ public struct OwnedSnapshot: Sendable, Equatable {
         payloadSizeBytes: Int,
         displayType: DisplayType,
         skippedTypes: [PasteboardType],
-        sourceURL: String?
+        sourceURL: String?,
+        sensitiveKind: SecretKind? = nil
     ) {
         self.changeCount = changeCount
         self.observedAt = observedAt
@@ -112,6 +125,7 @@ public struct OwnedSnapshot: Sendable, Equatable {
         self.displayType = displayType
         self.skippedTypes = skippedTypes
         self.sourceURL = sourceURL
+        self.sensitiveKind = sensitiveKind
     }
 }
 
@@ -175,7 +189,7 @@ public struct SnapshotReader: Sendable {
             ownBundleID: context.ownBundleID
         )
 
-        let settings: ResolvedAppSettings
+        var settings: ResolvedAppSettings
         switch context.profiles.admission(for: identity) {
         case .skipDontSave:
             return finish { .skipped(changeCount: $0, reason: .dontSave) }
@@ -223,6 +237,20 @@ public struct SnapshotReader: Sendable {
 
         let sourceURL = settings.recordSourcePage ? Self.sourceURL(itemTypes: itemTypes, items: items, pasteboard: pasteboard) : nil
 
+        var sensitiveKind: SecretKind?
+        if context.secretPolicy != .off, let text = TextDecoding.plainText(of: items), let kind = SecretDetector.detect(text, kinds: context.secretKinds) {
+            switch context.secretPolicy {
+            case .off:
+                break
+            case .dontSave:
+                return finish { .skipped(changeCount: $0, reason: .secret(kind)) }
+            case .deleteAfter(let minutes):
+                // The shorter of the app's own retention and the secret retention wins.
+                settings.captureMode = .deleteAfter(minutes: min(minutes, settings.retentionMinutes ?? minutes))
+            }
+            sensitiveKind = kind
+        }
+
         return finish { changeCount in
             .captured(OwnedSnapshot(
                 changeCount: changeCount,
@@ -234,7 +262,8 @@ public struct SnapshotReader: Sendable {
                 payloadSizeBytes: acceptedBytes,
                 displayType: DisplayType.classify(items),
                 skippedTypes: plan.skippedTypes,
-                sourceURL: sourceURL
+                sourceURL: sourceURL,
+                sensitiveKind: sensitiveKind
             ))
         }
     }

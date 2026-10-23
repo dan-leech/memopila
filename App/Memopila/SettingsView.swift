@@ -196,6 +196,7 @@ private struct CaptureSettings: View {
                     .foregroundStyle(.secondary)
                 Toggle("Ignore content from other devices (Universal Clipboard)", isOn: $settings.ignoreRemoteClipboard)
             }
+            SecretsSection(settings: model.settings)
         }
         .formStyle(.grouped)
     }
@@ -206,6 +207,92 @@ private struct CaptureSettings: View {
         case .needsEnable: String(localized: "Not enabled yet")
         case .ask: String(localized: "Asks every time — choose Always Allow in System Settings")
         case .denied: String(localized: "Denied in System Settings")
+        }
+    }
+}
+
+// MARK: - Secrets (§3.10)
+
+private struct SecretsSection: View {
+    let settings: SettingsStore
+    private static let presets = [15, 60, 480, 1_440]
+
+    var body: some View {
+        @Bindable var bindable = settings
+        let store = settings
+        return Section("Secrets") {
+            Picker("When a copy contains a secret", selection: $bindable.secretPolicy) {
+                Text("Save as usual").tag(SecretPolicy.off)
+                Text("Don't save").tag(SecretPolicy.dontSave)
+                Divider()
+                ForEach(Self.presets, id: \.self) { minutes in
+                    Text(String(localized: "Save, delete after \(RetentionText.duration(minutes: minutes))"))
+                        .tag(SecretPolicy.deleteAfter(minutes: minutes))
+                }
+                if case .deleteAfter(let minutes) = settings.secretPolicy, !Self.presets.contains(minutes) {
+                    Text(String(localized: "Save, delete after \(RetentionText.duration(minutes: minutes))"))
+                        .tag(settings.secretPolicy)
+                }
+            }
+            if case .deleteAfter(let minutes) = settings.secretPolicy {
+                Stepper(value: Binding.main(
+                    get: { minutes },
+                    set: { store.secretPolicy = .deleteAfter(minutes: $0) }
+                ), in: 5...10_080, step: 15) {
+                    LabeledContent("Delete after", value: RetentionText.duration(minutes: minutes))
+                }
+            }
+            Text("Tokens, keys, JWTs and card numbers are recognized on this Mac. Saved secrets are masked on cards (open the preview to see one) and deleted on time; ⌘D keeps one for good.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            DisclosureGroup("Recognized types") {
+                ForEach(SecretKind.allCases, id: \.self) { kind in
+                    Toggle(kind.title, isOn: Binding.main(
+                        get: { !store.disabledSecretKinds.contains(kind) },
+                        set: { isOn in
+                            if isOn { store.disabledSecretKinds.remove(kind) } else { store.disabledSecretKinds.insert(kind) }
+                        }
+                    ))
+                }
+            }
+            .disabled(settings.secretPolicy == .off)
+        }
+    }
+}
+
+extension SecretKind {
+    var title: String {
+        switch self {
+        case .privateKey: String(localized: "Private keys")
+        case .jwt: String(localized: "JWTs")
+        case .githubToken: String(localized: "GitHub tokens")
+        case .gitlabToken: String(localized: "GitLab tokens")
+        case .awsAccessKey: String(localized: "AWS access keys")
+        case .slackToken: String(localized: "Slack tokens and webhooks")
+        case .stripeKey: String(localized: "Stripe keys")
+        case .googleAPIKey: String(localized: "Google API keys")
+        case .openAIKey: String(localized: "OpenAI keys")
+        case .anthropicKey: String(localized: "Anthropic keys")
+        case .npmToken: String(localized: "npm tokens")
+        case .creditCard: String(localized: "Card numbers")
+        }
+    }
+
+    /// Singular label for a card.
+    var cardTitle: String {
+        switch self {
+        case .privateKey: String(localized: "Private key")
+        case .jwt: String(localized: "JWT")
+        case .githubToken: String(localized: "GitHub token")
+        case .gitlabToken: String(localized: "GitLab token")
+        case .awsAccessKey: String(localized: "AWS access key")
+        case .slackToken: String(localized: "Slack token")
+        case .stripeKey: String(localized: "Stripe key")
+        case .googleAPIKey: String(localized: "Google API key")
+        case .openAIKey: String(localized: "OpenAI key")
+        case .anthropicKey: String(localized: "Anthropic key")
+        case .npmToken: String(localized: "npm token")
+        case .creditCard: String(localized: "Card number")
         }
     }
 }

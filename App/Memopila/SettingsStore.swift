@@ -43,6 +43,9 @@ final class SettingsStore {
     var recognitionLanguages: [String] { didSet { defaults.set(recognitionLanguages, forKey: Key.recognitionLanguages) } }
     var appProfiles: [AppProfile] { didSet { store(appProfiles, Key.appProfiles) } }
     var formatRules: [FormatRule] { didSet { store(formatRules, Key.formatRules) } }
+    /// Copied credentials (§3.10): masked and deleted after 8 hours by default.
+    var secretPolicy: SecretPolicy { didSet { store(secretPolicy, Key.secretPolicy) } }
+    var disabledSecretKinds: Set<SecretKind> { didSet { store(Array(disabledSecretKinds), Key.disabledSecretKinds) } }
     var silentDefaultVerifiedOSBuild: String? { didSet { defaults.set(silentDefaultVerifiedOSBuild, forKey: Key.silentDefaultVerifiedOSBuild) } }
     var pausedUntil: Date? { didSet { defaults.set(pausedUntil, forKey: Key.pausedUntil) } }
     var pausedIndefinitely: Bool { didSet { defaults.set(pausedIndefinitely, forKey: Key.pausedIndefinitely) } }
@@ -68,6 +71,8 @@ final class SettingsStore {
         recognitionLanguages = defaults.stringArray(forKey: Key.recognitionLanguages) ?? []
         appProfiles = Self.load([AppProfile].self, Key.appProfiles, defaults) ?? []
         formatRules = Self.load([FormatRule].self, Key.formatRules, defaults) ?? []
+        secretPolicy = Self.load(SecretPolicy.self, Key.secretPolicy, defaults) ?? .default
+        disabledSecretKinds = Set(Self.load([SecretKind].self, Key.disabledSecretKinds, defaults) ?? [])
         silentDefaultVerifiedOSBuild = defaults.string(forKey: Key.silentDefaultVerifiedOSBuild)
         pausedUntil = defaults.object(forKey: Key.pausedUntil) as? Date
         pausedIndefinitely = defaults.bool(forKey: Key.pausedIndefinitely)
@@ -81,6 +86,8 @@ final class SettingsStore {
     // MARK: Derived
 
     var maxItemBytes: Int { maxItemMiB * FormatPolicy.mebibyte }
+
+    var secretKinds: Set<SecretKind> { Set(SecretKind.allCases).subtracting(disabledSecretKinds) }
 
     var profiles: AppProfiles {
         AppProfiles(defaults: ResolvedAppSettings(recognizeText: recognizeText), identityMode: identityMode, profiles: appProfiles)
@@ -185,6 +192,8 @@ final class SettingsStore {
         static let recognitionLanguages = "recognitionLanguages"
         static let appProfiles = "appProfiles"
         static let formatRules = "formatRules"
+        static let secretPolicy = "secretPolicy"
+        static let disabledSecretKinds = "disabledSecretKinds"
         static let silentDefaultVerifiedOSBuild = "silentDefaultVerifiedOSBuild"
         static let pausedUntil = "pausedUntil"
         static let pausedIndefinitely = "pausedIndefinitely"

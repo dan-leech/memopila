@@ -534,6 +534,15 @@ Fixed v1 set (pure functions on `String`; off the main actor for text over 100 K
 
 **Tests:** golden cases per action; invalid JSON / Base64 / percent-encoding → disabled; Copy As adds no record; editor apply + undo.
 
+### 3.10 Secrets in copied text
+
+Terminals, browsers and editors do not mark credentials as concealed (password managers do, §3.1), so a copied token would otherwise stay in history for 30 days. The user still needs them for a while (a JWT for an afternoon of API calls), so the default keeps them for a limited time instead of dropping them.
+
+- **Detection** (`SecretDetector`, pure, in the reader after the payload is read): prefix-based patterns only — private keys (`-----BEGIN … PRIVATE KEY-----`), JWTs, GitHub / GitLab / npm / Slack / Stripe / Google / OpenAI / Anthropic tokens, AWS access key IDs — and card numbers (13–19 digits, known network prefix, Luhn) only when they are nearly the whole text (≤ 64 characters). Git SHAs, UUIDs and hashes are never flagged. Plain-text representations up to 256 KB are scanned.
+- **Policy** (Settings → Capture → Secrets): *Save as usual* / *Don't save* (handled, no Current card) / **Save, delete after 15 min · 1 h · 8 h (default) · 1 day · custom**. The shorter of the app's own *Delete after* and the secret retention wins. Each kind can be switched off.
+- **Card:** masked — kind and the first characters only; the preview shows the full text. Favoriting (⌘D) clears the expiry as for any record (§6). A dedup hit keeps the mask.
+- **Tests:** each kind detected; SHAs, UUIDs, prose, Luhn-invalid and long-text numbers ignored; disabled kinds ignored; *Don't save* skips; *Delete after* sets expiry and the mask; shorter app retention wins.
+
 ---
 
 ## 4. Dedup semantics
@@ -814,6 +823,8 @@ UI refreshes from store-published change notifications + explicit paged reloads;
 
 ### 7.2 Data model
 
+- **Schema versioning:** the models form `StoreSchemaV1` (`VersionedSchema`). Additive changes before the first release migrate automatically; the first change after a release freezes V1, adds V2 and a `SchemaMigrationPlan`.
+- **Unreadable store:** the store files (store, `-shm`, `-wal`, external data folder) move to *Unreadable History <date>* next to it and a new store starts; a banner offers *Show in Finder*. History is never deleted automatically.
 - `ClipboardRecord` — `id: UUID`, `displayType`, `firstCopiedAt`, `lastCopiedAt`, `copyCount`, `lastSourceAppBundleID`, `lastSourceAppName`, `isFavorite`, `contentHash`, `hashSchemeVersion` (= 1), `storageFormatVersion` (= 1), `payloadSizeBytes`, `cardPreview` (≤ 300 scalars), `searchText` (≤ 10 000 scalars), `customTitle?`, `editedAt?`, `expiresAt?`, `ocrText?`, `ocrState`, `sourceURL?`, `sourceWindowTitle?`, `codeLanguage?` (manual preview override), `pixelWidth?` / `pixelHeight?`, `colorHex?`, `fileCount?`, `fileNames?` (for search), `skippedTypes?` (badge), relationships `representations` (cascade) and `thumbnail` (cascade). `#Index` on `contentHash`, `lastCopiedAt`, `isFavorite`, `lastSourceAppBundleID`, `displayType`, `expiresAt`. Dedup uniqueness is enforced by `ClipboardStore`, not `#Unique` (SwiftData resolves `#Unique` conflicts by upserting, which would bypass the merge rules).
 - `PayloadRepresentation`, `RecordThumbnail` — §3.5.
 - `Tag` (UI: Collection) — `id`, `name`, `sortOrder`. `RecordTag` (`recordId`, `tagId`) with `#Unique`.
@@ -894,7 +905,9 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
   - Image / PDF — thumbnail centered, aspect-fit, on a checkerboard background (transparency).
   - Color — swatch + hex.
   - File — QuickLook thumbnail or icon + file name; *Unavailable* dimmed when missing.
-- **Card footer:** source app icon (type icon when unknown) + metric (*N characters*, *W × H px*, *N files · 12.3 MB*, *#RRGGBB*) + relative time (*Now*, *2m*, *3h*, *4d*); badges: heart (favorite), pencil (edited), **T** (text found in image), clock (expires soon). Tooltip: source page (§5.2). Cards have no border except the selection; ⌘1…⌘9 hints appear while ⌘ is held.
+  - Secret (§3.10) — kind and the first characters, masked.
+- **Drag and drop:** a card drags into other apps (as in Pasta) with its stored types, loaded from the store only when the drop target asks; file cards drag as the file.
+- **Card footer:** source app icon (type icon when unknown) + metric (*N lines, M characters* for multi-line text, *N characters*, *W × H px*, *N files · 12.3 MB*, *#RRGGBB*) + relative time (*Now*, *2m*, *3h*, *4d*); badges: heart (favorite), pencil (edited), **T** (text found in image), clock (expires soon). Tooltip: source page (§5.2). Cards have no border except the selection; ⌘1…⌘9 hints appear while ⌘ is held.
 - **Red Current card** first in History (§3.2.3).
 - **Banners** above the grid: Enable capture (onboarding), Capture paused (access policy or user pause, with Resume), storage errors.
 - Empty states for History, filters and search.

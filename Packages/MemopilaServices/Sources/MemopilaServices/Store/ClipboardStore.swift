@@ -13,7 +13,7 @@ public actor ClipboardStore {
 
     /// Persistent store at `url`; `nil` keeps everything in memory (tests).
     public init(url: URL?) throws {
-        let schema = Schema(StoreSchema.models)
+        let schema = Schema(versionedSchema: StoreSchemaV1.self)
         let configuration: ModelConfiguration
         if let url {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -22,6 +22,29 @@ public actor ClipboardStore {
             configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         }
         container = try ModelContainer(for: schema, configurations: [configuration])
+    }
+
+    /// Opens the store at `url`. If it cannot be opened, its files move to a dated folder next to
+    /// it and an empty store starts in their place: history is set aside, never deleted (PLAN §7.2).
+    public static func openRecovering(at url: URL, now: Date = Date()) throws -> (store: ClipboardStore, movedTo: URL?) {
+        do {
+            return (try ClipboardStore(url: url), nil)
+        } catch {
+            let folder = url.deletingLastPathComponent()
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
+            let backup = folder.appending(path: "Unreadable History \(formatter.string(from: now))", directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: backup, withIntermediateDirectories: true)
+            // The store, its -shm / -wal journals and SwiftData's external storage folder.
+            let name = url.lastPathComponent
+            let support = ".\(url.deletingPathExtension().lastPathComponent)_SUPPORT"
+            for file in try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            where file.lastPathComponent.hasPrefix(name) || file.lastPathComponent == support {
+                try FileManager.default.moveItem(at: file, to: backup.appending(path: file.lastPathComponent))
+            }
+            return (try ClipboardStore(url: url), backup)
+        }
     }
 
     /// `~/Library/Application Support/Memopila/History.store`
@@ -56,6 +79,7 @@ public actor ClipboardStore {
         do {
             if let existing = try fetchRecord(withHash: snapshot.contentHash, in: context) {
                 apply(DedupMerge.merge(metadata(of: existing), with: observation), to: existing)
+                if let kind = snapshot.sensitiveKind { existing.sensitiveKind = kind.rawValue }
                 existing.searchText = Self.searchText(for: existing)
                 try context.save()
                 return .merged(existing.id)
@@ -86,6 +110,8 @@ public actor ClipboardStore {
             record.cardPreview = enrichment.cardPreview
             record.textIndex = enrichment.textIndex
             record.textLength = enrichment.textLength
+            record.lineCount = enrichment.lineCount
+            record.sensitiveKind = snapshot.sensitiveKind?.rawValue
             record.pixelWidth = enrichment.pixelWidth
             record.pixelHeight = enrichment.pixelHeight
             record.colorHex = enrichment.colorHex
@@ -316,6 +342,8 @@ public actor ClipboardStore {
             record.cardPreview = TextDecoding.prefix(text, maxScalars: IngestEnrichment.cardPreviewScalars)
             record.textIndex = TextDecoding.prefix(text, maxScalars: IngestEnrichment.searchScalars)
             record.textLength = text.count
+            record.lineCount = TextStats.lineCount(text)
+            if record.sensitiveKind != nil { record.sensitiveKind = SecretDetector.detect(text)?.rawValue }
             record.editedAt = Date()
             record.storedTypes = [PasteboardType.utf8PlainText.rawValue]
             record.skippedTypes = []
@@ -469,7 +497,7 @@ public actor ClipboardStore {
 
     private static var cardProperties: [PartialKeyPath<ClipboardRecord>] {
         [
-        \.id, \.displayTypeRaw, \.cardPreview, \.customTitle, \.textLength, \.pixelWidth, \.pixelHeight,
+        \.id, \.displayTypeRaw, \.cardPreview, \.customTitle, \.textLength, \.lineCount, \.sensitiveKind, \.pixelWidth, \.pixelHeight,
         \.filePaths, \.colorHex, \.payloadSizeBytes, \.firstCopiedAt, \.lastCopiedAt, \.copyCount, \.isFavorite,
         \.lastSourceAppBundleID, \.lastSourceAppName, \.sourceURL, \.editedAt, \.expiresAt, \.ocrStateRaw,
         \.storedTypes, \.skippedTypes, \.hasThumbnail, \.codeLanguage,
@@ -483,6 +511,8 @@ public actor ClipboardStore {
             preview: record.cardPreview,
             customTitle: record.customTitle,
             textLength: record.textLength,
+            lineCount: record.lineCount,
+            sensitiveKind: record.sensitiveKind,
             pixelWidth: record.pixelWidth,
             pixelHeight: record.pixelHeight,
             filePaths: record.filePaths,

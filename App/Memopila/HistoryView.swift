@@ -234,6 +234,16 @@ private struct BannerStack: View {
                     message: String(localized: "History could not be opened (\(error)). Items are kept in memory until Memopila quits.")
                 )
             }
+            if let folder = model.storeMovedAside {
+                Banner(
+                    systemImage: "externaldrive.badge.exclamationmark",
+                    tint: .orange,
+                    message: String(localized: "The history could not be opened, so a new one was started. The old files are kept in “\(folder.lastPathComponent)”.")
+                ) {
+                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+                    Button("Dismiss") { model.dismissStoreRecovery() }
+                }
+            }
             if let error = monitor.storageError {
                 Banner(systemImage: "externaldrive.badge.exclamationmark", tint: .red, message: String(localized: "Capture paused: storage error (\(error)).")) {
                     Button("Resume") { monitor.resumeAfterStorageError() }
@@ -346,6 +356,7 @@ private struct HistoryGrid: View {
                             .onTapGesture(count: 2) { model.restore(card.id) }
                             .simultaneousGesture(TapGesture().onEnded { model.history.selectedID = card.id })
                             .contextMenu { CardContextMenu(card: card, model: model) }
+                            .onDrag { DragSupport.provider(for: card, store: model.store) }
                             .accessibilityAction(named: Text("Copy to Clipboard")) { model.restore(card.id) }
                             .accessibilityAction(named: Text("Preview")) { model.present(.preview(card.id)) }
                             .onAppear { model.history.cardAppeared(card) }

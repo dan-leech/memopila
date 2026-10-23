@@ -39,6 +39,7 @@ func reader(
     frontmost: String? = "com.example.editor",
     ignoreRemote: Bool = false,
     saveAnyway: Bool = false,
+    secretPolicy: SecretPolicy = .off,
     now: Date = Date(timeIntervalSince1970: 1_000)
 ) -> SnapshotReader {
     SnapshotReader(
@@ -48,7 +49,8 @@ func reader(
             frontmostBundleID: frontmost,
             ownBundleID: ownBundleID,
             ignoreRemoteClipboard: ignoreRemote,
-            saveAnyway: saveAnyway
+            saveAnyway: saveAnyway,
+            secretPolicy: secretPolicy
         ),
         now: { now }
     )

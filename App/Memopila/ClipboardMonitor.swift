@@ -150,7 +150,9 @@ final class ClipboardMonitor {
             panelIsKey: panelIsKey(),
             ownBundleID: Self.ownBundleID,
             ignoreRemoteClipboard: settings.ignoreRemoteClipboard,
-            saveAnyway: saveAnyway
+            saveAnyway: saveAnyway,
+            secretPolicy: settings.secretPolicy,
+            secretKinds: settings.secretKinds
         )
     }
 

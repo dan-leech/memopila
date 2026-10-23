@@ -17,6 +17,9 @@ public struct HistoryCard: Sendable, Identifiable, Equatable {
     public let preview: String
     public let customTitle: String?
     public let textLength: Int?
+    public let lineCount: Int?
+    /// `SecretKind` raw value: show the card masked (§3.10).
+    public let sensitiveKind: String?
     public let pixelWidth: Int?
     public let pixelHeight: Int?
     public let filePaths: [String]

@@ -8,6 +8,7 @@ public struct IngestEnrichment: Sendable, Equatable {
     public var cardPreview: String
     public var textIndex: String
     public var textLength: Int?
+    public var lineCount: Int?
     public var thumbnail: Data?
     public var pixelWidth: Int?
     public var pixelHeight: Int?
@@ -24,6 +25,7 @@ public struct IngestEnrichment: Sendable, Equatable {
         cardPreview: String = "",
         textIndex: String = "",
         textLength: Int? = nil,
+        lineCount: Int? = nil,
         thumbnail: Data? = nil,
         pixelWidth: Int? = nil,
         pixelHeight: Int? = nil,
@@ -35,6 +37,7 @@ public struct IngestEnrichment: Sendable, Equatable {
         self.cardPreview = cardPreview
         self.textIndex = textIndex
         self.textLength = textLength
+        self.lineCount = lineCount
         self.thumbnail = thumbnail
         self.pixelWidth = pixelWidth
         self.pixelHeight = pixelHeight
@@ -52,6 +55,7 @@ public struct IngestEnrichment: Sendable, Equatable {
             enrichment.cardPreview = TextDecoding.prefix(text, maxScalars: cardPreviewScalars)
             enrichment.textIndex = TextDecoding.prefix(text, maxScalars: searchScalars)
             enrichment.textLength = text.count
+            enrichment.lineCount = TextStats.lineCount(text)
         }
 
         enrichment.filePaths = representations.flatMap { representation -> [String] in
@@ -71,6 +75,23 @@ public struct IngestEnrichment: Sendable, Equatable {
             enrichment.colorHex = ColorHex.string(fromPasteboardColor: colorData)
         }
         return enrichment
+    }
+}
+
+public enum TextStats {
+    /// Lines as an editor shows them: trailing line breaks do not start a new line.
+    public static func lineCount(_ text: String) -> Int {
+        var breaks = 0
+        var trailing = 0
+        for byte in text.utf8 {
+            if byte == 0x0A {
+                breaks += 1
+                trailing += 1
+            } else if byte != 0x0D {
+                trailing = 0
+            }
+        }
+        return max(1, breaks - trailing + 1)
     }
 }
 
