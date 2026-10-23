@@ -110,11 +110,11 @@ public enum SnapshotReadOutcome: Sendable, Equatable {
 /// One `changeCount`-guarded read of the pasteboard (PLAN §3.2 "Pasteboard stability during read").
 /// Markers, identity, per-app settings and format decisions all happen inside the guard,
 /// from declared types only, before any payload is read.
-public struct SnapshotReader {
+public struct SnapshotReader: Sendable {
     public var context: CaptureContext
-    public var now: () -> Date
+    public var now: @Sendable () -> Date
 
-    public init(context: CaptureContext, now: @escaping () -> Date = Date.init) {
+    public init(context: CaptureContext, now: @escaping @Sendable () -> Date = { Date() }) {
         self.context = context
         self.now = now
     }

@@ -4,7 +4,7 @@ import Testing
 
 @Suite("Text decoding (§7.4)")
 struct TextDecodingTests {
-    @Test func utf8() {
+    @Test func utf8Decoding() {
         #expect(TextDecoding.decode(utf8("héllo"), as: .utf8PlainText) == "héllo")
         #expect(TextDecoding.decode(Data([0xFF, 0xFE, 0xFD]), as: .utf8PlainText) == nil)
     }
