@@ -1,276 +1,510 @@
 import MemopilaCore
+import MemopilaServices
 import SwiftUI
 
-/// Pasta-style panel: search on top, grid of cards below (PLAN §8.2). Phase 1 shell: no sidebar yet.
+/// Pasta-style panel: sidebar, search on top, grid of cards (PLAN §8.2).
 struct HistoryView: View {
-    @Bindable var model: AppModel
+    let model: AppModel
     @FocusState private var searchFocused: Bool
-
-    private let columns = [GridItem(.adaptive(minimum: 200, maximum: 320), spacing: 12)]
+    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
-        VStack(spacing: 0) {
-            topBar
-            Divider()
-            AccessBanner(monitor: model.monitor)
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVGrid(columns: columns, spacing: 12) {
-                        if let current = model.monitor.current, model.searchText.isEmpty {
-                            CurrentCard(current: current, monitor: model.monitor)
-                        }
-                        ForEach(model.filteredHistory) { entry in
-                            CardView(entry: entry, isSelected: entry.id == model.selectedID)
-                                .id(entry.id)
-                                .onTapGesture(count: 2) { model.restore(entry) }
-                                .onTapGesture { model.selectedID = entry.id }
-                                .contextMenu { contextMenu(for: entry) }
-                        }
-                    }
-                    .padding(12)
+        ZStack {
+            HStack(spacing: 0) {
+                if model.settings.showSidebar {
+                    SidebarView(model: model)
+                        .frame(width: 190)
+                    Divider()
                 }
-                .onChange(of: model.selectedID) { _, id in
-                    if let id { withAnimation(.easeOut(duration: 0.1)) { proxy.scrollTo(id) } }
+                VStack(spacing: 0) {
+                    topBar
+                    Divider()
+                    BannerStack(model: model)
+                    HistoryGrid(model: model)
                 }
             }
-            .overlay {
-                if model.filteredHistory.isEmpty && model.monitor.current == nil {
-                    Text(model.searchText.isEmpty ? "Copy something to start your history." : "No matches.")
-                        .foregroundStyle(.secondary)
-                }
-            }
+            OverlayHost(model: model)
         }
+        .overlay(alignment: .bottom) { ToastView(center: model.toasts) }
+        .animation(.easeOut(duration: 0.15), value: model.toasts.current?.id)
+        .animation(.easeOut(duration: 0.12), value: model.overlay)
         .frame(minWidth: 520, minHeight: 360)
         .background(.regularMaterial)
-        .onAppear { searchFocused = true }
-        .onChange(of: model.openCount) { _, _ in searchFocused = true }
-        .onChange(of: model.searchText) { _, _ in model.selectedID = model.filteredHistory.first?.id }
+        .onAppear {
+            model.openSettingsAction = openSettings
+            searchFocused = true
+        }
+        .onChange(of: model.focusSearchToken) { _, _ in searchFocused = true }
     }
 
     private var topBar: some View {
-        HStack(spacing: 10) {
+        @Bindable var history = model.history
+        return HStack(spacing: 10) {
+            Button {
+                model.settings.showSidebar.toggle()
+            } label: {
+                Image(systemName: "sidebar.left")
+            }
+            .buttonStyle(.borderless)
+            .help(String(localized: "Show or hide the sidebar (⌃⌘S)"))
+            .accessibilityLabel(Text("Sidebar"))
+
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
-            TextField("Search", text: $model.searchText)
+            TextField("Search", text: $history.search)
                 .textFieldStyle(.plain)
                 .font(.title3)
                 .focused($searchFocused)
-                .onSubmit { model.restoreSelected() }
-                .onKeyPress(.downArrow) { model.moveSelection(by: 1); return .handled }
-                .onKeyPress(.upArrow) { model.moveSelection(by: -1); return .handled }
-                .onKeyPress(.return, phases: .down) { press in
-                    guard press.modifiers.contains(.shift) else { return .ignored }
-                    model.restoreSelected(plainText: true)
-                    return .handled
-                }
+                .accessibilityLabel(Text("Search history"))
+
+            if model.monitor.isPaused || model.monitor.skipArmed {
+                Image(systemName: model.monitor.isPaused ? "pause.circle.fill" : "forward.end.circle.fill")
+                    .foregroundStyle(.orange)
+                    .help(model.monitor.isPaused ? String(localized: "Capture is paused") : String(localized: "The next copy will be skipped"))
+            }
+
             Button {
                 model.isPinned.toggle()
             } label: {
                 Image(systemName: model.isPinned ? "pin.fill" : "pin")
             }
             .buttonStyle(.borderless)
-            .help(model.isPinned ? "Unpin: close after copying and on focus loss" : "Pin: keep the window open")
+            .help(model.isPinned ? String(localized: "Unpin: close after copying and on focus loss") : String(localized: "Pin: keep the window open"))
+            .accessibilityLabel(model.isPinned ? Text("Unpin window") : Text("Pin window"))
+
+            Button {
+                model.openSettings()
+            } label: {
+                Image(systemName: "gearshape")
+            }
+            .buttonStyle(.borderless)
+            .help(String(localized: "Settings (⌘,)"))
+            .accessibilityLabel(Text("Settings"))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
     }
+}
 
-    @ViewBuilder
-    private func contextMenu(for entry: HistoryEntry) -> some View {
-        Button("Copy to Clipboard") { model.restore(entry) }
-        if entry.plainTextItems != nil {
-            Button("Copy as Plain Text") { model.restore(entry, plainText: true) }
-        }
-        if let text = TextDecoding.plainText(of: entry.snapshot.items) {
-            Menu("Copy As") {
-                ForEach(TextAction.allCases, id: \.self) { action in
-                    Button(action.title) { model.copy(text: action.apply(to: text), from: entry) }
-                        .disabled(!action.isAvailable(for: text))
+// MARK: - Sidebar
+
+private struct SidebarView: View {
+    let model: AppModel
+
+    private var history: HistoryModel { model.history }
+
+    var body: some View {
+        @Bindable var history = model.history
+        return List(selection: $history.sidebarSelection) {
+            Section {
+                Label("History", systemImage: "clock").tag(HistoryScope.all)
+                Label("Favorites", systemImage: "heart").tag(HistoryScope.favorites)
+            }
+            if !history.apps.isEmpty {
+                Section("Apps") {
+                    ForEach(history.apps) { app in
+                        appRow(app)
+                    }
                 }
             }
-        }
-        if let url = entry.snapshot.sourceURL, let link = URL(string: url) {
-            Button("Open Source Page") { NSWorkspace.shared.open(link) }
-        }
-        if !entry.filePaths.isEmpty {
-            Button("Reveal in Finder") {
-                NSWorkspace.shared.activateFileViewerSelecting(entry.filePaths.map { URL(fileURLWithPath: $0) })
+            if !history.types.isEmpty {
+                Section("Types") {
+                    ForEach(history.types, id: \.self) { type in
+                        Label(type.title, systemImage: type.systemImage).tag(HistoryScope.type(type))
+                    }
+                }
             }
-        }
-        Divider()
-        Button("Delete", role: .destructive) { model.monitor.delete(entry) }
-    }
-}
-
-private struct AccessBanner: View {
-    let monitor: ClipboardMonitor
-
-    var body: some View {
-        if let message {
-            HStack {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
-                Text(message).font(.callout)
-                Spacer()
-                action
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .background(.yellow.opacity(0.12))
-        }
-    }
-
-    private var message: String? {
-        if let until = monitor.pausedUntil {
-            return "Capture paused until \(until.formatted(date: .omitted, time: .shortened))."
-        }
-        if monitor.isPaused { return "Capture paused." }
-        switch monitor.access {
-        case .allowed: return nil
-        case .needsEnable: return "Memopila needs to read the clipboard in the background to build your history."
-        case .ask, .denied: return "Capture paused: allow Memopila in System Settings → Privacy & Security, then choose Always Allow."
-        }
-    }
-
-    @ViewBuilder
-    private var action: some View {
-        if monitor.isPaused {
-            Button("Resume") { monitor.resume() }
-        } else if monitor.access == .needsEnable {
-            Button("Enable capture") { _ = monitor.enableCapture() }
-        } else {
-            Button("Check again") { monitor.refreshAccess() }
-        }
-    }
-}
-
-private struct CurrentCard: View {
-    let current: CurrentClipboard
-    let monitor: ClipboardMonitor
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Label("Current — not saved", systemImage: "exclamationmark.circle.fill")
-                .font(.headline)
-                .foregroundStyle(.red)
-            Text(current.title).font(.callout)
-            Text(current.change.declaredTypes.map(\.rawValue).joined(separator: ", "))
-                .font(.caption.monospaced())
+            Section("Collections") {
+                ForEach(history.collections) { collection in
+                    Label {
+                        Text(collection.name)
+                    } icon: {
+                        Image(systemName: "folder")
+                    }
+                    .badge(collection.count)
+                    .tag(HistoryScope.collection(collection.id))
+                    .contextMenu {
+                        Button("Rename…") { model.present(.renameCollection(collection.id)) }
+                        Button("Delete Collection", role: .destructive) { model.deleteCollection(collection.id) }
+                    }
+                }
+                Button {
+                    model.present(.newCollection(addingRecord: nil))
+                } label: {
+                    Label("New Collection", systemImage: "plus")
+                }
+                .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
-                .lineLimit(3)
-            Spacer(minLength: 0)
-            HStack {
-                Button("Save anyway") { monitor.saveCurrentAnyway() }
-                Button("Dismiss") { monitor.dismissCurrent() }
             }
-            .controlSize(.small)
         }
-        .padding(10)
-        .frame(height: 150, alignment: .topLeading)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 10).fill(.red.opacity(0.08)))
-        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(.red.opacity(0.6), lineWidth: 1.5))
-    }
-}
-
-struct CardView: View {
-    let entry: HistoryEntry
-    let isSelected: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            footer
-        }
-        .padding(10)
-        .frame(height: 150)
-        .background(RoundedRectangle(cornerRadius: 10).fill(.background.opacity(0.6)))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(isSelected ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: isSelected ? 3 : 1)
-        )
-        .contentShape(Rectangle())
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
     }
 
-    @ViewBuilder
-    private var content: some View {
-        if let thumbnail = entry.thumbnail {
-            Image(nsImage: thumbnail)
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Checkerboard().opacity(0.25))
-        } else if let text = entry.previewText {
-            Text(text)
-                .font(.system(.callout, design: .monospaced))
-                .foregroundStyle(entry.snapshot.displayType == .url ? Color.accentColor : .primary)
-                .lineLimit(5)
-        } else if !entry.filePaths.isEmpty {
-            Label(entry.filePaths.map { URL(fileURLWithPath: $0).lastPathComponent }.joined(separator: ", "), systemImage: "doc")
-                .lineLimit(3)
-        } else {
-            Text(entry.snapshot.items.first?.representations.first?.type.rawValue ?? "")
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var footer: some View {
-        HStack(spacing: 6) {
-            if let icon = AppInfo.icon(for: entry.metadata.lastSourceAppBundleID) {
+    private func appRow(_ app: AppSummary) -> some View {
+        let name = AppInfo.displayName(for: app.bundleID, fallback: app.name)
+        return Label {
+            Text(name).lineLimit(1)
+        } icon: {
+            if let icon = AppInfo.icon(for: app.bundleID) {
                 Image(nsImage: icon).resizable().frame(width: 16, height: 16)
+            } else {
+                Image(systemName: "app")
             }
-            Text(entry.metric).lineLimit(1)
-            Spacer()
-            Text(RelativeTime.short(entry.metadata.lastCopiedAt))
         }
-        .font(.caption)
-        .foregroundStyle(.secondary)
-        .padding(.top, 6)
+        .badge(app.count)
+        .tag(HistoryScope.app(app.bundleID))
+        .contextMenu {
+            ActionMenuItems(items: ActionRegistry.appActions(
+                bundleID: app.bundleID,
+                name: name,
+                storedTypes: [],
+                skippedTypes: [],
+                model: model
+            ))
+        }
     }
 }
 
-private struct Checkerboard: View {
+// MARK: - Banners (§8.2)
+
+private struct BannerStack: View {
+    let model: AppModel
+
+    private var monitor: ClipboardMonitor { model.monitor }
+
     var body: some View {
-        Canvas { context, size in
-            let cell: CGFloat = 8
-            for row in 0..<Int(size.height / cell) + 1 {
-                for column in 0..<Int(size.width / cell) + 1 where (row + column).isMultiple(of: 2) {
-                    context.fill(Path(CGRect(x: CGFloat(column) * cell, y: CGFloat(row) * cell, width: cell, height: cell)), with: .color(.gray))
+        VStack(spacing: 0) {
+            if let error = model.storeOpenError {
+                Banner(
+                    systemImage: "externaldrive.badge.exclamationmark",
+                    tint: .red,
+                    message: String(localized: "History could not be opened (\(error)). Items are kept in memory until Memopila quits.")
+                )
+            }
+            if let error = monitor.storageError {
+                Banner(systemImage: "externaldrive.badge.exclamationmark", tint: .red, message: String(localized: "Capture paused: storage error (\(error)).")) {
+                    Button("Resume") { monitor.resumeAfterStorageError() }
                 }
             }
+            if let until = monitor.pausedUntil {
+                Banner(systemImage: "pause.circle.fill", tint: .orange, message: String(localized: "Capture paused until \(until.formatted(date: .omitted, time: .shortened)).")) {
+                    Button("Resume") { monitor.resume() }
+                }
+            } else if monitor.isPaused {
+                Banner(systemImage: "pause.circle.fill", tint: .orange, message: String(localized: "Capture paused.")) {
+                    Button("Resume") { monitor.resume() }
+                }
+            }
+            switch monitor.access {
+            case .allowed:
+                EmptyView()
+            case .needsEnable:
+                Banner(
+                    systemImage: "hand.raised.fill",
+                    tint: .yellow,
+                    message: monitor.enableHint ?? String(localized: "Memopila needs to read the clipboard in the background to build your history.")
+                ) {
+                    Button("Enable Capture") { monitor.enableCapture() }
+                }
+            case .ask, .denied:
+                Banner(
+                    systemImage: "exclamationmark.triangle.fill",
+                    tint: .yellow,
+                    message: String(localized: "Capture paused: allow Memopila to read the clipboard in System Settings → Privacy & Security, then choose Always Allow.")
+                ) {
+                    Button("Open Settings") { PasteboardAccess.openSystemSettings() }
+                    Button("Check Again") { monitor.refreshAccess() }
+                }
+            }
+            if let error = model.history.loadError {
+                Banner(systemImage: "exclamationmark.triangle.fill", tint: .red, message: String(localized: "History could not be loaded: \(error)"))
+            }
         }
     }
 }
 
-/// *Now*, *2m*, *3h*, *4d* (§8.2).
-enum RelativeTime {
-    static func short(_ date: Date, now: Date = Date()) -> String {
-        let seconds = max(0, Int(now.timeIntervalSince(date)))
-        switch seconds {
-        case ..<60: return "Now"
-        case ..<3_600: return "\(seconds / 60)m"
-        case ..<86_400: return "\(seconds / 3_600)h"
-        default: return "\(seconds / 86_400)d"
+private struct Banner<Actions: View>: View {
+    let systemImage: String
+    let tint: Color
+    let message: String
+    @ViewBuilder var actions: () -> Actions
+
+    init(systemImage: String, tint: Color, message: String, @ViewBuilder actions: @escaping () -> Actions) {
+        self.systemImage = systemImage
+        self.tint = tint
+        self.message = message
+        self.actions = actions
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage).foregroundStyle(tint)
+            Text(message).font(.callout).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            actions().controlSize(.small)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(tint.opacity(0.12))
+        .accessibilityElement(children: .contain)
+    }
+}
+
+extension Banner where Actions == EmptyView {
+    init(systemImage: String, tint: Color, message: String) {
+        self.init(systemImage: systemImage, tint: tint, message: message) { EmptyView() }
+    }
+}
+
+// MARK: - Grid (§8.2)
+
+private struct HistoryGrid: View {
+    let model: AppModel
+
+    private static let spacing: CGFloat = 12
+    private static let minimumCardWidth: CGFloat = 190
+
+    var body: some View {
+        GeometryReader { geometry in
+            let available = geometry.size.width - Self.spacing * 2
+            let columns = max(1, Int((available + Self.spacing) / (Self.minimumCardWidth + Self.spacing)))
+            let cardWidth = (available - Self.spacing * CGFloat(columns - 1)) / CGFloat(columns)
+            let cardHeight = min(max(cardWidth * 0.75, 120), 240)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVGrid(
+                        columns: Array(repeating: GridItem(.flexible(), spacing: Self.spacing), count: columns),
+                        spacing: Self.spacing
+                    ) {
+                        if let current = model.monitor.current, model.history.search.isEmpty, model.history.scope == .all {
+                            CurrentCardView(current: current, model: model)
+                                .frame(height: cardHeight)
+                        }
+                        ForEach(Array(model.history.cards.enumerated()), id: \.element.id) { index, card in
+                            CardView(
+                                card: card,
+                                index: index,
+                                isSelected: card.id == model.history.selectedID,
+                                thumbnails: model.thumbnails
+                            )
+                            .frame(height: cardHeight)
+                            .id(card.id)
+                            .onTapGesture(count: 2) { model.restore(card.id) }
+                            .simultaneousGesture(TapGesture().onEnded { model.history.selectedID = card.id })
+                            .contextMenu {
+                                ActionMenuItems(items: ActionRegistry.cardActions(card, model: model))
+                            }
+                            .accessibilityAction(named: Text("Copy to Clipboard")) { model.restore(card.id) }
+                            .accessibilityAction(named: Text("Preview")) { model.present(.preview(card.id)) }
+                            .onAppear { model.history.cardAppeared(card) }
+                        }
+                    }
+                    .padding(Self.spacing)
+                }
+                .onChange(of: model.history.selectedID) { _, id in
+                    if let id { proxy.scrollTo(id) }
+                }
+            }
+            .onChange(of: columns, initial: true) { _, value in model.history.columns = value }
+        }
+        .overlay { emptyState }
+    }
+
+    @ViewBuilder
+    private var emptyState: some View {
+        let history = model.history
+        if history.cards.isEmpty, model.monitor.current == nil, history.loadError == nil {
+            VStack(spacing: 6) {
+                Image(systemName: history.search.isEmpty ? "list.clipboard" : "magnifyingglass")
+                    .font(.largeTitle)
+                    .foregroundStyle(.tertiary)
+                Text(emptyMessage).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var emptyMessage: String {
+        let history = model.history
+        if !history.search.isEmpty { return String(localized: "No matches.") }
+        switch history.scope {
+        case .all: return String(localized: "Copy something to start your history.")
+        case .favorites: return String(localized: "No favorites yet. Press ⌘D on a card to add one.")
+        case .collection: return String(localized: "This collection is empty. Add items from a card's menu.")
+        case .app, .type: return String(localized: "Nothing here.")
         }
     }
 }
 
-extension TextAction {
+// MARK: - Overlays
+
+private struct OverlayHost: View {
+    let model: AppModel
+
+    var body: some View {
+        if let overlay = model.overlay {
+            ZStack {
+                Color.black.opacity(0.25)
+                    .contentShape(Rectangle())
+                    .onTapGesture { model.present(nil) }
+                content(for: overlay)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 12))
+                    .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
+                    .shadow(radius: 20, y: 6)
+                    .padding(24)
+            }
+            .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder
+    private func content(for overlay: PanelOverlay) -> some View {
+        switch overlay {
+        case .preview(let id):
+            PreviewOverlay(model: model, id: id)
+        case .editor:
+            if let state = model.editorState { EditorOverlay(model: model, state: state) }
+        case .rename(let id):
+            let card = model.history.cards.first { $0.id == id }
+            NameOverlay(
+                title: String(localized: "Rename"),
+                prompt: String(localized: "Title (empty removes it)"),
+                initial: card?.customTitle ?? "",
+                confirm: String(localized: "Rename"),
+                allowsEmpty: true
+            ) { model.rename(id, title: $0) } cancel: { model.present(nil) }
+        case .actions:
+            if let state = model.actionsState { ActionsPanel(state: state, model: model) }
+        case .newCollection(let recordID):
+            NameOverlay(
+                title: String(localized: "New Collection"),
+                prompt: String(localized: "Name"),
+                initial: "",
+                confirm: String(localized: "Create"),
+                allowsEmpty: false
+            ) { model.createCollection(named: $0, adding: recordID) } cancel: { model.present(nil) }
+        case .renameCollection(let id):
+            NameOverlay(
+                title: String(localized: "Rename Collection"),
+                prompt: String(localized: "Name"),
+                initial: model.history.collections.first { $0.id == id }?.name ?? "",
+                confirm: String(localized: "Rename"),
+                allowsEmpty: false
+            ) { model.renameCollection(id, to: $0) } cancel: { model.present(nil) }
+        case .confirmDelete(let ids):
+            ConfirmDeleteOverlay(count: ids.count) {
+                model.delete(ids, confirmed: true)
+            } cancel: {
+                model.present(nil)
+            }
+        }
+    }
+}
+
+private struct NameOverlay: View {
+    let title: String
+    let prompt: String
+    let initial: String
+    let confirm: String
+    let allowsEmpty: Bool
+    let onConfirm: (String) -> Void
+    let cancel: () -> Void
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    init(
+        title: String,
+        prompt: String,
+        initial: String,
+        confirm: String,
+        allowsEmpty: Bool,
+        onConfirm: @escaping (String) -> Void,
+        cancel: @escaping () -> Void
+    ) {
+        self.title = title
+        self.prompt = prompt
+        self.initial = initial
+        self.confirm = confirm
+        self.allowsEmpty = allowsEmpty
+        self.onConfirm = onConfirm
+        self.cancel = cancel
+        _text = State(initialValue: initial)
+    }
+
+    private var canConfirm: Bool {
+        allowsEmpty || !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title).font(.headline)
+            TextField(prompt, text: $text)
+                .textFieldStyle(.roundedBorder)
+                .focused($focused)
+                .onSubmit { if canConfirm { onConfirm(text) } }
+            HStack {
+                Spacer()
+                Button("Cancel", action: cancel)
+                Button(confirm) { onConfirm(text) }
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!canConfirm)
+            }
+        }
+        .padding(18)
+        .frame(width: 340)
+        .onAppear { focused = true }
+    }
+}
+
+private struct ConfirmDeleteOverlay: View {
+    let count: Int
+    let confirm: () -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(count == 1 ? String(localized: "Delete this favorite?") : String(localized: "Delete \(count) items, including favorites?"))
+                .font(.headline)
+            Text("Favorites are never removed automatically. This can't be undone.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Cancel", action: cancel)
+                Button("Delete", role: .destructive, action: confirm)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(18)
+        .frame(width: 360)
+    }
+}
+
+// MARK: - Display helpers
+
+extension DisplayType {
     var title: String {
         switch self {
-        case .trimWhitespace: "Trim Whitespace"
-        case .removeLineBreaks: "Remove Line Breaks"
-        case .uppercase: "UPPERCASE"
-        case .lowercase: "lowercase"
-        case .titleCase: "Title Case"
-        case .sortLines: "Sort Lines"
-        case .removeDuplicateLines: "Remove Duplicate Lines"
-        case .formatJSON: "Format JSON"
-        case .minifyJSON: "Minify JSON"
-        case .urlEncode: "URL-Encode"
-        case .urlDecode: "URL-Decode"
-        case .base64Encode: "Base64 Encode"
-        case .base64Decode: "Base64 Decode"
+        case .text: String(localized: "Text")
+        case .richText: String(localized: "Rich Text")
+        case .url: String(localized: "Links")
+        case .image: String(localized: "Images")
+        case .pdf: String(localized: "PDF")
+        case .color: String(localized: "Colors")
+        case .file: String(localized: "Files")
+        case .mixed: String(localized: "Mixed")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .text: "text.alignleft"
+        case .richText: "textformat"
+        case .url: "link"
+        case .image: "photo"
+        case .pdf: "doc.richtext"
+        case .color: "paintpalette"
+        case .file: "doc"
+        case .mixed: "square.stack"
         }
     }
 }

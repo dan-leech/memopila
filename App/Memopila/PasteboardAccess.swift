@@ -1,6 +1,7 @@
 import AppKit
 
 /// macOS pasteboard access policy (PLAN §3.1). Only the General pasteboard is gated.
+@MainActor
 enum PasteboardAccess {
     enum State: Equatable {
         /// `.alwaysAllow`, or `.default` verified silent on this OS build.
@@ -14,16 +15,14 @@ enum PasteboardAccess {
         var allowsCapture: Bool { self == .allowed }
     }
 
-    @MainActor
     static var behavior: NSPasteboard.AccessBehavior { NSPasteboard.general.accessBehavior }
 
-    @MainActor
-    static func currentState() -> State {
+    static func currentState(verifiedBuild: String?) -> State {
         switch behavior {
         case .alwaysAllow:
             return .allowed
         case .default:
-            return Preferences.silentDefaultVerifiedOSBuild == osBuild ? .allowed : .needsEnable
+            return verifiedBuild == osBuild ? .allowed : .needsEnable
         case .ask:
             return .ask
         case .alwaysDeny:
@@ -34,18 +33,14 @@ enum PasteboardAccess {
     }
 
     /// One content read from an explicit user action, discarded (§3.1 bootstrap).
-    /// Returns `false` when the pasteboard has nothing to read.
-    @MainActor
-    @discardableResult
-    static func bootstrapRead() -> Bool {
+    /// Returns the OS build to remember when the state stayed `.default` (no alert: enforcement is off).
+    static func bootstrapRead() -> (didRead: Bool, verifiedBuild: String?) {
         let pasteboard = NSPasteboard.general
-        guard let item = pasteboard.pasteboardItems?.first, let type = item.types.first else { return false }
+        guard let item = pasteboard.pasteboardItems?.first, let type = item.types.first else { return (false, nil) }
         _ = item.data(forType: type)
-        if behavior == .default { Preferences.silentDefaultVerifiedOSBuild = osBuild }
-        return true
+        return (true, behavior == .default ? osBuild : nil)
     }
 
-    @MainActor
     static var behaviorName: String {
         switch behavior {
         case .default: "default"
@@ -56,8 +51,15 @@ enum PasteboardAccess {
         }
     }
 
+    /// Opens System Settings → Privacy & Security (the exact pane name is a Phase 1 spike question).
+    static func openSystemSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
     /// e.g. "25A354" (`kern.osversion`).
-    static let osBuild: String = {
+    nonisolated static let osBuild: String = {
         var size = 0
         sysctlbyname("kern.osversion", nil, &size, nil, 0)
         var buffer = [CChar](repeating: 0, count: max(size, 1))

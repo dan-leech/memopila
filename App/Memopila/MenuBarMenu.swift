@@ -10,12 +10,18 @@ struct MenuBarMenu: View {
     private var monitor: ClipboardMonitor { model.monitor }
 
     var body: some View {
-        Button("Open Memopila (\(model.shortcut.displayString))") { model.panel.show() }
+        Button("Open Memopila (\(model.settings.shortcut.displayString))") { model.panel.show() }
         if monitor.access == .needsEnable {
-            Button("Enable Capture") { _ = monitor.enableCapture() }
+            Button("Enable Capture") { monitor.enableCapture() }
+        }
+        if monitor.storageError != nil {
+            Button("Resume After Storage Error") { monitor.resumeAfterStorageError() }
         }
         Divider()
         if monitor.isPaused {
+            if let until = monitor.pausedUntil {
+                Text("Paused until \(until.formatted(date: .omitted, time: .shortened))")
+            }
             Button("Resume Capture") { monitor.resume() }
         } else {
             Menu("Pause") {
@@ -28,14 +34,16 @@ struct MenuBarMenu: View {
         Button(monitor.skipArmed ? "Cancel Skip" : "Skip Next Copy") { monitor.toggleSkip() }
         Divider()
         Button("Settings…") {
-            NSApp.activate()
-            openSettings()
+            model.openSettingsAction = openSettings
+            model.openSettings()
         }
+        .keyboardShortcut(",")
         Button("Diagnostics…") {
             NSApp.activate()
             openWindow(id: DiagnosticsView.windowID)
         }
         Divider()
         Button("Quit Memopila") { NSApp.terminate(nil) }
+            .keyboardShortcut("q")
     }
 }

@@ -68,6 +68,12 @@ public struct UnsavedChange: Sendable, Equatable {
     public var declaredTypes: [PasteboardType]
     /// Lower bound: bytes read before the attempt stopped.
     public var knownBytes: Int
+
+    public init(identity: AppIdentity, declaredTypes: [PasteboardType], knownBytes: Int) {
+        self.identity = identity
+        self.declaredTypes = declaredTypes
+        self.knownBytes = knownBytes
+    }
 }
 
 /// An owned, immutable copy of one stable change, ready for `ClipboardStore.ingest`.

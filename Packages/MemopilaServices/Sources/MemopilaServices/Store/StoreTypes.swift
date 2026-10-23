@@ -32,6 +32,7 @@ public struct HistoryCard: Sendable, Identifiable, Equatable {
     public let isEdited: Bool
     public let expiresAt: Date?
     public let hasRecognizedText: Bool
+    public let storedTypes: [String]
     public let skippedTypes: [String]
     public let hasThumbnail: Bool
     public let codeLanguage: String?

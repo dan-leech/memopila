@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A6786B15801A4DDB9DDDC0D4 /* MemopilaCore in Frameworks */ = {isa = PBXBuildFile; productRef = 322AA7C2C3514A47A14CE933 /* MemopilaCore */; };
+		737BC242E86376C8BF1886EF /* MemopilaServices in Frameworks */ = {isa = PBXBuildFile; productRef = 6DDF44C8DEB5897CA235EE20 /* MemopilaServices */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,6 +29,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A6786B15801A4DDB9DDDC0D4 /* MemopilaCore in Frameworks */,
+				737BC242E86376C8BF1886EF /* MemopilaServices in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -71,6 +73,7 @@
 			name = Memopila;
 			packageProductDependencies = (
 				322AA7C2C3514A47A14CE933 /* MemopilaCore */,
+				6DDF44C8DEB5897CA235EE20 /* MemopilaServices */,
 			);
 			productName = Memopila;
 			productReference = 115924B444384E2096286721 /* Memopila.app */;
@@ -103,6 +106,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				21636BEF4DF54097ADC85854 /* XCLocalSwiftPackageReference "../Packages/MemopilaCore" */,
+				38E0734DD7B5409CB9CD9B83 /* XCLocalSwiftPackageReference "../Packages/MemopilaServices" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D9F4E1565B03441D84ACF8B0 /* Products */;
@@ -256,12 +260,20 @@
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../Packages/MemopilaCore;
 		};
+		38E0734DD7B5409CB9CD9B83 /* XCLocalSwiftPackageReference "../Packages/MemopilaServices" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/MemopilaServices;
+		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		322AA7C2C3514A47A14CE933 /* MemopilaCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = MemopilaCore;
+		};
+		6DDF44C8DEB5897CA235EE20 /* MemopilaServices */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MemopilaServices;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -9,6 +9,7 @@ struct MemopilaApp: App {
             MenuBarMenu(model: appDelegate.model)
         } label: {
             Image(systemName: appDelegate.model.monitor.statusSymbol)
+                .accessibilityLabel(Text("Memopila"))
         }
 
         Settings {
@@ -16,7 +17,7 @@ struct MemopilaApp: App {
         }
 
         Window("Diagnostics", id: DiagnosticsView.windowID) {
-            DiagnosticsView(monitor: appDelegate.model.monitor)
+            DiagnosticsView(model: appDelegate.model)
         }
         .defaultSize(width: 640, height: 520)
         .defaultLaunchBehavior(.suppressed)
@@ -29,5 +30,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         model.start()
+    }
+
+    /// Dock icon click or relaunch while running: open the panel.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        model.panel.show()
+        return false
     }
 }

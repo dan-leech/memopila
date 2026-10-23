@@ -1,4 +1,5 @@
 import AppKit
+import MemopilaServices
 import SwiftUI
 
 /// Phase 1 spike instrument (PLAN §3.1 spike questions): shows the access policy and capture state,
@@ -6,8 +7,11 @@ import SwiftUI
 struct DiagnosticsView: View {
     static let windowID = "diagnostics"
 
-    let monitor: ClipboardMonitor
+    let model: AppModel
     @State private var probes: [String] = []
+    @State private var recordCount: Int?
+
+    private var monitor: ClipboardMonitor { model.monitor }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -15,12 +19,15 @@ struct DiagnosticsView: View {
                 row("macOS build", PasteboardAccess.osBuild)
                 row("accessBehavior", PasteboardAccess.behaviorName)
                 row("Capture access", "\(monitor.access)")
-                row("Silent default verified on", Preferences.silentDefaultVerifiedOSBuild ?? "—")
+                row("Silent default verified on", model.settings.silentDefaultVerifiedOSBuild ?? "—")
                 row("changeCount handled", monitor.coordinator.lastHandledChangeCount.map(String.init) ?? "—")
                 row("Reading / destructive", "\(monitor.coordinator.isCapturing) / \(monitor.coordinator.destructiveInProgress)")
                 row("Token / skip armed", "\(monitor.coordinator.token.map(String.init) ?? "—") / \(monitor.coordinator.skipArmed)")
                 row("Paused", monitor.isPaused ? (monitor.pausedUntil?.formatted() ?? "until resumed") : "no")
-                row("History entries", "\(monitor.history.count)")
+                row("Records in store", recordCount.map(String.init) ?? "—")
+                row("Loaded cards", "\(model.history.cards.count)")
+                row("Accessibility", AccessibilityBridge.isTrusted ? "trusted" : "not trusted")
+                row("Store file", ClipboardStore.defaultURL.path)
             }
             .font(.system(.callout, design: .monospaced))
 
@@ -56,6 +63,7 @@ struct DiagnosticsView: View {
             }
         }
         .padding()
+        .task { recordCount = try? await model.store.count(HistoryQuery()) }
     }
 
     @ViewBuilder
@@ -79,8 +87,7 @@ struct DiagnosticsView: View {
             "accessBehavior: \(PasteboardAccess.behaviorName), capture: \(monitor.access)",
         ] + probes + monitor.log.map { "\($0.date.formatted(date: .omitted, time: .standard))  \($0.message)" })
             .joined(separator: "\n")
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(report, forType: .string)
+        // Through the writer, so the report is suppressed by the token and not added to history.
+        _ = monitor.write(PasteboardWriter.plainTextItems(report), sourceBundleID: nil)
     }
 }

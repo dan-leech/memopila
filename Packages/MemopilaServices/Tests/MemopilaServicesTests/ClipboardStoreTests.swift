@@ -41,6 +41,18 @@ struct ClipboardStoreTests {
         #expect(cards.first?.displayType == .text)
         #expect(cards.first?.sourceAppName == "Editor")
         #expect(cards.first?.copyCount == 1)
+        #expect(cards.first?.storedTypes == ["public.utf8-plain-text"])
+    }
+
+    @Test func windowTitleFollowsTheRecordSourcePageSetting() async throws {
+        let store = try ClipboardStore(url: nil)
+        let enrichment = IngestEnrichment(cardPreview: "a", sourceWindowTitle: "Docs — Example")
+        guard case .committed(let id) = await store.ingest(snapshot("a"), readerSeq: 0, enrichment: enrichment, limits: RetentionLimits()) else { Issue.record("not committed"); return }
+        #expect(try await store.details(id)?.sourceWindowTitle == "Docs — Example")
+        var off = ResolvedAppSettings()
+        off.recordSourcePage = false
+        guard case .committed(let other) = await store.ingest(snapshot("b", settings: off), readerSeq: 0, enrichment: enrichment, limits: RetentionLimits()) else { Issue.record("not committed"); return }
+        #expect(try await store.details(other)?.sourceWindowTitle == nil)
     }
 
     @Test func dedupMergesMetadataOnly() async throws {

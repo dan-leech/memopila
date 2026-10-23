@@ -37,6 +37,8 @@ final class ClipboardRecord {
     var pixelHeight: Int?
     var colorHex: String?
     var filePaths: [String]
+    /// Distinct stored types in order, for the format quick actions (§5.1) without loading payload rows.
+    var storedTypes: [String] = []
     var skippedTypes: [String]
     var hasThumbnail: Bool
 
@@ -72,6 +74,7 @@ final class ClipboardRecord {
         self.searchText = ""
         self.ocrStateRaw = RecognitionState.off.rawValue
         self.filePaths = []
+        self.storedTypes = []
         self.skippedTypes = []
         self.hasThumbnail = false
     }

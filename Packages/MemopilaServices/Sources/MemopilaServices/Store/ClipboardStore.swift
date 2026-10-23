@@ -50,6 +50,7 @@ public actor ClipboardStore {
             sourceAppBundleID: snapshot.identity.bundleID,
             sourceAppName: enrichment.sourceAppName,
             sourceURL: snapshot.sourceURL,
+            sourceWindowTitle: snapshot.settings.recordSourcePage ? enrichment.sourceWindowTitle : nil,
             retentionMinutes: snapshot.settings.retentionMinutes
         )
         do {
@@ -89,6 +90,7 @@ public actor ClipboardStore {
             record.pixelHeight = enrichment.pixelHeight
             record.colorHex = enrichment.colorHex
             record.filePaths = enrichment.filePaths
+            record.storedTypes = Self.distinctTypes(of: snapshot.items)
             record.skippedTypes = snapshot.skippedTypes.map(\.rawValue)
             record.ocrStateRaw = Self.initialRecognitionState(for: snapshot).rawValue
             record.searchText = Self.searchText(for: record)
@@ -315,6 +317,7 @@ public actor ClipboardStore {
             record.textIndex = TextDecoding.prefix(text, maxScalars: IngestEnrichment.searchScalars)
             record.textLength = text.count
             record.editedAt = Date()
+            record.storedTypes = [PasteboardType.utf8PlainText.rawValue]
             record.skippedTypes = []
             record.searchText = Self.searchText(for: record)
         }
@@ -394,6 +397,14 @@ public actor ClipboardStore {
         }
     }
 
+    /// Collections of each listed record (card menus, §8.4).
+    public func memberships(of recordIDs: [UUID]) throws -> [UUID: Set<UUID>] {
+        guard !recordIDs.isEmpty else { return [:] }
+        let context = makeContext()
+        let tags = try context.fetch(FetchDescriptor<RecordTag>(predicate: #Predicate { recordIDs.contains($0.recordID) }))
+        return Dictionary(grouping: tags, by: \.recordID).mapValues { Set($0.map(\.collectionID)) }
+    }
+
     public func setMembership(record recordID: UUID, collection collectionID: UUID, isMember: Bool) throws {
         let context = makeContext()
         let existing = try context.fetch(FetchDescriptor<RecordTag>(
@@ -461,7 +472,7 @@ public actor ClipboardStore {
         \.id, \.displayTypeRaw, \.cardPreview, \.customTitle, \.textLength, \.pixelWidth, \.pixelHeight,
         \.filePaths, \.colorHex, \.payloadSizeBytes, \.firstCopiedAt, \.lastCopiedAt, \.copyCount, \.isFavorite,
         \.lastSourceAppBundleID, \.lastSourceAppName, \.sourceURL, \.editedAt, \.expiresAt, \.ocrStateRaw,
-        \.skippedTypes, \.hasThumbnail, \.codeLanguage,
+        \.storedTypes, \.skippedTypes, \.hasThumbnail, \.codeLanguage,
         ]
     }
 
@@ -487,6 +498,7 @@ public actor ClipboardStore {
             isEdited: record.editedAt != nil,
             expiresAt: record.expiresAt,
             hasRecognizedText: record.ocrStateRaw == RecognitionState.done.rawValue,
+            storedTypes: record.storedTypes,
             skippedTypes: record.skippedTypes,
             hasThumbnail: record.hasThumbnail,
             codeLanguage: record.codeLanguage
@@ -506,6 +518,11 @@ public actor ClipboardStore {
             record.sourceURL, record.sourceWindowTitle, fileNames.isEmpty ? nil : fileNames.joined(separator: "\n"),
         ]
         return parts.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+
+    private static func distinctTypes(of items: [CanonicalItem]) -> [String] {
+        var seen: Set<String> = []
+        return items.flatMap(\.representations).map(\.type.rawValue).filter { seen.insert($0).inserted }
     }
 
     private static func items(from rows: [PayloadRepresentation]) -> [CanonicalItem] {

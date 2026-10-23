@@ -13,6 +13,8 @@ public struct IngestEnrichment: Sendable, Equatable {
     public var pixelHeight: Int?
     public var colorHex: String?
     public var sourceAppName: String?
+    /// Focused window title of the source app, only when Accessibility is already granted (§5.2).
+    public var sourceWindowTitle: String?
     public var filePaths: [String]
 
     public static let cardPreviewScalars = 300
@@ -27,6 +29,7 @@ public struct IngestEnrichment: Sendable, Equatable {
         pixelHeight: Int? = nil,
         colorHex: String? = nil,
         sourceAppName: String? = nil,
+        sourceWindowTitle: String? = nil,
         filePaths: [String] = []
     ) {
         self.cardPreview = cardPreview
@@ -37,11 +40,12 @@ public struct IngestEnrichment: Sendable, Equatable {
         self.pixelHeight = pixelHeight
         self.colorHex = colorHex
         self.sourceAppName = sourceAppName
+        self.sourceWindowTitle = sourceWindowTitle
         self.filePaths = filePaths
     }
 
-    public static func make(for items: [CanonicalItem], sourceAppName: String?) -> IngestEnrichment {
-        var enrichment = IngestEnrichment(sourceAppName: sourceAppName)
+    public static func make(for items: [CanonicalItem], sourceAppName: String?, sourceWindowTitle: String? = nil) -> IngestEnrichment {
+        var enrichment = IngestEnrichment(sourceAppName: sourceAppName, sourceWindowTitle: sourceWindowTitle)
         let representations = items.flatMap(\.representations)
 
         if let text = RichText.plainText(of: items) {
