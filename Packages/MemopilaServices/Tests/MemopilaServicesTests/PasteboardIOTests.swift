@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 import MemopilaCore
 import Testing
 @testable import MemopilaServices
@@ -77,5 +78,42 @@ struct PasteboardIOTests {
         let rtf = Data(#"{\rtf1\ansi Hello {\b bold}}"#.utf8)
         #expect(RichText.plainText(of: [CanonicalItem([.bytes(.rtf, rtf)])])?.contains("Hello bold") == true)
         #expect(RichText.plainText(of: [CanonicalItem([.bytes(.html, Data("<p>a &amp; <b>b</b></p>".utf8))])]) == "a & b")
+    }
+}
+
+@Suite("Text recognition (§3.8)")
+struct TextRecognizerTests {
+    private func imageWithText(_ text: String) -> CGImage? {
+        let width = 900, height = 220
+        guard let context = CGContext(
+            data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+        context.setFillColor(CGColor(gray: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let font = CTFontCreateWithName("Helvetica-Bold" as CFString, 72, nil)
+        let attributed = NSAttributedString(string: text, attributes: [
+            NSAttributedString.Key(kCTFontAttributeName as String): font,
+            NSAttributedString.Key(kCTForegroundColorAttributeName as String): CGColor(gray: 0, alpha: 1),
+        ])
+        context.textPosition = CGPoint(x: 40, y: 80)
+        CTLineDraw(CTLineCreateWithAttributedString(attributed), context)
+        return context.makeImage()
+    }
+
+    @Test func recognizesRenderedText() throws {
+        let image = try #require(imageWithText("MEMOPILA 2026"))
+        let text = try TextRecognizer.recognize(image, languages: ["en-US"])
+        #expect(text?.contains("MEMOPILA") == true || text?.contains("2026") == true)
+    }
+
+    @Test func blankImageHasNoText() throws {
+        let image = try #require(imageWithText(""))
+        #expect(try TextRecognizer.recognize(image, languages: []) == nil)
+    }
+
+    @Test func languagesAreQueriedAtRuntime() {
+        #expect(!TextRecognizer.supportedLanguages().isEmpty)
+        #expect(!TextRecognizer.defaultLanguages(preferred: ["ru-RU", "en-US"]).isEmpty)
     }
 }

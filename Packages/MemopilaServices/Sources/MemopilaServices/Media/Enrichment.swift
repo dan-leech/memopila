@@ -155,6 +155,12 @@ public enum Thumbnailer {
     }
 
     private static func pdfThumbnail(_ data: Data) -> Result? {
+        guard let rendered = renderPDFPage(data, maxPixelSize: maxPixelSize), let encoded = encode(rendered.image) else { return nil }
+        return Result(data: encoded, pixelWidth: rendered.pageWidth, pixelHeight: rendered.pageHeight)
+    }
+
+    /// First PDF page on white, scaled to fit `maxPixelSize`.
+    public static func renderPDFPage(_ data: Data, maxPixelSize: Int) -> (image: CGImage, pageWidth: Int, pageHeight: Int)? {
         guard let provider = CGDataProvider(data: data as CFData),
               let document = CGPDFDocument(provider),
               let page = document.page(at: 1) else { return nil }
@@ -171,8 +177,8 @@ public enum Thumbnailer {
         context.scaleBy(x: scale, y: scale)
         context.translateBy(x: -box.minX, y: -box.minY)
         context.drawPDFPage(page)
-        guard let image = context.makeImage(), let encoded = encode(image) else { return nil }
-        return Result(data: encoded, pixelWidth: Int(box.width), pixelHeight: Int(box.height))
+        guard let image = context.makeImage() else { return nil }
+        return (image, Int(box.width), Int(box.height))
     }
 
     /// PNG when the image has alpha, JPEG otherwise (smaller).

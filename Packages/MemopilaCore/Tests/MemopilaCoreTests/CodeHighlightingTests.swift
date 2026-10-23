@@ -66,7 +66,7 @@ struct CodeHighlightingTests {
 
     @Test func shellHashInsideWordIsNotAComment() {
         let tokens = kinds("echo a#b # real", .shell)
-        #expect(tokens.last?.kind == .comment)
+        #expect(tokens.last?.1 == .comment)
         #expect(tokens.filter { $0.1 == .comment }.count == 1)
     }
 

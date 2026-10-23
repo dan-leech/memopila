@@ -83,6 +83,30 @@ public struct OwnedSnapshot: Sendable, Equatable {
     public var displayType: DisplayType
     public var skippedTypes: [PasteboardType]
     public var sourceURL: String?
+
+    public init(
+        changeCount: Int,
+        observedAt: Date,
+        identity: AppIdentity,
+        settings: ResolvedAppSettings,
+        items: [CanonicalItem],
+        contentHash: String,
+        payloadSizeBytes: Int,
+        displayType: DisplayType,
+        skippedTypes: [PasteboardType],
+        sourceURL: String?
+    ) {
+        self.changeCount = changeCount
+        self.observedAt = observedAt
+        self.identity = identity
+        self.settings = settings
+        self.items = items
+        self.contentHash = contentHash
+        self.payloadSizeBytes = payloadSizeBytes
+        self.displayType = displayType
+        self.skippedTypes = skippedTypes
+        self.sourceURL = sourceURL
+    }
 }
 
 public enum SnapshotReadOutcome: Sendable, Equatable {
