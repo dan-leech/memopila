@@ -35,3 +35,15 @@ jobs:
           swift --version
           ls -d /Applications/Xcode*.app
       - run: swift test --package-path Packages/MemopilaCore
+
+  app-macos:
+    name: App (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build
+        shell: bash
+        run: |
+          xcodebuild -version
+          xcodebuild -project App/Memopila.xcodeproj -scheme Memopila -configuration Debug \
+            -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO -quiet build

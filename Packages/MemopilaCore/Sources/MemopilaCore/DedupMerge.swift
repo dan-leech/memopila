@@ -36,7 +36,7 @@ public struct RecordMetadata: Sendable, Equatable {
 }
 
 /// One observation of content, with its frozen `observedAt` (never the retry wall-clock).
-public struct Observation: Sendable, Equatable {
+public struct CaptureObservation: Sendable, Equatable {
     public var observedAt: Date
     public var sourceAppBundleID: String?
     public var sourceAppName: String?
@@ -67,7 +67,7 @@ public struct Observation: Sendable, Equatable {
 }
 
 public enum DedupMerge {
-    public static func newRecord(from observation: Observation) -> RecordMetadata {
+    public static func newRecord(from observation: CaptureObservation) -> RecordMetadata {
         RecordMetadata(
             firstCopiedAt: observation.observedAt,
             lastCopiedAt: observation.observedAt,
@@ -82,7 +82,7 @@ public enum DedupMerge {
 
     /// Timestamps by min/max; attribution, source page and expiry only from the newest observation,
     /// so a late retry of an older observation cannot overwrite newer data. Favorites never expire.
-    public static func merge(_ existing: RecordMetadata, with observation: Observation) -> RecordMetadata {
+    public static func merge(_ existing: RecordMetadata, with observation: CaptureObservation) -> RecordMetadata {
         var merged = existing
         merged.firstCopiedAt = min(existing.firstCopiedAt, observation.observedAt)
         merged.lastCopiedAt = max(existing.lastCopiedAt, observation.observedAt)

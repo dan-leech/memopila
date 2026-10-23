@@ -66,14 +66,14 @@ struct DedupMergeTests {
     let t0 = Date(timeIntervalSince1970: 1_000)
 
     @Test func newRecordUsesObservedAt() {
-        let record = DedupMerge.newRecord(from: Observation(observedAt: t0, sourceAppBundleID: "com.a.b", retentionMinutes: 60))
+        let record = DedupMerge.newRecord(from: CaptureObservation(observedAt: t0, sourceAppBundleID: "com.a.b", retentionMinutes: 60))
         #expect(record.firstCopiedAt == t0 && record.lastCopiedAt == t0 && record.copyCount == 1)
         #expect(record.expiresAt == t0.addingTimeInterval(3_600))
     }
 
     @Test func newerObservationUpdatesAttribution() {
         let existing = RecordMetadata(firstCopiedAt: t0, lastCopiedAt: t0, copyCount: 1, lastSourceAppBundleID: "com.a.b", sourceURL: "https://a.example")
-        let merged = DedupMerge.merge(existing, with: Observation(observedAt: t0 + 10, sourceAppBundleID: "com.c.d"))
+        let merged = DedupMerge.merge(existing, with: CaptureObservation(observedAt: t0 + 10, sourceAppBundleID: "com.c.d"))
         #expect(merged.lastCopiedAt == t0 + 10)
         #expect(merged.copyCount == 2)
         #expect(merged.lastSourceAppBundleID == "com.c.d")
@@ -82,7 +82,7 @@ struct DedupMergeTests {
 
     @Test func lateRetryOfOlderObservationDoesNotRollBack() {
         let existing = RecordMetadata(firstCopiedAt: t0, lastCopiedAt: t0 + 100, copyCount: 3, lastSourceAppBundleID: "com.new.app")
-        let merged = DedupMerge.merge(existing, with: Observation(observedAt: t0 - 5, sourceAppBundleID: "com.old.app", retentionMinutes: 1))
+        let merged = DedupMerge.merge(existing, with: CaptureObservation(observedAt: t0 - 5, sourceAppBundleID: "com.old.app", retentionMinutes: 1))
         #expect(merged.firstCopiedAt == t0 - 5)
         #expect(merged.lastCopiedAt == t0 + 100)
         #expect(merged.copyCount == 4)
@@ -92,7 +92,7 @@ struct DedupMergeTests {
 
     @Test func favoritesNeverGetAnExpiry() {
         let existing = RecordMetadata(firstCopiedAt: t0, lastCopiedAt: t0, copyCount: 1, isFavorite: true)
-        #expect(DedupMerge.merge(existing, with: Observation(observedAt: t0 + 1, retentionMinutes: 15)).expiresAt == nil)
+        #expect(DedupMerge.merge(existing, with: CaptureObservation(observedAt: t0 + 1, retentionMinutes: 15)).expiresAt == nil)
     }
 
     @Test func editCollisionMerge() {
