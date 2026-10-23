@@ -1,0 +1,92 @@
+import Foundation
+
+/// Record metadata the retention planner needs (PLAN §6). Loaded without payload bytes.
+public struct RetentionCandidate: Sendable, Equatable {
+    public var id: UUID
+    public var isFavorite: Bool
+    public var lastCopiedAt: Date
+    public var payloadSizeBytes: Int
+    public var expiresAt: Date?
+
+    public init(id: UUID, isFavorite: Bool, lastCopiedAt: Date, payloadSizeBytes: Int, expiresAt: Date? = nil) {
+        self.id = id
+        self.isFavorite = isFavorite
+        self.lastCopiedAt = lastCopiedAt
+        self.payloadSizeBytes = payloadSizeBytes
+        self.expiresAt = expiresAt
+    }
+}
+
+public enum IngestPlan: Sendable, Equatable {
+    /// Insert the new record and delete `victims` in the same transaction.
+    case accept(victims: [UUID])
+    /// Still over `maxStorageBytes` without touching favorites: no deletes, no insert.
+    case rejectQuota
+}
+
+/// Victim planning for `ClipboardStore` (PLAN §6). Favorites are never victims.
+/// Oldest first by `lastCopiedAt`; ties broken by id for determinism.
+public enum RetentionPlanner {
+    public static let defaultMaxCount = 500
+    public static let maxCountRange = 1...10_000
+    public static let defaultMaxAge: TimeInterval = 30 * 24 * 60 * 60
+    public static let defaultMaxStorageBytes = 512 * (1 << 20)
+
+    /// Storage preflight for a new unique non-favorite (§6 steps 3–8).
+    public static func planIngest(
+        existing: [RetentionCandidate],
+        newPayloadBytes: Int,
+        maxCount: Int,
+        maxStorageBytes: Int
+    ) -> IngestPlan {
+        let free = oldestFirst(existing.filter { !$0.isFavorite })
+        let countVictims = Array(free.prefix(max(0, free.count + 1 - maxCount)))
+        let actualStoredBytes = existing.reduce(0) { $0 + $1.payloadSizeBytes }
+        let countVictimBytes = countVictims.reduce(0) { $0 + $1.payloadSizeBytes }
+        let required = max(0, actualStoredBytes + newPayloadBytes - maxStorageBytes - countVictimBytes)
+
+        var victims = countVictims
+        var reclaimed = 0
+        for candidate in free.dropFirst(countVictims.count) where reclaimed < required {
+            victims.append(candidate)
+            reclaimed += candidate.payloadSizeBytes
+        }
+        let victimBytes = countVictimBytes + reclaimed
+        guard actualStoredBytes + newPayloadBytes - victimBytes <= maxStorageBytes else { return .rejectQuota }
+        return .accept(victims: victims.map(\.id))
+    }
+
+    /// Settings lowered `maxCount`: oldest non-favorites until `freeCount ≤ maxCount`.
+    public static func planCountShrink(existing: [RetentionCandidate], maxCount: Int) -> [UUID] {
+        let free = oldestFirst(existing.filter { !$0.isFavorite })
+        return free.prefix(max(0, free.count - maxCount)).map(\.id)
+    }
+
+    /// After unfavoriting `id` (already non-favorite in `existing`): evict oldest *other* non-favorites.
+    public static func planUnfavorite(_ id: UUID, existing: [RetentionCandidate], maxCount: Int) -> [UUID] {
+        let free = existing.filter { !$0.isFavorite }
+        let excess = max(0, free.count - maxCount)
+        return oldestFirst(free.filter { $0.id != id }).prefix(excess).map(\.id)
+    }
+
+    public static func planAge(existing: [RetentionCandidate], now: Date, maxAge: TimeInterval) -> [UUID] {
+        let cutoff = now.addingTimeInterval(-maxAge)
+        return oldestFirst(existing.filter { !$0.isFavorite && $0.lastCopiedAt < cutoff }).map(\.id)
+    }
+
+    /// Short per-app retention (§5.1, §6).
+    public static func planExpired(existing: [RetentionCandidate], now: Date) -> [UUID] {
+        oldestFirst(existing.filter { !$0.isFavorite && ($0.expiresAt.map { $0 <= now } ?? false) }).map(\.id)
+    }
+
+    /// When the expiry timer should fire next.
+    public static func nextExpiry(existing: [RetentionCandidate]) -> Date? {
+        existing.filter { !$0.isFavorite }.compactMap(\.expiresAt).min()
+    }
+
+    private static func oldestFirst(_ candidates: [RetentionCandidate]) -> [RetentionCandidate] {
+        candidates.sorted {
+            $0.lastCopiedAt != $1.lastCopiedAt ? $0.lastCopiedAt < $1.lastCopiedAt : $0.id.uuidString < $1.id.uuidString
+        }
+    }
+}
