@@ -162,6 +162,8 @@ T = {
 "Hide Sidebar": "Скрыть боковую панель",
 "Show Sidebar": "Показать боковую панель",
 "Menu": "Меню",
+"About Memopila": "О Memopila",
+"Memopila": "Memopila",
 "Sidebar": "Боковая панель",
 "Search": "Поиск",
 "Search history": "Поиск по истории",

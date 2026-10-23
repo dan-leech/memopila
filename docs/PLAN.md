@@ -963,7 +963,7 @@ In-window overlay (not the system Quick Look panel), with metadata: source app, 
 
 Status icon states: normal, paused, Skip armed, capture blocked (access policy or storage error).
 
-Menu: **Open Memopila** (shows the hotkey) · **Pause ▸** 5 minutes / 15 minutes / 1 hour / Until I resume — or **Resume** while paused · **Skip Next Copy** / **Cancel Skip** · Settings… · Quit.
+A click on the icon opens the panel (as in Pasta); the commands live in the panel's gear menu (§8.2). Right-click or ⌃-click shows a short menu so Quit and Resume stay reachable: **Open Memopila** (shows the hotkey) · **Enable Capture** when needed · **Pause ▸** 5 minutes / 15 minutes / 1 hour / Until I resume — or **Resume** while paused · **Skip Next Copy** / **Cancel Skip** · Settings… · Diagnostics… · Quit. Implemented as an AppKit `NSStatusItem`: SwiftUI's `MenuBarExtra` always opens a menu or a window on click.
 
 ---
 

@@ -67,6 +67,7 @@ final class AppModel {
     @ObservationIgnored private var purgeTask: Task<Void, Never>?
     @ObservationIgnored private var memoryPressure: DispatchSourceMemoryPressure?
     @ObservationIgnored var openSettingsAction: OpenSettingsAction?
+    @ObservationIgnored var openWindowAction: OpenWindowAction?
 
     init() {
         let settings = SettingsStore()
@@ -595,6 +596,12 @@ final class AppModel {
         panel.close()
         NSApp.activate()
         if let openSettingsAction { openSettingsAction() }
+    }
+
+    func openDiagnostics() {
+        panel.close()
+        NSApp.activate()
+        if let openWindowAction { openWindowAction(id: DiagnosticsView.windowID) }
     }
 
     func applyActivationPolicy() {

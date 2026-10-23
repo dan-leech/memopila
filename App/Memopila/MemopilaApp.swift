@@ -5,13 +5,7 @@ struct MemopilaApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        MenuBarExtra {
-            MenuBarMenu(model: appDelegate.model)
-        } label: {
-            Image(systemName: appDelegate.model.monitor.statusSymbol)
-                .accessibilityLabel(Text("Memopila"))
-        }
-
+        // The menu bar icon is an AppKit status item (StatusItemController): a click opens the panel.
         Settings {
             SettingsView(model: appDelegate.model)
         }
@@ -27,8 +21,10 @@ struct MemopilaApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let model = AppModel()
+    private var statusItem: StatusItemController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        statusItem = StatusItemController(model: model)
         model.start()
     }
 

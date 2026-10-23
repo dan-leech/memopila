@@ -389,6 +389,16 @@
         }
       }
     },
+    "About Memopila": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "О Memopila"
+          }
+        }
+      }
+    },
     "Accessibility access is allowed.": {
       "localizations": {
         "ru": {
@@ -1719,6 +1729,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ссылки"
+          }
+        }
+      }
+    },
+    "Memopila": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memopila"
           }
         }
       }

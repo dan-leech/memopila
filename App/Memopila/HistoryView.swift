@@ -128,6 +128,8 @@ private struct PanelMenu: View {
         Divider()
         Button("Settings…") { model.openSettings() }
             .keyboardShortcut(",")
+        Button("About Memopila") { model.openSettings(.about) }
+        Button("Diagnostics…") { model.openDiagnostics() }
         Button("Quit Memopila") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
