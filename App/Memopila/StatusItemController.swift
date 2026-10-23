@@ -118,7 +118,8 @@ final class ClosureMenuItem: NSMenuItem {
         fatalError("init(coder:) is not supported")
     }
 
-    @objc private func run() {
+    /// Menu actions arrive on the main thread.
+    @MainActor @objc private func run() {
         handler()
     }
 }
