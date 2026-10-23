@@ -25,7 +25,7 @@ public struct FormatRule: Sendable, Equatable, Codable {
     /// pattern is empty (a half-edited rule must not turn into "every type"), is ignored.
     var precedenceLevel: Int? {
         if typePattern?.isEmpty == true { return nil }
-        switch (appBundleID != nil, typePattern != nil) {
+        return switch (appBundleID != nil, typePattern != nil) {
         case (true, true): 3
         case (true, false): 2
         case (false, true): 1
