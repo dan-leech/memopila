@@ -1,9 +1,9 @@
 # Memopila — Clipboard Manager Plan
 
 **Document type:** DESIGN  
-**Status:** Accepted for v1 — ready to implement; payload backend gated on §3.5 spike (preferred: externalStorage, no BlobStore)  
-**SSOT:** §3–§6 = normative contracts; §10 = phase done-when; §11 = test matrix by reference (do not restate contracts)  
-**Product:** Memopila — native macOS clipboard manager (Pasta-like UI)
+**Status:** v1 plan, revised after review (macOS 27.x pasteboard access, memory budgets, Pasta parity, record editing). Ready for the Phase 1 spike. Statements marked **(spike)** are assumptions the Phase 1 spike must confirm; record the result next to them before relying on them.  
+**SSOT:** §3–§6 = normative contracts; §7 = architecture + memory budgets; §8 = UI; §10 = phase done-when; §11 = test matrix by reference (do not restate contracts)  
+**Product:** Memopila — native macOS clipboard manager that replaces [Pasta](https://getpasta.com/): the same UI model (§8) plus what Pasta lacks, starting with record editing (§3.6).
 
 ---
 
@@ -11,21 +11,25 @@
 
 ### Goals (v1)
 
-- Capture clipboard history as **deduplicated canonical snapshots** within an explicit UTI allowlist (text, rich text, URL, image, color, files).
-- **Restore to Clipboard** without auto-paste: rewrite pasteboard, close window, return focus to the previous app.
-- Organize with **Favorites** and **Tags** (many-to-many); search, sort, filter by source, type, tag.
-- Run as a **menu-bar** app with configurable hotkey (default ⌥⌘V); optional Dock.
-- Respect privacy: local-only data, exclude apps, skip transient/concealed/auto-generated markers, handle pasteboard access policy (**Capture paused**).
+- **Pasta-parity UI** (§8): menu-bar app; hotkey window with sidebar (History, Favorites, Apps, Types, Collections), search and a card grid with thumbnails.
+- Capture clipboard history as **deduplicated canonical snapshots** of allowlisted formats (text, rich text, URL, image, PDF, color, files) plus formats the user opts into with **format rules** (§3.2.2).
+- **Show the current clipboard even when it is not saved**: a red *Current — not saved* card with the reason and quick fixes (§3.2.3).
+- **Restore to Clipboard**: rewrite the pasteboard, close the window, return focus to the previous app. Variants: **Copy as plain text**; optional **Paste after restore** (Accessibility, off by default).
+- **Edit records**: edit text content and set a custom title on any record (§3.6).
+- Organize with **Favorites** and **Collections** (UI name for tags, many-to-many); search; filter by source app, type, collection.
+- **Low memory footprint**: history lives on disk; RAM stays within explicit budgets (§7.3).
+- Respect privacy: local-only data, exclude apps, skip transient/concealed/auto-generated markers, follow the macOS pasteboard access policy (**Capture paused**).
 - Deduplicate by canonical content hash; retain by **age** and by **`maxCount` on non-favorites only** (favorites outside the count cap).
 
 ### Non-goals (v1)
 
-- Auto-rules, payload editing, snippets.
+- Auto-rules (content transforms, auto-tagging), snippets. Format rules (§3.2.2) are not auto-rules: they only decide which formats are stored.
+- Rich-text editing, image editing, edit history / versions.
 - OCR, eyedropper-from-image, lock, export/import, iCloud sync.
-- Accessibility auto-paste, Quick Look panel, text transforms, drag-out to other apps, undo-delete.
+- System Quick Look panel (in-app preview instead, §8.5), text transforms beyond Copy as plain text, drag-out to other apps, undo-delete.
 - Notarized / Mac App Store distribution; **App Sandbox off** for v1 source builds.
-- Reading file contents from disk into history (never — scoped rule §3.3; other items’ image bytes may still be stored).
-- Claiming complete automatic protection against all secrets (absence of markers ≠ safe content).
+- Persisting file contents from disk (never — §3.3). Display-only QuickLook thumbnails of copied files are allowed.
+- Claiming complete automatic protection against secrets (absence of markers ≠ safe content).
 
 ---
 
@@ -34,12 +38,15 @@
 | Policy | Decision |
 |--------|----------|
 | **Data** | Local only under Application Support; no account, sync, or cloud |
-| **Distribution (v1)** | Build and run from source (Xcode); no notarization, no MAS. Downloadable binary is a separate later deliverable |
-| **Sandbox** | **Not sandboxed** in v1. Store file **URLs/paths** for restore to pasteboard; do **not** rely on security-scoped bookmarks. Bookmarks are out of v1 unless a future sandboxed distribution requires them |
-| **Stack** | SwiftUI + AppKit; macOS 14+ (pasteboard-access APIs when on 15.4+) |
-| **Payload persistence** | **Preferred v1:** one versioned `payloadPackage: Data` on `ClipboardRecord` with `@Attribute(.externalStorage)` — **no** custom BlobStore. Custom BlobStore is a **fallback only** if the Phase 1 spike fails (§3.5) |
-| **App presentation** | Menu-bar-first (`NSApplication.ActivationPolicy.accessory` / `LSUIElement`); Dock via activation-policy toggle — **Phase 1 spike** on macOS 14 and each concrete supported OS at release |
-| **Hotkey** | Default **⌥⌘V**, rebindable; Carbon `RegisterEventHotKey` (no global key monitor / Accessibility). Rebind order: (1) if new equals current, no-op; (2) register **new** while **old remains active**; (3) on success unregister old; (4) on failure keep old active and show Settings error. If an API path requires unregistering old first, **re-register old** on new-register failure |
+| **Distribution (v1)** | Build and run from source (Xcode). Sign with a stable **Apple Development** identity (a free personal team is enough), not ad-hoc "Sign to Run Locally": the per-app pasteboard access choice in System Settings is tied to the app's code identity, and an identity that changes on every build is expected to reset it **(spike)**. Downloadable binary is a later deliverable |
+| **Sandbox** | **Not sandboxed** in v1. Store file **URLs/paths** for restore; no security-scoped bookmarks |
+| **Stack** | SwiftUI + AppKit, Swift 6 language mode. **Minimum macOS 15.0** (SwiftData `#Index`/`#Unique`; pasteboard access API from 15.4). Build with the current Xcode (27.x) and macOS 27 SDK |
+| **OS test matrix** | Latest 15.x, latest 26.x, 27.0.x, 27.2+. 27.2 is listed separately: its release notes remove the `EnablePasteboardPrivacyDeveloperPreview` default (186955507), so the pasteboard access alert is expected to be enforced from 27.2 **(spike)** |
+| **Payload persistence** | One SwiftData `PayloadRepresentation` row per stored representation with `@Attribute(.externalStorage) bytes` (§3.5). No single package blob, no custom BlobStore |
+| **Memory** | History lives on disk. No in-memory mirror of history. RAM budgets (§7.3) are phase acceptance criteria |
+| **App presentation** | Menu-bar-first (`NSApplication.ActivationPolicy.accessory` / `LSUIElement`); Dock via activation-policy toggle — Phase 1 spike on each OS of the matrix |
+| **Window** | Non-activating `NSPanel` **(spike)**; fallback: activating window + remembered previous app (§8.1) |
+| **Hotkey** | Default **⌥⌘V** (same as Pasta), rebindable in Settings. Carbon `RegisterEventHotKey` (no global key monitor / Accessibility). While registered it overrides Finder's ⌥⌘V *Move Item Here* — accepted. Only one app can hold a combination: if registration fails (`eventHotKeyExistsErr`, e.g. Pasta is still running), keep the previous binding and show a Settings error that names the likely cause. Rebind order: (1) if new equals current, no-op; (2) register **new** while **old remains active**; (3) on success unregister old; (4) on failure keep old active and show the error. If an API path requires unregistering old first, **re-register old** on new-register failure |
 
 ---
 
@@ -49,40 +56,56 @@
 
 #### Access behavior (`NSPasteboard.AccessBehavior`, macOS 15.4+)
 
-`accessBehavior` is the **current access policy**, not a per-read callback. An empty `items` list must **not** be treated as proof of denial.
+Facts from Apple's documentation:
 
-| API state | App behavior |
-|-----------|--------------|
-| `.default` | **Bootstrap only** (below) — not a full `SnapshotReader` pass. Do **not** run continuous content polling |
-| `.ask` | **No payload reads / no repeating polling.** **Capture paused**; explain that continuous capture needs silent access (`.alwaysAllow`) via System Settings. Must **not** create a loop of prompts |
-| `.alwaysAllow` | Continuous background capture / polling (250 ms) without further system prompts |
-| `.alwaysDeny` | Capture stopped; show **Capture paused** |
-| macOS &lt; 15.4 | Do not call unavailable APIs; use the compatible read path (no accessBehavior) |
+- **`.default`:** "If an app has never triggered a pasteboard access alert, its General pasteboard will report `.default` behavior. Such an app is not shown in the corresponding System Settings pane. Once programmatic pasteboard access triggers the first pasteboard access alert, the state automatically changes to `.ask`."
+- **`.ask`:** the system asks before granting programmatic access; access that is both user-originated and paste-related is always allowed.
+- **`.alwaysAllow`:** all access allowed without notifying the user.
+- **`.alwaysDeny`:** programmatic access denied without notifying the user.
+- Only the **General** pasteboard is gated: "All other pasteboards default to always allow access" (matters for tests, §11).
+- `accessBehavior` is read-only; the user changes it per app in System Settings. It is declared `@objc dynamic`, so KVO may work **(spike)**.
+- Writes (Restore) are not gated.
 
-**Bootstrap when `accessBehavior == .default`:**
+**Spike questions** — answer on every OS of the matrix (§2) and record the results here:
 
-1. Perform **only the minimum** pasteboard access needed to trigger the system access prompt (e.g. a trivial types peek). **Do not** read payload representations, run full marker/source/payload `SnapshotReader`, or persist a snapshot.
-2. Re-read `accessBehavior` after that attempt.
-3. Start `SnapshotReader` / continuous polling **only** when `accessBehavior == .alwaysAllow`.
-4. If `.ask` or `.alwaysDeny` → **Capture paused** without another read attempt.
-5. **Never** resume payload reads under `.ask` without a silent-access grant (`.alwaysAllow`).
+1. Is the alert enforced by default? Expected: off on 15.4–27.1 (developer preview only), on from 27.2.
+2. Which calls raise it: `changeCount`, `types`, `data(forType:)` / `string(forType:)`? Expected: content reads only.
+3. With enforcement off, does `accessBehavior` stay `.default` after a successful content read?
+4. Does a gated read block until the user answers? What does a denied read return?
+5. Does KVO on `accessBehavior` fire? Exact System Settings pane name and whether a deep link exists.
 
-- Explain in UI why Memopila reads the clipboard in the background and why silent access is required for continuous capture.
-- After returning from System Settings, **re-check** `accessBehavior` and resume polling **only** when actually `.alwaysAllow`. Resume must not promise success.
+**Capture policy:**
 
-**Runtime policy re-check (continuous capture):** `accessBehavior` can change while the app runs in the background (user edits System Settings). It is a **current policy**, not a callback — a successful check at reader **start** does not guarantee policy at reader **end**.
+| State | Capture |
+|-------|---------|
+| `.alwaysAllow` | Continuous capture (250 ms poll) |
+| `.default` **and** silent default verified for the current OS build (below) | Continuous capture |
+| `.default`, not verified | **No background content reads.** Onboarding shows **Enable capture**; pressing it runs the bootstrap read |
+| `.ask` | **Capture paused.** Banner + guidance: System Settings → Privacy & Security → *pane (spike)* → Memopila → Always Allow. No reads, no prompt loops |
+| `.alwaysDeny` | **Capture paused**, same guidance |
+| macOS 15.0–15.3 | No API: continuous capture |
 
-1. On each monitor wake intended for continuous capture, re-read `accessBehavior` **before** any pasteboard content/`changeCount` access.
-2. If it is no longer `.alwaysAllow` → **Capture paused** (`.ask` / `.alwaysDeny`); for `.default` run **bootstrap only**. Do **not** run the 250 ms content poll loop (no periodic `changeCount` reads, no `SnapshotReader`).
-3. **Access during in-flight read (§3.2):** (a) re-check before the **final** `changeCount` read → `policyRevoked` without that read if needed; (b) **post-read access gate** after the reader returns and **before** ingest/pending/handled. Either failure discards the attempt and releases the slot; the same count stays eligible after `.alwaysAllow` returns.
-4. Resume continuous **reading** only after a re-check shows `.alwaysAllow` again — typically when returning from System Settings or on app activation. Policy-only re-check allowed. Clear/Delete may use a **one-shot boundary `changeCount`** while Capture paused (§3.2).
-5. **Pending Retry is not a pasteboard read** (§3.2): timer must not skip Retry when continuous capture is disallowed; `.ask` alone must not block pending save. v1 does **not** invalidate pending on access revoke.
+**Bootstrap read** (only from the explicit **Enable capture** action while the state is `.default`; the paused banner's **Check again** only re-reads `accessBehavior` and never reads content):
 
-**Acceptance:** bootstrap does **not** invoke full `SnapshotReader` / persist; **manual** OS dialog on 15.4+; `.ask` / `.alwaysDeny` start neither `SnapshotReader` nor periodic pasteboard/`changeCount` polling; mid-read policy drop → discard before ingest/pending; pending Retry may still persist under `.ask`; runtime `.alwaysAllow` → `.ask` stops **new** content polling until `.alwaysAllow` again.
+1. Read **one small content representation** of the current pasteboard (e.g. `string(forType:)` of a text type, else `data(forType:)` of the first declared type) and discard it — not persisted, not hashed. Empty pasteboard → ask the user to copy any text first. A `types`-only peek is not enough if the spike shows it does not raise the alert.
+2. Re-read `accessBehavior`:
+   - `.alwaysAllow` → start capture.
+   - still `.default` → no alert was raised: enforcement is off on this OS. Persist `silentDefaultVerifiedOSBuild = current OS build` and start capture.
+   - `.ask` / `.alwaysDeny` → Capture paused with guidance. On enforcing systems this is the normal outcome (the first alert moves the state to `.ask`); its main effect is that Memopila is now listed in System Settings.
+3. At most one alert per user action; **never** an alert from background polling. After an OS update the verification no longer matches, so the next launch asks for Enable capture again instead of reading in the background.
 
-#### Marker types (check **before** reading other representations when possible)
+**Runtime re-check:**
 
-Conventions from [nspasteboard.org](https://nspasteboard.org). v1 **skips the entire pasteboard change** (no payload, no preview, no record) if any marker in Transient, Confidential, or Auto-generated is present.
+1. Re-read `accessBehavior` at the start of every tick, before any `changeCount` or content access. Not allowed → skip the tick (Capture paused).
+2. **Post-read gate:** when a reader returns, re-read `accessBehavior` before ingest. Not allowed → discard the whole result, do not mark the change handled, pause. The same `changeCount` stays eligible once access returns.
+3. On app activation, on return from System Settings, and on KVO change (if it works) → re-check; resume only when allowed. Resume must not promise success.
+4. Safety net: if a background read ever moves `.default` → `.ask`, capture pauses immediately (at most one unexpected alert).
+
+**Acceptance:** no alert without a user action on enforcing systems; `.ask` / `.alwaysDeny` start no reader and no periodic poll; mid-read policy drop → discard before ingest, change remains eligible; capture resumes only when allowed; an OS update with state `.default` requires Enable capture again.
+
+#### Marker types (checked before reading other representations)
+
+Conventions from [nspasteboard.org](https://nspasteboard.org). v1 **skips the entire pasteboard change** (no payload, no preview, no record, no Current card) if any Transient, Confidential, or Auto-generated marker is present on any item.
 
 | Class | Identifiers (complete v1 table — each needs a test) | Rule |
 |-------|------------------------------------------------------|------|
@@ -91,457 +114,294 @@ Conventions from [nspasteboard.org](https://nspasteboard.org). v1 **skips the en
 | Auto-generated | `org.nspasteboard.AutoGeneratedType` | Do not save |
 | Source metadata | `org.nspasteboard.source` | Not a skip marker — attribution only (§5); not payload; not in contentHash |
 
-- Lack of a marker does **not** guarantee content is not a password or secret. Do not claim full automatic secret protection.
-- Also: **exclude apps**, Capture paused, local-only data policy.
+- Lack of a marker does **not** guarantee content is not a secret. Do not claim full automatic secret protection.
+- Markers and exclusions (§5) always win over format rules (§3.2.2).
 
-**Tests required:** one automated case **per identifier** in the Transient, Confidential, and Auto-generated rows above (not one stub per abstract class).
+**Tests required:** one automated case **per identifier** above; marker only on the second item → no payload read for any item; marker + stable `changeCount` → whole change skipped and marked handled.
 
 ### 3.2 Unit of storage = deduplicated canonical snapshot
 
-- `ClipboardRecord` represents **one deduplicated canonical snapshot identity**. `copyCount` counts **observed captures** of that identity; it is **not** a guaranteed count of all user Copy operations (polling may coalesce intermediate copies; dedup merges identical content).
-- Persist **all allowlisted** pasteboard items and **all allowlisted representations per item**, in **original order**, except file coalesce / file+image rules in §3.3.
-- Completeness means **within the allowlist**, not arbitrary unknown UTIs.
-- `displayType` (`text` / `richText` / `url` / `image` / `color` / `file` / `mixed`) is for **classification and UI only** — never discard other allowlisted representations because of it.
-- SwiftData holds metadata + **`payloadPackage`** (`Data`, `@Attribute(.externalStorage)`) — one versioned package of all allowlisted representations (§3.5).
-- Multi-file Copy → one record; multiple paths may live inside one representation on one item (§3.3) — not a single root `filePath?`, and not one item per path unless the pasteboard was structured that way.
-- `SnapshotReader` must **immediately copy** needed data into Memopila’s own model. Do **not** retain `NSPasteboardItem` instances (they become invalid after ownership change). Restore builds **new** pasteboard items from stored data.
+- `ClipboardRecord` represents **one deduplicated canonical snapshot identity**. `copyCount` counts **observed captures** of that identity, not every user Copy (polling may coalesce copies; dedup merges identical content).
+- Persist the **stored representations** of every item in **original order**: allowlisted ones (§3.2.1) plus types kept by format rules (§3.2.2), minus file coalesce / file+image rules (§3.3), redundant image formats (§3.2.2) and types skipped by rules.
+- `displayType` (`text` / `richText` / `url` / `image` / `pdf` / `color` / `file` / `mixed`) is for classification and UI only — never discard other stored representations because of it.
+- Multi-file Copy → one record.
+- `SnapshotReader` **immediately copies** data into owned values. Do **not** retain `NSPasteboardItem` instances. Restore builds **new** pasteboard items from stored data.
 
-#### In-read size budget (`maxSinglePayloadBytes`)
+#### Size budget (`maxSinglePayloadBytes`)
 
-`maxSinglePayloadBytes` (default **50 MiB**, §6) limits the **accepted and durable** `payloadPackage` size (`Data.count` after encode). It is **not** a peak-RAM budget. `@Attribute(.externalStorage)` only affects how SwiftData stores the binary adjacent to the model — it does **not** cap memory while building the package.
+- Default **32 MiB**, Settings range **4–256 MiB**, per-app override via format rules (§3.2.2); **hard max 256 MiB**. It limits the stored size of one snapshot: Σ representation bytes + Σ UTF-8 file path bytes.
+- The decision of **which** types to read is made from `types` only (§3.2.2), before any payload read.
+- Read one representation at a time inside `autoreleasepool`; feed bytes to the incremental SHA-256 (§4) and the owned snapshot; nothing else keeps a copy.
+- Before each read: if `acceptedBytes + lowerBoundForNextType` exceeds the limit → stop reading. After each read: if `acceptedBytes` exceeds the limit → stop. No further representations are read for that attempt.
+- Oversize → no record; the change is marked handled (if stable); Current card *Not saved — larger than N MiB* with **Save anyway** (§3.2.3).
+- **RAM honesty:** AppKit materializes a full representation as `Data` (no streaming read API), so peak memory during capture ≈ accepted bytes + the representation being read + SwiftData write buffers. There is no package-encoding copy. Budget in §7.3.
 
-**Guarantees:**
-
-- Accepted/persisted packages stay ≤ the limit (after forecast + final package `Data.count` check).
-- After an oversize forecast, **no further** allowlisted representations are read for that attempt.
-
-**Non-guarantees (honest RAM):**
-
-- Peak RSS is **not** bounded by 50 MiB and is **not** “limit + one representation.” During one ingest, memory may simultaneously hold SnapshotReader copies of all accepted representations, the encoded `payloadPackage`, and codec temporaries — peak can exceed the package limit by roughly **a full package plus extra copies**, depending on implementation.
-- `NSPasteboardItem.data(forType:)` may materialize a full representation `Data` before size is known.
-- Package-framing overhead is included in forecasts; still not a kernel memory cap.
-- Phase 1 spike **measures** peak RSS near a 50 MiB package; streaming is out of v1 unless that measurement is unacceptable.
-
-**Procedure:**
-
-1. Maintain a running **forecast** of canonical package size: accepted payload bytes so far **plus** predicted framing (item/representation counts already seen, UTI string lengths, length fields, `CanonicalFileListV1` path bytes, estimated package-codec overhead).
-2. Before requesting the next allowlisted representation: if `forecast + lowerBoundForNextType` would exceed the limit → **stop** further reads, discard snapshot, finish changeCount guard, do not persist.
-3. After each successful read: add actual bytes + framing deltas to the forecast; if over limit → abort as above (do not read subsequent representations).
-4. Use **incremental** SHA-256 over canonical framing (§4); do not build one giant concat buffer solely for hashing.
-5. After assembling the final `payloadPackage` `Data`, **re-check** `Data.count`; reject if over the limit.
-
-**Required test:** several representations each individually under the limit, but cumulative forecast over the limit → snapshot not persisted and **later** representations are not read.
+**Required test:** several representations each under the limit, cumulative over it → not persisted, later representations not read, Current card shows the reason.
 
 #### Pasteboard stability during read (markers inside the guard)
 
-All pasteboard observation for one ingest — types, markers, source metadata, exclusions, and payload copy — happens **inside** one changeCount-guarded operation. Do **not** check markers outside this window (a Concealed change between an early marker peek and a later payload read must not be persisted).
+All observation for one change — types, markers, source, exclusions, format decisions, payload copy — happens **inside** one `changeCount`-guarded attempt:
 
 1. Read **initial** `changeCount`.
-2. **Once:** read types on **every** `NSPasteboardItem`; classify Transient / Confidential / Auto-generated markers and other types. Any forbidding marker (§3.1) on **any** item forbids the **whole** change — decide admit/skip **before** any payload read (do not re-scan markers later).
-3. Read source metadata; resolve **admission source** and optional **display source** per §5.
-4. Apply exclude-apps (**fail-closed**, §5) using **admission source only**.
-5. If a forbidding marker **or** exclude-skip applies → do **not** read payload; still complete the guard (final `changeCount` only after the pre-final access check below); on stable skip, mark `changeCount` handled (§3.2 polling) only if post-read access gate passes.
-6. Otherwise → copy allowlisted representations into an owned snapshot (file coalesce / framing per §3.3–§4), applying the **in-read size budget** (above); abort accumulation if over limit.
-7. **Before final `changeCount` read (15.4+):** re-check `accessBehavior`. If no longer `.alwaysAllow` → return **`policyRevoked`** (stability **not** checked); discard the entire attempt; **do not** read final `changeCount`; no ingest / pending / handled mark; release slot via Monitor reconciliation. (A race remains between this check and the final read; do not widen it.)
-8. Else read **final** `changeCount`.
-9. If final ≠ initial → **discard** everything obtained in this attempt — never persist a partial/mixed result; do **not** update `lastHandledChangeCount` to the new final value.
-10. On stable success, intentional skip, or stable read-failure outcome → run the **post-read access gate** (§3.2) **before** any ingest / pending / handled update. Only if the gate passes, apply ingest-outcome rules.
+2. **Once:** read types on **every** item; any forbidding marker (§3.1) on any item forbids the whole change. Decide before any payload read.
+3. Read source metadata; resolve **admission source** and **display source** (§5).
+4. Apply exclude-apps (**fail-closed**, §5) using the **admission source only**.
+5. Forbidden or excluded → read no payload; still complete the guard.
+6. Else apply the format policy (§3.2.2) to the declared types → list of representations to read; read them under the size budget.
+7. Read **final** `changeCount`. If final ≠ initial → **discard** everything from this attempt; do **not** mark handled (the new count is read on a later tick).
+8. Run the **post-read gate** (§3.1). Fail → discard, not handled.
+9. Apply the outcome table below.
 
-Self-write suppression for `PasteboardWriter` remains a separate rule (confirmed `changeCount` token only, §3.4).
+#### Outcomes
 
-**Marker tests:** (1) `ConcealedType` only on the second item → no payload read for any item; (2) marker on one item, stable `changeCount` → whole change skipped and marked handled.
+| Outcome | Mark `changeCount` handled? | Current card (§3.2.3) |
+|---------|------------------------------|-----------------------|
+| Marker skip / excluded source | Yes | None (content never shown) |
+| Empty pasteboard | Yes | None |
+| Only unsupported / rule-skipped types | Yes | Red *No supported formats* (lists types; **Keep formats…**) |
+| Oversize | Yes | Red *Larger than N MiB* (**Save anyway**, **Raise limit for app…**) |
+| Declared representation read fails (nil, error, ObjC exception) | Yes (no retry loop) | Red *Read failed* (**Save anyway**) |
+| Unstable `changeCount` / post-read gate fails | No | Unchanged |
+| Store `committed` / `merged` | Yes | Normal card (with *+N skipped formats* badge if user-relevant types were skipped) |
+| Store `rejected` (deterministic, e.g. quota) | Yes | Red *Not saved: reason* |
+| Store `failed` twice (§3.2 coordination rule 3) | Yes | Red *Save failed: reason* (**Save anyway**) |
+| Store `dropped(stale)` (Clear/Delete/Edit raced, rule 5) | Yes | None |
 
-#### Ingest outcome vs `lastHandledChangeCount`
+**Owned snapshot timestamp:** when the guard completes, freeze `observedAt` on the snapshot. Retries and **Save anyway** of the same snapshot use that `observedAt`; dedup merges follow §4.
 
-Separate **read/skip completion** from **persist success**:
+#### Capture coordination (v1)
 
-| Outcome | Mark `changeCount` handled? | Re-read same count on next ticks? |
-|---------|------------------------------|-----------------------------------|
-| Intentional policy skip (marker, exclusion, oversize forecast, unsupported-only, empty) | Yes (if stable **and** post-read access gate passed) | No |
-| Declared allowlisted representation present but **read fails** (stable `changeCount`) | Yes (if post-read access gate passed) | **No** — discard entire snapshot; do **not** auto-retry SnapshotReader on the same count |
-| Post-read access gate fails (policy no longer `.alwaysAllow`) | **No** | Yes — same count remains eligible after access returns; no pending |
-| Store result **`rejected`** (deterministic, e.g. quota) after stable read | Yes | No |
-| Store result **`notCommitted(retryable)`** after stable owned snapshot | Yes (stable read done) | **No** SnapshotReader loop. Keep sole **pending**; bounded Store Retry / user Retry / Dismiss |
-| Store result **`committed`** | Yes | No — **consume pending**; do **not** Retry ingest |
-| Store result **`indeterminate`** (commit outcome unknown) | Yes (stable read done) | No SnapshotReader loop. **Keep pending but do not auto/manual Retry** until resolved (below) |
-| Mid-read unstable `changeCount` / **`policyRevoked`** before final count | No | Eligible again when continuous capture allowed |
+**Isolation:**
 
-**Owned snapshot timestamps:** when the changeCount guard completes successfully (stable read or stable intentional skip with an owned copy), freeze **`observedAt`** on that owned snapshot. Every automatic and user **Retry** of `ClipboardStore.ingest` must use that original `observedAt` and the same payload bytes — never the retry wall-clock. New-record timestamps and dedup metadata merges follow §4 (`min`/`max` with existing fields so a late retry cannot roll `lastCopiedAt` backward).
+- `ClipboardMonitor` is `@MainActor`: timer, access checks, `lastHandledChangeCount`, single-flight flag `isCapturing`, `destructiveInProgress`, operation sequence `opSeq`, Restore suppression token (§3.4), `CurrentClipboard` state (§3.2.3).
+- `SnapshotReader` runs off the main actor (detached task) and returns a `Sendable` owned snapshot. Off-main `NSPasteboard` reads **(spike)**; fallback: read on the main actor, one representation per run-loop turn, so a slow lazy provider in the source app cannot freeze the UI for the whole snapshot.
+- `ClipboardStore` is a `@ModelActor` and the only mutation owner (§3.5).
 
-**Pending retry ownership (v1 — no `observationID` table):** `observedAt` alone does not identify an observation for store-level idempotency. One owner (typically `ClipboardMonitor`) holds at most **one** pending owned snapshot for retry. **Pending has priority over new captures:**
+**Rules:**
 
-- Automatic retries of that snapshot run **sequentially** (no overlapping ingest of the same pending instance).
-- The **Retry** control is disabled while an ingest of that pending snapshot is in flight, and **no** new Retry (auto or manual) may start while a Clear/Delete destructive pause is active (§3.2).
-- **Admission for Retry ≠ admission for SnapshotReader** (same capture slot, different start conditions):
+1. **Single flight.** A tick starts a reader only if: capture is allowed (§3.1), `!isCapturing`, `!destructiveInProgress`, `changeCount != lastHandledChangeCount`, and the suppression-token check (§3.4) does not consume the count. These checks, `isCapturing = true` and `readerSeq = opSeq` happen **synchronously on the main actor** — no `await` in between.
+2. **Completion.** Reader returns → main actor: post-read gate → `await store.ingest(snapshot, readerSeq)` → apply the outcome table → `isCapturing = false`.
+3. **Save failure.** The store rolls back and returns `failed(error)`. The monitor retries the same snapshot **once** after ~1 s. A second failure → drop the snapshot (no payload bytes are kept in RAM), mark handled, red Current card with **Save anyway** (re-reads the pasteboard only if `changeCount` is unchanged). Capture continues with later changes. After **3 consecutive** failed snapshots → *Capture paused: storage error* banner with **Resume**.
+4. **No pending queue, no crash durability.** If the app dies mid-capture, that observation is lost. `lastHandledChangeCount` is process-local and not persisted: after launch the current pasteboard is captured as one normal observation (if unchanged content was saved before, dedup may bump `copyCount` — accepted). Do not invent a "skip whatever is on the pasteboard at launch" rule.
+5. **Clear / Delete / Edit vs an in-flight capture.**
+   - The user starts the operation on the main actor: `opSeq += 1`; `destructiveInProgress = true` (no new reader, **Save anyway** disabled); the store call carries `opSeq`. A second Clear/Delete while one runs → **busy** (UI disabled, no queue).
+   - The store keeps `lastClearSeq` and a small in-memory tombstone list `{contentHash, opSeq}` (last 64 entries) for Delete and Edit.
+   - `ingest(snapshot, readerSeq)` returns `dropped(stale)` when `readerSeq < lastClearSeq`, or when `snapshot.contentHash` has a tombstone with `opSeq > readerSeq`. The check runs inside the same serialized mutation as the commit (no `await` between check and save).
+   - The monitor marks `dropped(stale)` as handled. This is safe: a reader can only be in flight if it started before the operation; content copied during the operation either makes that read unstable (re-read later with a newer `readerSeq`) or appears as a newer `changeCount`.
+   - `destructiveInProgress = false` when the store returns (success or failure). On failure: UI error, history unchanged.
+   - Result: cleared, deleted or pre-edit content is never resurrected by an in-flight capture; unrelated content captured concurrently with a Delete is kept; content copied after the operation started is captured.
+6. **Polling:** one timer, **250 ms** (tolerance ~50 ms; not user-configurable), only while capture is allowed. Polling observes discrete samples: several copies between two polls collapse into one observation. Timer cadence for an accessory app with the window closed (App Nap, Low Power Mode) **(spike)**: if ticks are delayed beyond 1 s, hold a `ProcessInfo` activity while capture is enabled.
 
-| Operation | May start when |
-|-----------|----------------|
-| New `SnapshotReader` | No destructive pause; slot free; epoch/ownership OK; continuous capture allowed (`.alwaysAllow` on 15.4+) |
-| Retry of owned pending | No destructive pause; pending still owned by this operation; slot free; epoch/ownership OK — **not** gated on `.alwaysAllow` |
-
-  `.ask` alone must not block disk-only Retry of already-copied bytes. Access revoke does **not** auto-invalidate pending in v1.
-- On Store result **`committed`**, **consume** pending (no re-ingest). On **`notCommitted(retryable)`**, keep pending. On **`rejected`**, do not Retry that observation. On **`indeterminate`**, keep pending but block Retry until resolved.
-- **Automatic Retry budget (v1):** at most **3** automatic attempts after the initial failed ingest (4 Store calls total including the first), with backoff **≈ 0.5 s, 2 s, 8 s** (exact jitter optional). The budget is **per pending snapshot** and is **not** reset by a manual Retry. After exhaustion → **no further automatic** Retry; pending remains for **manual Retry** / **Dismiss** and still **blocks new SnapshotReader**. A failed manual Retry that returns `notCommitted(retryable)` leaves pending in place **without** restarting the auto cycle. For **`indeterminate`**, both auto and manual Retry stay blocked; UI shows a **distinct** indeterminate state (not a normal save-error with Retry) with Dismiss / Clear / recovery actions only. Destructive pause still forbids starting Retry.
-- **Dismiss** clears pending without ingest.
-- **Process-local pending (v1):** pending lives **only in memory** for the current process. It is **not** crash-durable — no persisted retry queue / observation ID table. If the app crashes or is killed while A is pending, A may be lost even though the user did not Clear/Delete; on next launch Memopila captures from the **current** pasteboard only and does **not** recover intermediate clipboard states from while it was down. “A is not silently dropped for B” applies **within** a running process (pending ownership), not across restarts.
-- **While pending exists:** do **not** invoke `SnapshotReader` for any newer `changeCount`. Under continuous capture, do not read new payloads, replace pending A with B, or enqueue a second snapshot. Within a running process, already-read A is not silently dropped for B except Clear/Delete invalidation.
-- **After** pending is consumed or dismissed: next poll may process current pasteboard if continuous capture is allowed and `changeCount != lastHandledChangeCount`.
-- UI must show an explicit **save / retry** status while pending blocks capture.
-- Only after pending is clear may a **new** stable read create a new owned snapshot.
-
-**First capture after process launch (v1):**
-
-`lastHandledChangeCount`, pending, and suppression tokens are **process-local** — not persisted. After quit/relaunch the Monitor does **not** know whether the current pasteboard was already observed by a previous process.
-
-- **Do not** persist `lastHandledChangeCount` in v1 (no cross-launch reconciliation of the pasteboard counter).
-- When continuous capture becomes eligible after launch (including first `.alwaysAllow` wake), treat the **current** pasteboard as **one normal observation** if it passes the usual gates (markers, exclusions, size, changeCount stability, post-read access). Seed `lastHandledChangeCount` only from outcomes of **this** process.
-- **Documented consequence:** if content A was already saved, the user quits and relaunches without copying again, the first successful observation of unchanged A may **dedup-hit and increment `copyCount`**. That is accepted: `copyCount` counts **observed captures**, not physical Copy keypresses.
-- Do **not** invent silent “skip whatever is on the pasteboard at launch” without an explicit later design for persisted handled-count semantics.
-
-**Explicit clear / delete vs in-flight capture** (no job queue):
-
-**Authoritative capture generation lives on `ClipboardStore`** (same serial owner as ingest / Clear). `ModelActor` serializes the store’s `ModelContext`, **not** `ClipboardMonitor` fields (`lastHandledChangeCount`, pending, pause). Store generation checks alone do **not** protect monitor side effects after `await`.
-
-**Store generation (Clear only):**
-
-1. Before starting a reader, monitor obtains the current generation from the store; the owned snapshot / operation carries that **operation generation**.
-2. `ClipboardStore.ingest` re-checks generation **inside** its serialized mutation (**no `await`** between check and commit). Stale → reject.
-3. **Do not** bump generation on Manual Delete.
-
-**Capture slot stages + `captureEpoch` (v1):**
-
-One capture slot; stages **`preStart`** | **`active`**. Each reservation has an **owner id**. Releasing the slot when reader *starts* (without keeping single-flight through reconciliation) is forbidden — that would allow a second ingest while the first still reconciles.
-
-| Stage | Meaning |
-|-------|---------|
-| `preStart` | Slot reserved; awaiting eligibility; **reader/Retry not started** |
-| `active` | `SnapshotReader` or pending **Retry** started; includes Store call + monitor reconciliation |
-
-1. **Reserve** before the first `await` (poll, auto Retry, or manual Retry) → stage `preStart`, record owner id + epoch at reservation.
-2. On successful start of reader/Retry → transition **`preStart` → `active`** (same owner). Keep the slot until reconciliation finishes. While held (`preStart` or `active`): no second reader/Retry/`captureGeneration` wait.
-3. **Release** only when: (a) `preStart` is **revoked** (below), (b) `preStart` aborts before start, or (c) `active` reconciliation completes. On release, the task must verify it still **owns** the slot; a late task must **not** free a slot already owned by a newer reservation.
-4. **`captureEpoch`:** bump on **entry** to Clear/Delete (with pause). Do **not** apply one stale-epoch rule to both stages:
-
-| State when Clear/Delete enters | Rule |
-|--------------------------------|------|
-| Slot in **`preStart`** | **Revoke** that reservation immediately. Late continuation: epoch/ownership mismatch → **inert** — no Monitor mutations, no reader/Retry start, **must not** release a slot it no longer owns. |
-| Slot in **`active`** | **Do not** cancel required reconciliation solely because epoch changed. Finish Store result + monitor reconciliation (may temporarily re-arm pending during Clear drain). Destructive pause still forbids **starting** a new capture/Retry. After drain, Clear/Delete apply invalidate + barrier as usual. |
-| After destructive workflow ends, old **`preStart`** resumes | Checks epoch + ownership → stops with no side effects. |
-
-5. **Post-await gate before `preStart` → `active`** (no `await` between this gate and the stage transition; same serialized Monitor executor as token + slot). Shared checks: epoch/ownership; no destructive pause; this task still owns the reservation.
-
-   - **New `SnapshotReader` path:** also require continuous capture (`.alwaysAllow` on 15.4+); re-read `changeCount`; apply **suppression token (§3.4)** (match → handle+consume, no reader; differ → discard token); if eligible → `active` + start reader.
-   - **Pending Retry path:** require owning the pending snapshot and no other active Retry; **do not** require `.alwaysAllow` / continuous capture; **do not** re-read pasteboard for admission. If eligible → `active` + start `ClipboardStore.ingest` of the owned snapshot (no `SnapshotReader`).
-
-6. **Post-read access gate (macOS 15.4+, SnapshotReader `active` only) — mandatory algorithm:**
-
-   1. `SnapshotReader` returns (stable success, intentional skip, **or** representation read failure) with changeCount stability known.
-   2. **Immediately** re-read `accessBehavior` (policy property, not a change callback).
-   3. If still `.alwaysAllow` → proceed to mark handled / ingest / pending per ingest-outcome table.
-   4. If **not** `.alwaysAllow` → **discard** the entire result: **no** `ClipboardStore.ingest`, **no** pending, **no** `lastHandledChangeCount` change (do **not** classify a read failure here as a stable handled skip). Reconcile and **release** the capture slot.
-   5. After access returns to `.alwaysAllow`, the same pasteboard `changeCount` remains eligible for a **new** read attempt.
-
-   This gate does **not** apply to pending Retry (in-memory snapshot; no pasteboard read). Pre-start access check alone is **insufficient**.
-
-7. **`ClipboardStore.ingest` results** (conceptual; Monitor reconciles only on these):
-
-| Result | Meaning | Monitor |
-|--------|---------|---------|
-| **`committed`** | SwiftData insert/update for this observation is durable | Consume pending; **no** Retry; `copyCount` applied once |
-| **`rejected`** | Deterministic refusal (quota, etc.); nothing committed | No Retry; mark handled per table |
-| **`notCommitted(retryable)`** | Transaction **did not** commit (or rolled back); safe to Retry | Keep/create pending; bounded Retry |
-| **`indeterminate`** | Commit success/failure **cannot** be known | Keep pending; **block auto and manual Retry** until resolved (Dismiss, Clear, or explicit recovery that proves no duplicate identity commit). Never treat as `notCommitted` automatically |
-
-   **v1 implementation preference:** use SwiftData so each save path yields a definite `committed` or rolled-back `notCommitted`/`rejected` (with explicit `rollback()` on failure). Reserve **`indeterminate`** for true ambiguity only.
-
-   Under preferred **externalStorage**: metadata + `payloadPackage` commit/rollback together — no separate post-commit file-delete success path. Treat rare commit ambiguity as **`indeterminate`**. (If BlobStore fallback is active, see §3.5 fallback notes for promote/orphan rules.)
-
-8. Store generation remains authoritative for **commit**; epoch + staged slot protect **monitor** scheduling.
-
-**Async continuations:**
-
-- **`preStart`:** after `await`, apply the post-await gate (reader vs Retry branches). Epoch/ownership failure → inert abort.
-- **`active` (reader):** pre-final access check → final `changeCount` → post-read access gate → Store; reconcile on Store results above (incl. `indeterminate`).
-- **`active` (any):** after Store returns, **must** run reconciliation to free the slot. Clear/Delete drain rules unchanged. Must **not** schedule a **new** Retry while destructive pause is active.
-- On Clear success: update known store generation; apply **`countAtClearStart` barrier** (below); then clear pause.
-
-**Serialize Clear/Delete (v1 = reject busy):** at most one destructive workflow; second command → busy (no queue). UI disabled until done. Resume only when the owning protocol finishes.
-
-**`activeCapture`:** slot stage **`active`** — from reader/Retry **start** through Store return and monitor reconciliation. Destructive **drain** waits only for **`active`** (and after revoking any `preStart`). Poll / auto Retry / manual Retry share this coordination.
-
-**While Clear/Delete pause is active:** forbid new readers, new Retries, and new slot reservations.
-
-**Pasteboard `changeCount` for Clear/Delete when continuous capture is paused (v1):**
-
-Clear/Delete are **user-initiated** history actions, not continuous capture. On 15.4+ under `.ask` / `.alwaysDeny`, the monitor still must not run the 250 ms content poll, but **may perform a one-shot boundary read of `changeCount` only** (not payload / not full `SnapshotReader`) at Clear/Delete start and when applying the barrier — solely to implement `countAtClearStart` / `countAtDelete` / deferred barrier. This is an explicit exception to “no pasteboard access while Capture paused,” limited to that counter.
-
-**Barrier tradeoff (explicit — cannot promise both):**
-
-| Start `changeCount` | Barrier rule |
-|---------------------|--------------|
-| **Known** (`countAtOpStart`) | On success (or deferred wake): `lastHandledChangeCount = max(lastHandledChangeCount, countAtOpStart)`. Pre-op A is suppressed; post-op **B** (newer than start) stays capturable. |
-| **Unknown** (one-shot read failed) | Set `deferredBarrierPending = true` **without** advancing `lastHandledChangeCount`. On later wake: **do not** apply “current count as last resort.” Leave handled-count unchanged for this op. **v1 priority: never suppress B by guessing.** Cost: pre-op **A** may be re-captured (dedup / `copyCount` bump). Document in diagnostics. |
-
-Do **not** claim both “no re-capture of A” and “never lose B” when the start count was unavailable.
-
-**Clear History protocol (pause → revoke preStart → drain active → invalidate pending → clear → barrier → resume):**
-
-Scope is an **explicit Store argument**, not an implied UI flag:
-
-| Scope | Deletes |
-|-------|---------|
-| **`.nonFavorites`** (UI default) | All non-favorite `ClipboardRecord` (+ their `RecordTag` in the same transaction) |
-| **`.all`** | All records including favorites (+ all their `RecordTag`) |
-
-Both scopes use the **same** pause → revoke → drain → invalidate pending → commit → barrier → resume protocol.
-
-1. Busy reject if another destructive workflow is active. Else enter with chosen **scope**; bump **`captureEpoch`**; set pause.
-2. Record **`countAtClearStart`** via the boundary `changeCount` rule above (when available).
-3. If slot is **`preStart`** → **revoke** it. If slot is **`active`** → **drain** full reconciliation (Retry may temporarily re-arm pending).
-4. After drain (and any revoke): invalidate **all** pending.
-5. **One** Store call: bump generation **and** SwiftData delete for **`scope`** in the same serialized mutation. Generation bumps **only** on successful commit.
-6. **Success / error (Store):** on success, update known store generation; apply barrier per tradeoff table (`countAtClearStart` when known; never “current count after clear”; never current-count last resort). On commit failure: no success claim; UI error; history remains; pending stays invalidated; **no** generation bump.
-7. Clear pause and busy on any exit. Newer counts after `countAtClearStart` remain capturable after resume.
-
-**Manual Delete protocol (pause → revoke preStart → drain active → delete → resume — no store generation bump):**
-
-1. Busy reject if another destructive workflow is active. Else enter; bump **`captureEpoch`**; set pause.
-2. Record **`countAtDelete`** via the boundary `changeCount` rule (when available).
-3. Revoke **`preStart`** if any; else drain **`active`** to full reconciliation.
-4. Invalidate **matching** pending only; keep unrelated pending B.
-5. Store delete after step 3–4.
-6. **Success / error:** apply barrier per tradeoff table (`countAtDelete` when known). On **SwiftData delete commit success**: UI success (payload removed with the record under externalStorage). On **commit failure**: UI error; record stays; matching pending stays invalidated. Clear pause and busy. Newer counts after Delete start remain capturable.
+**Clear History scopes** (explicit Store argument): **`.nonFavorites`** (UI default) deletes all non-favorite records; **`.all`** deletes all records. Representations, thumbnails and `RecordTag` rows of deleted records go in the **same** transaction.
 
 **Required tests:**
 
-**Pre-start:**
-
-- Poll reserved slot, awaits `captureGeneration`; Clear revokes reservation and completes (barrier = B); late poll must not start reader or mutate Monitor; must not free a newer owner’s slot.
-- Poll awaits `captureGeneration`; Manual Delete finishes first → deleted A not resurrected.
-- Two ticks race `captureGeneration` → at most one reservation / one reader path.
-- Poll awaits `captureGeneration`; Restore completes and publishes a confirmed token; after resume, poll must **not** start reader, token is consumed **once**, Restore must not bump `copyCount`.
-
-**Active capture:**
-
-- Reader A already running; Clear starts → Clear waits for full reconciliation of A, then invalidates pending, clears, sets barrier; A does not return.
-- Retry A running; Clear → Retry finishes reconciliation (may temp re-arm pending); Clear invalidates pending after drain; A gone.
-- Retry A running; Delete A → Delete waits for reconciliation, invalidates pending A, deletes; A does not return.
-- A reading / ingest delayed; pasteboard → B → second reader must not start until A reconciles.
-- Retry A active; timer + second Retry → no parallel ingest of same pending.
-- Transition `preStart`→`active` concurrent with Delete/Clear entry → either atomically becomes drainable `active` or stays revoked `preStart`; destructive workflow must not miss an `active` op.
-- Start read under `.alwaysAllow`, delay `SnapshotReader` return, switch policy to `.ask`, then complete read → **post-read gate**: no ingest, no pending, `lastHandledChangeCount` unchanged, slot released; after `.alwaysAllow` returns, same count remains eligible.
-- Snapshot A pending under `.alwaysAllow`, then policy → `.ask` → new `SnapshotReader` does not start; **automatic** and manual Retry A may finish persist without pasteboard access.
-- Auto-Retry budget exhausted → no further auto ingest; pending remains; blocks new reader; manual Retry does **not** reset auto budget; failed manual leaves pending without auto restart; `indeterminate` UI without Retry.
-- New record **`committed`**; victims deleted in same SwiftData transaction → no pending re-arm, no second `copyCount`.
-- Failed ingest commit → history intact; `notCommitted(retryable)`; no Memopila-managed orphan path under externalStorage.
-- `indeterminate` → pending kept, Retry blocked until resolved.
-- Unreadable / MCS1 hash mismatch `payloadPackage` → Restore aborts before `clearContents`.
-- Clear `.nonFavorites` vs `.all`: favorites preserved or removed; `RecordTag` same txn; generation only on commit success; B after known `countAtClearStart` still capturable; unknown start count → no current-count last-resort barrier.
-
-**Other:**
-
-- During Delete, newer count B is not suppressed by `countAtDelete` alone.
-- During **successful** Clear, B copied mid-operation is **not** suppressed (`countAtClearStart`); same for **failed** Clear.
-- Clear/Delete under `.ask`/`.alwaysDeny`: one-shot boundary `changeCount` only, or deferred barrier **without** current-count last resort; no payload poll.
-- Second Clear/Delete → busy; UI blocked.
-- Delete A pending-not-started / pending B preserved.
-- Store clear/delete fails → pause/busy released; UI error; pending not revived; Clear uses `countAtClearStart` when known.
-
-Do **not** require Clear to finish barrier while a **`preStart`** poll still holds the slot unreclaimed — Clear **revokes** `preStart` first. Do **not** cancel **`active`** reconciliation solely via epoch.
-
-These protocols are the v1 contracts — not open alternatives.
-
-#### Polling and change detection (when continuous capture is allowed)
-
-- Default interval: **250 ms** (not user-configurable in v1) — only while continuous capture is allowed (`.alwaysAllow` on 15.4+; compatible path on older OS).
-- **One** timer **and** **one** capture slot with stages `preStart` / `active` (§3.2) — a second tick must not start another poll/Retry while the slot is held.
-- **History completeness limit:** polling observes discrete samples. Multiple copies between two polls may collapse into **one** observed pasteboard state. Memopila does **not** guarantee a history row for every intermediate copy.
-
-**`ClipboardMonitor` change detection:**
-
-1. Re-check `accessBehavior` (§3.1) **first**.
-2. If continuous capture is **not** allowed → **skip the new-reader branch and all pasteboard content/`changeCount` polling** on this tick (Capture paused / bootstrap-only). Policy-only re-check on Settings return / activation may run without content reads. **However:** a **pending Store Retry** may still run on this wake if its own admission checks pass and no destructive pause is active (disk-only; no pasteboard read). Do **not** early-return from the whole timer handler in a way that skips that Retry path.
-3. If **capture paused for clear/delete** → skip new reader; also skip new Retry (destructive pause).
-4. If a **pending** owned snapshot exists and continuous capture is allowed → skip new reader this tick; Retry may still proceed under admission rules.
-5. If capture slot busy (`preStart` or `active`) → skip starting another operation.
-6. Else for **reader** path only when continuous capture allowed: reserve **`preStart`**; `await` store generation; **post-await gate**; maybe `active` + `SnapshotReader`. For **Retry** path when pending admits: reserve **`preStart`**; gate without pasteboard/`alwaysAllow`; `active` + ingest.
-7. After `SnapshotReader` returns: pre-final access check → final count → **post-read access gate** → Store; reconcile on Store results (incl. `indeterminate`). Pending Retry skips pasteboard access gates.
-8. Reconcile Monitor from Store result (`committed` consumes pending; `indeterminate` blocks Retry).
-9. Mid-read instability / `policyRevoked` / post-read gate fail → discard without handled mark as specified; `preStart` stale epoch → inert.
-10. Bootstrap under `.default` does not mark content handled. Timer-tick token handling under continuous capture follows §3.4.
-
-**Acceptance:** ten unchanged ticks → no spam. Token in post-await gate; post-read + pre-final access gates; **automatic** pending Retry under `.ask`; Clear `countAtClearStart` (B mid-Clear captured after resume); Delete `countAtDelete`; busy Clear/Delete; Store error releases pause. `.ask`/`.alwaysDeny` → no periodic content poll / no new `SnapshotReader`.
+- Ten unchanged ticks → no reads; two ticks during one read → one reader.
+- Reader of A in flight, Clear → A dropped and handled; B copied during Clear captured afterwards.
+- Reader of A in flight, Delete record A → A not resurrected; reader of unrelated C in flight, Delete X → C saved.
+- Reader of pre-edit content in flight, Edit → pre-edit record not recreated.
+- Policy → `.ask` mid-read → discarded, not handled; eligible after `.alwaysAllow`.
+- Save fails once → retried and committed; fails twice → red card, capture continues; 3 consecutive → paused banner.
+- **Save anyway** re-reads only if `changeCount` is unchanged.
+- Launch → current pasteboard captured once.
+- Clear `.nonFavorites` vs `.all`; second Clear/Delete → busy; store failure → UI error, history intact.
 
 ### 3.2.1 Supported representations allowlist
 
 | UTI / type | Action |
 |------------|--------|
-| `public.utf8-plain-text` / `public.plain-text` | Non-file: preserve original bytes + UTI; derive UTF-8 preview/search separately |
-| `public.utf16-plain-text` | Non-file: preserve original bytes + UTI; derive UTF-8 for preview/search; restore original bytes under original UTI |
-| `public.rtf` | Non-file: preserve original bytes + UTI |
-| `public.html` | Non-file: preserve original bytes + UTI |
-| `public.url` | Non-file: preserve original bytes + UTI |
-| `public.file-url` | **File-reference exception** (§3.3) — not “preserve original bytes” |
-| `public.tiff` / `public.png` / `public.jpeg` / `public.image` | Non-file: preserve original bytes + UTI |
-| `com.apple.cocoa.pasteboard.color` | Non-file: preserve original bytes + UTI (sole color type in v1) |
-| `NSFilenamesPboardType` | **File-reference exception** (§3.3). Deprecated; still **read** for compatibility. Restore behavior explicitly defined and tested (§3.3) |
-| `org.nspasteboard.source` | Metadata only (§5); not payload; not in contentHash |
+| `public.utf8-plain-text` / `public.plain-text` | Preserve original bytes + UTI; derive UTF-8 preview/search |
+| `public.utf16-plain-text` | Preserve original bytes + UTI; derive UTF-8 preview/search; restore original bytes |
+| `public.rtf`, `com.apple.flat-rtfd` | Preserve original bytes + UTI |
+| `public.html` | Preserve original bytes + UTI |
+| `com.apple.webarchive` (also the legacy name `Apple Web Archive pasteboard type`) | Preserve original bytes + UTI |
+| `public.url`, `public.url-name` | Preserve original bytes + UTI |
+| `public.file-url`, `NSFilenamesPboardType` | **File-reference exception** (§3.3) |
+| `public.png`, `public.heic`, `public.jpeg`, `com.compuserve.gif`, `public.tiff` | Preserve original bytes + UTI, subject to the redundant-image rule (§3.2.2) |
+| `com.adobe.pdf` | Preserve original bytes + UTI (not a redundant raster) |
+| `com.apple.cocoa.pasteboard.color` | Preserve original bytes + UTI |
+| `org.nspasteboard.source` | Metadata only (§5) |
 | Transient / Confidential / Auto-generated markers (§3.1) | Detect only; skip entire change |
-| **Any other UTI** | **Skip** |
-| **File promises** / deferred providers | **Skip** in v1 |
+| **Any other UTI** | Skip, unless a format rule keeps it (§3.2.2) |
+| **File promises** / deferred file providers | Skip in v1 |
 
-**Representation fidelity:**
+**Universal Clipboard:** content copied on another device arrives lazily over the network; reading it may block and counts against the size budget. It is captured like local content. Setting **Ignore content from other devices** (default off) skips changes that carry the remote-clipboard type (`com.apple.is-remote-clipboard` **(spike: verify identifier)**).
 
-- **Non-file payload representations:** preserve original bytes and original UTI. Derived UTF-8 (preview/search) is outside the restore path.
-- **File-reference representations:** see §3.3 (normalized paths in package; reconstruct pasteboard data on restore; hash `CanonicalFileListV1`).
+**Representation fidelity:** non-file representations keep original bytes and UTI. Derived UTF-8 (preview/search) is outside the restore path. File-reference representations follow §3.3.
 
 **Mixed content / read failures:**
 
 | Case | Action |
 |------|--------|
-| Unsupported UTI (not on allowlist) | Skip that representation |
-| Declared allowlisted representation present but **read fails** (nil/error **or** ObjC pasteboard exception — below) | **Discard the entire snapshot** — no persist; if `changeCount` stable, **mark handled** — no 250 ms re-read loop; **must not crash** the app |
-| After filtering, an item has zero allowlisted representations | Omit that item (not counted in MCS1 `itemCount`, §4) |
-| Whole pasteboard empty / markers-only / unsupported-only / excluded source / forbidding marker | Do not create a record |
+| Type not stored (not allowlisted, skipped by rule, redundant image) | Not read |
+| Declared stored representation present but **read fails** (nil, error, or ObjC exception) | **Discard the entire snapshot**; mark handled if stable; red Current card; **must not crash** |
+| Item with zero stored representations | Omit the item (not counted in MCS1 `itemCount`, §4) |
+| Whole pasteboard empty / markers-only / excluded | No record |
 
-**AppKit read errors:** Apple documents that some `NSPasteboard` data paths can raise `NSPasteboardCommunicationException` (Objective-C exception), not only return nil — and not all failures are Swift `Error`s caught by `do/catch`. Before implementing:
+**AppKit read errors:** some `NSPasteboard` paths can raise `NSPasteboardCommunicationException` (Objective-C exception). If the chosen read API can raise it, wrap reads in a **narrow Objective-C boundary** that converts the exception into a read failure. No global exception catcher.
 
-1. Prefer the concrete read API used by v1 (`NSPasteboardItem` data accessors vs pasteboard-level `data(forType:)`).
-2. If that path can throw an ObjC exception → add a **narrow Objective-C boundary** that converts it into a read-failure result for that representation. Do **not** install a global app-wide exception catcher.
-3. If the chosen path only returns nil/error without that exception → the discard contract above is enough.
+**Test:** allowlisted read failure → no partial record, handled when stable, process keeps running.
 
-**Test:** allowlisted read failure yields no partial record, marks handled when stable, and does **not** terminate the process.
+### 3.2.2 Format policy and user format rules
+
+The policy decides, **from the declared `types` only**, which representations are read and stored. Markers and exclusions are evaluated first and always win.
+
+**Default policy:**
+
+1. Allowlist (§3.2.1).
+2. **Redundant image formats.** If an item declares more than one raster image type, read only the first available in this order: **GIF > PNG > HEIC > JPEG > TIFF**; the others are never read. GIF goes first because it may be animated. PDF is vector and not a redundant raster: keep PDF and the chosen raster. Rationale: a full-screen screenshot on a 5K / 6K display is ~59 / ~81 MB as uncompressed TIFF and a few MB as PNG.
+3. A record whose TIFF was skipped restores the stored raster only. If a target app turns out to need TIFF, Phase 4 adds a lazy TIFF data provider that converts on demand (§12 otherwise).
+
+**User format rules** (Settings → Formats):
+
+- Rule = `{ app: any | bundle ID, type: exact UTI | prefix (e.g. com.adobe.), action: keep | skip, maxSize: MiB? }`.
+- Precedence: app + type > app only > type only > default policy. Within a level, the first rule in list order wins.
+- **`keep` on a non-allowlisted type** → stored as opaque bytes, restored byte-for-byte under the same type, hashed like any bytes representation (§4).
+- **`keep` on an image type** disables the redundant-image rule for that type (example: *Adobe Photoshop: keep `public.tiff`*).
+- **`maxSize`** raises or lowers the size budget for matching snapshots (the largest matching value wins), never above the hard max (256 MiB).
+- App matching uses the **display source** (§5), including the frontmost-app fallback: format rules are a convenience, not a privacy boundary. Exclusions keep using the admission source.
+- Changing rules affects new captures only. The same copy stored with different formats has a different `contentHash` (§4) — accepted.
+
+**Quick creation:** the red Current card offers **Keep formats from <App>…** (pre-filled rules for the skipped types) and **Raise limit for <App>…**.
+
+**Inspector:** Settings → Formats → **Inspect current clipboard** lists items, declared types and the decision for each (store / skip by rule / redundant / unsupported). Sizes are shown only for representations it actually reads; it reads only when the button is pressed, within the hard max, and keeps nothing.
+
+**Tests:** precedence levels; prefix rule; Photoshop *keep TIFF*; PNG + TIFF by default → TIFF never read (assert no read call); non-allowlisted *keep* restores byte-exact; markers and exclusions beat rules.
+
+### 3.2.3 Current clipboard state (red card)
+
+- `ClipboardMonitor` keeps `CurrentClipboard` for the latest stable change **in memory only** (never persisted): `changeCount`, status, display source, declared type names, known size (lower bound), optional thumbnail.
+- Status → UI:
+  - `saved(recordID)` → normal card (first in History by recency); badge *+N skipped formats* (tooltip lists them) when types other than redundant images were skipped.
+  - `notSaved(reason)` → **red card** first in History: reason (*Larger than 32 MiB*, *No supported formats*, *Read failed*, *Save failed: …*, *Not saved: quota*), source app, type list, known size.
+  - `privacySkipped`, `excluded`, `paused` → no card (content is never shown; paused state uses the banner).
+- The red card is replaced as soon as the clipboard changes.
+- Its thumbnail comes only from data already read within the budget. It never triggers extra reads and is never persisted.
+- **Actions:**
+  - **Save anyway** — user-initiated one-shot capture of the current pasteboard, only if `changeCount` is unchanged. Same format policy with the size limit raised to the hard max; for *No supported formats* it keeps all declared types.
+  - **Keep formats from <App>…** and **Raise limit for <App>…** — rule shortcuts (§3.2.2).
+  - **Dismiss**.
+
+**Tests:** each status maps to the right card; marker/excluded changes never show content; Save anyway rejected after a clipboard change; red card disappears on the next change.
 
 ### 3.3 Files: references only — live filesystem state
 
-**Product rule (v1 — scoped, not omniscient):** Memopila **never reads file contents from disk** for history. It stores **path references** only for file representations. It **skips image UTIs on the same item** as file references (§3.3 coalesce). It **may** store image bytes from **other items** in the same pasteboard change when those items have no file refs — UTI alone cannot prove those pixels are (or are not) a copy of a referenced file. Do **not** claim “never any bytes that might equal a file on disk.” No path↔image matching heuristics in v1.
+**Product rule (v1):** Memopila **never persists file contents** from disk. It stores **path references** for file representations. It **skips image UTIs on the same item** as file references (§3.3 coalesce). It **may** store image bytes from **other items** in the same change when those items have no file refs. Do **not** claim "never any bytes that might equal a file on disk." No path↔image matching heuristics.
 
-**v1 file fidelity (chosen contract):** fidelity is to **paths, path order, and Finder-usable restore** — **not** necessarily to the original pasteboard UTI or original item boundaries for file representations.
+**Display-only thumbnails:** file cards show a QuickLook thumbnail (`QLThumbnailGenerator`) at card size, generated on demand from the file on disk, kept only in the in-memory thumbnail cache (§7.3), never persisted and never hashed. It works for any file size (QuickLook generates out of process). Missing file → **Unavailable** (dimmed card, Reveal disabled). The card footer shows file count and total size (`stat` off the main actor).
 
-- On capture: read `public.file-url` and legacy `NSFilenamesPboardType` per the **file-representation coalesce** rules below; persist **one** ordered normalized path list in the package (§3.3.1). Do not store original filenames plist bytes.
-- Hash **`CanonicalFileListV1`** (§4) — never original plist bytes, never file contents.
-- On Restore: write that list **once** as a **canonical modern** set of file `URL`s (e.g. `writeObjects`). Integration-test with Finder. Original file UTI / multi-path-in-one-item shape may become one URL per object as AppKit writes them — that is accepted for v1.
-- **Do not** persist provenance of whether the list came from multi-path vs single-URL representation (YAGNI: no v1 UI depends on it; path count ≠ provenance; MCS1 does not include such metadata).
+**v1 file fidelity (chosen contract):** fidelity is to **paths, path order, and Finder-usable restore** — not necessarily to the original file UTI or item boundaries.
+
+- On capture: read `public.file-url` and legacy `NSFilenamesPboardType` per the coalesce rules below; persist **one** ordered normalized path list per item. Do not store original filenames plist bytes.
+- Hash **`CanonicalFileListV1`** (§4) — never plist bytes, never file contents.
+- On Restore: write the list **once** as a canonical modern set of file `URL`s (e.g. `writeObjects`). Integration-test with Finder.
+- Do not persist whether the list came from multi-path vs single-URL representations.
 - No security-scoped bookmarks in v1.
 
 #### File-representation coalesce and MCS1 framing (same item)
 
-One item may expose both `public.file-url` and `NSFilenamesPboardType`. Emitting URLs from **both** without rules can duplicate the same file on Restore, and §4 requires a single deterministic `typeIdBytes` + payload per representation slot in `CanonicalSnapshotEncodingV1`.
-
 **Path list:**
 
 1. Normalize each file representation to an ordered path list (§3.3.1).
-2. If both are present and lists are **equal** → one list. If lists **differ** → use **`public.file-url`** only (ignore `NSFilenamesPboardType`). Do **not** union/concatenate.
-3. Manifest / Restore emit that list **once**.
+2. Both present and **equal** → one list. **Different** → use **`public.file-url`** only. Never union/concatenate.
+3. Restore emits that list **once**.
 
-**Effective file UTI for MCS1 `typeIdBytes`:** if `public.file-url` is present on the item → use `public.file-url`; else → `NSFilenamesPboardType`. Payload bytes for that slot are `CanonicalFileListV1` of the chosen path list (§4).
+**Effective file UTI for MCS1 `typeIdBytes`:** `public.file-url` if present on the item, else `NSFilenamesPboardType`. Payload bytes for that slot are `CanonicalFileListV1` of the chosen list (§4).
 
-**Representation order into MCS1 (per item, original pasteboard order):**
+**Representation order (per item, original pasteboard order):**
 
 1. Walk representations in original order.
-2. On the **first** file-reference type (`public.file-url` or `NSFilenamesPboardType`) → emit **one** file slot with the effective UTI + coalesced `CanonicalFileListV1`.
-3. Skip the **second** file-reference type if present.
-4. Skip image UTIs (`public.tiff` / `png` / `jpeg` / `image`) when any file-reference type is present on the item.
-5. Emit every other allowlisted non-file representation in place (text / URL / RTF / HTML / color), preserving relative order among themselves and relative to the single file slot.
+2. On the **first** file-reference type → emit **one** file slot with the effective UTI + coalesced list.
+3. Skip the **second** file-reference type.
+4. Skip image UTIs when any file-reference type is present on the item.
+5. Emit every other stored non-file representation in place, preserving relative order.
 
-Example: types `[public.utf8-plain-text, NSFilenamesPboardType, public.file-url, public.html]` with equal path lists → MCS1 reps: utf8-plain-text, **`public.file-url` + CanonicalFileListV1** (at the NSFilenames position), html. NSFilenames slot is skipped as the second file type; effective UTI is still `public.file-url`.
+Example: types `[public.utf8-plain-text, NSFilenamesPboardType, public.file-url, public.html]` with equal lists → reps: utf8-plain-text, **`public.file-url` + CanonicalFileListV1** (at the NSFilenames position), html.
 
-**Unit tests (assert full canonical framing bytes, not only “no duplicate file”):** equal path lists; unequal lists (file-url wins); file types before/after text and HTML in different orders.
+**Unit tests (assert full canonical framing bytes):** equal lists; unequal lists (file-url wins); file types before/after text and HTML in different orders.
 
-#### File refs + image UTIs on the same item
+#### Mixed file + non-file representations on one item
 
-A UTI alone cannot tell whether image types on an item that also has file refs are independent pixels or a Finder preview. **v1:** skip image UTIs when any file-reference type is present (step 4 above). Image-only items (no file refs) store image bytes as usual.
+Capture stores the coalesced file list plus the item's other stored non-file representations (image exception above).
 
-#### Mixed file + non-file representations on one captured item
+**Restore rule:**
 
-Capture stores the coalesced file list plus allowed non-file allowlisted representations for that item (subject to the image exception above).
-
-**Restore rule (v1):**
-
-1. Emit file URLs for the coalesced path list **once** (may expand to multiple pasteboard objects per §3.3).
-2. **Also** restore every stored non-file allowlisted representation from that captured item — **do not drop** them because files were rewritten.
-3. Placement when file expand changes item boundaries: attach non-file representations to the **first** restored file-URL item produced from that original item (deterministic). Document in tests.
-4. Round-trip acceptance for “mixed content” includes: file path(s) + text/url (or other allowed non-file types) on one source item ⇒ restore yields usable file URL(s) **and** the non-file data — without duplicated paths from dual file UTIs.
+1. Emit file URLs for the coalesced list **once**.
+2. Also restore every stored non-file representation of that item.
+3. When file expansion changes item boundaries, attach the non-file representations to the **first** restored file-URL item from that original item.
 
 | Pasteboard content | Stored as |
 |--------------------|-----------|
-| Finder copy of a `.png` on disk | Ordered normalized path reference(s) only (image UTI on same item skipped) |
-| Screenshot / image *pixels* on the pasteboard (no file refs) | Image payload representation(s) inside `payloadPackage` |
-| One item with file-url + plain text | Paths + plain text bytes in `payloadPackage`; restore = file URL(s) + text on first file item |
-| One item with equal file-url + NSFilenames lists | One path list; Restore once |
-| One item with unequal file-url + NSFilenames | Prefer file-url list only |
+| Finder copy of a `.png` | Normalized path reference(s) only (image UTI on same item skipped); card thumbnail via QuickLook |
+| Screenshot / image pixels (no file refs) | One raster representation (§3.2.2) |
+| One item with file-url + plain text | Paths + text; restore = file URL(s) + text on the first file item |
+| Equal file-url + NSFilenames lists | One list; restore once |
+| Unequal file-url + NSFilenames | file-url list only |
 
 #### 3.3.1 Path normalization (single algorithm)
 
-Applies to `public.file-url` and `NSFilenamesPboardType` before package storage, hash, and UI.
-
-**Must not** use APIs that resolve symlinks or collapse `..` in ways that change path identity when a symlink may precede `..` (e.g. avoid `standardizingPath`).
+Applies to `public.file-url` and `NSFilenamesPboardType` before storage, hash, and UI. **Must not** use APIs that resolve symlinks or collapse `..` (e.g. avoid `standardizingPath`).
 
 | Input kind | Rule |
 |------------|------|
-| `file:` URL | Parse with Foundation `URL` APIs. Extract the decoded path **exactly once** (e.g. `path(percentEncoded: false)`). **Never** apply additional percent-decoding to the resulting path string |
-| Legacy filename path string | Treat as a **filesystem path**, not a URL. **Do not** percent-decode |
+| `file:` URL | Parse with Foundation `URL`. Extract the decoded path **exactly once** (e.g. `path(percentEncoded: false)`). **Never** percent-decode the result again |
+| Legacy filename path string | A filesystem path, not a URL. **Do not** percent-decode |
 
-Also (deterministic v1 — **no optional variants**):
-
-1. **Do not** collapse `.` or `..` components. Keep the path string exactly as extracted above.
-2. Encode that string as **UTF-8** for `CanonicalFileListV1` and display.
+1. **Do not** collapse `.` or `..`; keep the string exactly as extracted.
+2. Encode as **UTF-8** for `CanonicalFileListV1` and display.
 3. **Do not** resolve symlinks; **do not** read or compare file contents.
-4. Preserve original order of paths within the representation.
+4. Preserve path order.
 
-Identical strings after these rules ⇒ identical `CanonicalFileListV1`.
-
-**Required tests:** percent-encoded space in URL; filename whose **literal** name contains `%20` (must not be double-decoded); path with `.` and `..` left intact; path through a symlink unchanged as string; spaces and Unicode; same path via each file representation → identical normalized string and identical **`CanonicalFileListV1`** bytes (full `contentHash` may still differ if UTI/structure differs — §4 / Phase 2).
+**Required tests:** percent-encoded space in a URL; literal `%20` in a filename (not double-decoded); `.` and `..` kept; symlink path unchanged; spaces and Unicode; same path via each file representation → identical `CanonicalFileListV1` bytes.
 
 ### 3.4 Restore to Clipboard (not paste)
 
-User-facing name: **Restore to Clipboard** (or **Copy & Close**).
+User-facing name: **Restore** (menu: *Copy to Clipboard*).
 
-**Focus rules:**
+**Focus and keys:**
 
-- Remember the previous (frontmost) application **before** Memopila’s window becomes key.
-- **Successful** Restore: write pasteboard → close window → return focus to previous app.
-- **Esc**: close window **without** changing clipboard → return focus to previous app.
-- **Pasteboard write failure**: keep window open; do not treat as restored; show an error.
-- **Enter**: restores the selected card only when focus is in the **results grid**. Enter in the **Search** field must not restore.
+- Remember the previous frontmost app before the window shows (with the non-activating panel it simply stays frontmost).
+- **Enter** restores the selected card whether focus is in the **grid or the search field**. While typing, selection follows the first result; arrow keys move the selection without leaving search.
+- **⇧Enter** — Copy as plain text (below).
+- **Esc** — clears a non-empty search; otherwise closes the window without changing the clipboard and returns focus.
+- **Successful** Restore: write pasteboard → close window (unless pinned, §8.1) → previous app stays/returns frontmost.
+- **Write failure:** keep the window open, show an error, do not treat as restored.
 
-On successful Restore (double-click or Enter in grid):
+**Variants:**
 
-1. Write back saved allowlisted items + representations; set `org.nspasteboard.source` **once** (bundle ID or empty string per §5) — see **PasteboardWriter** below.
-2. Close the history window.
-3. Return focus to the previous application.
-4. **Do not** synthesize ⌘V; **do not** use Accessibility for auto-paste.
+- **Restore:** all stored representations.
+- **Copy as plain text:** one item with `public.utf8-plain-text` derived from the record's text (UTF-8 decode helper, §7.4); available when the record has text.
+- **Paste after restore** (Settings, off by default): once the panel has given up key status (it closes; when pinned it resigns key and stays visible), post ⌘V to the previous app via `CGEvent`. Requires Accessibility; without it the setting shows guidance and Restore still works.
+
+**After a confirmed Restore:** the store moves the record to the top: `lastCopiedAt = max(lastCopiedAt, restoreTime)`; `copyCount` unchanged.
 
 #### PasteboardWriter contract
 
-`writeObjects(_:)` **adds** objects; it does **not** remove existing pasteboard items. Restore must therefore **clear then write**. `clearContents()` returns the `changeCount` at the moment Memopila takes ownership — that value is the anchor for the suppression token. There is **no** atomic cross-app pasteboard transaction: checks shrink the race window and detect many external changes, but cannot guarantee no concurrent writer between check and the next call.
+`writeObjects(_:)` **adds** objects; Restore must **clear then write**. `clearContents()` returns the `changeCount` at which Memopila takes ownership — the anchor for the suppression token. There is no atomic cross-app pasteboard transaction.
 
-1. **Load & validate package in memory first** (may run off the Monitor executor): reject if `hashSchemeVersion != 1`; load/decode `payloadPackage` (§3.5 binary plist); enforce **`payloadSizeBytes == payloadPackage.count`**; recompute **MCS1** and match `contentHash`. Reject Restore (error, **no** pasteboard mutation) on any failure. Then build all allowlisted `NSPasteboardItem`s. Set **`org.nspasteboard.source` exactly once** on the **first** prepared item only (or pasteboard-level once).
-2. **`restoreInProgress` barrier (locked inter-component mechanism):** on the Monitor executor that owns capture decisions, set **`restoreInProgress = true` before any pasteboard mutation**. While true, timer ticks and post-await gates **must not** start a new `SnapshotReader` / `preStart`→`active`. UI may prepare items off-executor; handoff into this section is a sync Monitor hop — **no `await` between barrier set and barrier clear** that could let a tick start a reader.
-3. Under the barrier, in order: **`clearContents()` → `ownedCount`** → pre-write check (`changeCount == ownedCount` or abort) → **`writeObjects`** (require `true`) → **post-write confirmation** → **publish confirmed `ownedCount` token or decide no-token** → **`restoreInProgress = false`**. Clear the barrier on every exit (success, abort, write failure). Token is created **only** on confirmed match; unconfirmed → no token, barrier still cleared.
-4. **Never** assign an unconfirmed `pasteboard.changeCount` as the token. Prefer not suppressing a possible self-write over losing another app’s content.
-5. **Write / abort failure:** show an error; keep the history window open; do **not** close or return focus as if restored. Do **not** claim prior clipboard contents were preserved.
+1. **Load and verify first** (in the store, off the main actor): integrity checks of §3.5. Any failure → error, **no** pasteboard mutation. Build all `NSPasteboardItem`s in memory. Set `org.nspasteboard.source` **exactly once** on the first item: saved valid bundle ID, else empty string (§5).
+2. On the main actor, **synchronously, with no `await`** from start to end (ticks run on the same actor and cannot interleave): `clearContents()` → `ownedCount` → pre-write check (`changeCount == ownedCount`, else abort) → `writeObjects` (must return `true`) → post-write confirmation (`changeCount == ownedCount`) → publish the token only if confirmed.
+3. **Never** use an unconfirmed `changeCount` as the token. Prefer not suppressing a possible self-write over losing another app's content.
+4. Abort / write failure: error, window stays open; do **not** claim the previous clipboard was preserved.
+5. Release the loaded representation bytes right after the write.
 
-**Suppression token lifecycle** (`ClipboardMonitor`; `changeCount` is an ownership counter, not a Memopila lock — in-app synchronization is required):
+**Suppression token** (main actor):
 
-Token **publish**, **consume**, **`restoreInProgress`**, and capture-slot / post-await decisions run on the **same serialized Monitor executor**.
+1. At most **one** confirmed token (`ownedCount`).
+2. On a tick, before starting a reader: if `changeCount` equals the token → mark handled, consume the token, no reader, no ingest. A confirmed Restore is suppressed **once**.
+3. If `changeCount` differs → discard the token and process the count normally.
+4. No token → normal polling (an own Restore may be re-observed; dedup handles it).
 
-1. Hold at most **one** confirmed token (`ownedCount`) from a successful Restore.
-2. Whenever the monitor observes a pasteboard count for capture decisions (timer tick under continuous capture, **or** the §3.2 post-await gate before `preStart` → `active`): if **`restoreInProgress`** → do **not** start a reader; if current `changeCount` **equals** the token → mark handled (`lastHandledChangeCount = token`), **consume** the token, and **do not** run `SnapshotReader` / ingest. Confirmed Restore is suppressed **once**.
-3. If current `changeCount` **differs** from the held token → **discard** the token immediately and process the current count under normal rules (must not leave a stale token) — except while `restoreInProgress` blocks starting a reader.
-4. Absence of a token (and barrier clear) → normal polling (own Restore may be re-observed; dedup handles identical content).
+**Required tests:**
 
-**Acceptance / required tests:**
-
-- Restore B **replaces** prior content A (clipboard is B, not A+B).
-- Multi-item Restore with a known source: `pasteboard.string(forType: org.nspasteboard.source)` returns **exactly** that bundle ID (not repeated/concatenated); source is excluded from payload and canonical hash (§4 / §5).
-- External change **after** `clearContents()` and **before** the pre-write check: detected → Restore **aborts** without `writeObjects`.
-- External change **after** a successful pre-write check but **before** Restore completion: post-write confirmation fails → **no** suppression token. The test must **not** claim Restore left foreign clipboard content untouched (API cannot guarantee that).
-- In all race variants, an external change must **not** be suppressed by a wrong token; unconfirmed / absent token → monitor ingests current state (may re-observe own Restore).
-- Confirmed Restore: suppressed **once**; matching `changeCount` becomes handled; later ticks do not re-read that count; a later external counter change is still captured.
-- Poll in `preStart` awaiting `captureGeneration` while Restore publishes a confirmed token → after resume, no reader, token consumed once, `copyCount` not inflated by Restore.
-- Concurrent timer tick at Restore completion: token is published before that tick’s capture decision can start a reader for the Restore count.
-- **Injected tick between post-write confirmation and token publish:** with `restoreInProgress` still set, reader **must not** start; after barrier clears with confirmed token, that count is handled/consumed without `copyCount` inflation.
+- Restore B replaces A (clipboard is B, not A+B).
+- Multi-item Restore: `string(forType: org.nspasteboard.source)` returns exactly the bundle ID once; source not in payload or hash.
+- External change after `clearContents()` before the pre-write check → abort without `writeObjects`.
+- External change after the pre-write check → no token; the test must not claim foreign content was untouched.
+- A wrong token never suppresses an external change.
+- Confirmed Restore suppressed once; later external change captured.
+- Restore moves the record to the top without changing `copyCount`.
+- Copy as plain text writes only plain text + source marker.
 
 ### 3.5 Ingest pipeline and payload persistence
 
@@ -550,114 +410,94 @@ flowchart TD
   change[Pasteboard_change]
   beginGuard[Read_initial_changeCount]
   markers[Types_markers_source_exclusions]
-  skip{Marker_or_excluded_app}
-  copyPayload[Copy_allowlisted_payload]
+  skip{Marker_or_excluded}
+  policy[Format_policy_from_types]
+  copyPayload[Read_selected_reps_hash_incrementally]
   endGuard[Read_final_changeCount]
-  stable{changeCount_stable}
-  discard[Discard_entire_attempt]
-  skipPayload[No_payload_read]
-  snap[Build_normalized_snapshot]
-  hash[Pure_canonical_hash_offline]
+  stable{Stable_and_access_ok}
+  discard[Discard_not_handled]
+  thumb[Thumbnail_and_metadata]
   store[ClipboardStore_ingest]
-  ui[Update_history_UI]
+  current[Update_CurrentClipboard_and_UI]
   change --> beginGuard --> markers --> skip
-  skip -->|yes| skipPayload --> endGuard
-  skip -->|no| copyPayload --> endGuard
+  skip -->|yes| endGuard
+  skip -->|no| policy --> copyPayload --> endGuard
   endGuard --> stable
   stable -->|no| discard
-  stable -->|yes| snap --> hash --> store --> ui
+  stable -->|yes| thumb --> store --> current
 ```
 
-#### Storage backend (v1 decision)
+#### Storage model
 
-**Payload data** (text/RTF/image bytes, file path lists) must be persisted for Restore. A **custom BlobStore** (package dirs, temp→promote, orphan sweep, FS↔SwiftData two-phase commit) is **not** required for that — it is an architectural choice with high failure-state cost.
+- `ClipboardRecord` — metadata only (§7.2); list and search fetch these rows only.
+- `PayloadRepresentation` — one row per stored representation: `itemIndex`, `repIndex`, `uti`, `kind` (`bytes` | `filePaths`), `bytes: Data?` with `@Attribute(.externalStorage)`, `paths: [String]?`, `byteCount`. Relationship from the record with **cascade** delete.
+- `RecordThumbnail` — one optional row per record (`data`, longest side ≤ 512 px, alpha preserved; HEIC if the spike confirms alpha support, else PNG). Separate entity so list fetches never load it; cascade delete.
+- `ClipboardRecord.payloadSizeBytes = Σ byteCount` (bytes count, or Σ UTF-8 path bytes); `storageFormatVersion = 1`.
+- Never put `bytes` or thumbnail data in `#Predicate` filters.
 
-**Preferred v1:** SwiftData `@Attribute(.externalStorage)` on a single `payloadPackage: Data` per `ClipboardRecord`. Memopila still owns package **structure** and **MCS1 integrity**; SwiftData owns adjacent binary storage and delete lifecycle. Quota uses stored **`payloadSizeBytes`** (sum of package sizes), not a walk of unknown orphan files on disk.
-
-**Phase 1 spike (mandatory before locking persistence):** on macOS 14+, verify:
-
-1. Metadata-only history DTOs can be built **without** loading each `payloadPackage` (list/query must not force full binary materialization into every card).
-2. Packages up to **`maxSinglePayloadBytes` (50 MiB)** round-trip: ingest, Restore decode, delete, reopen store after force-quit. **Measure peak RSS** while encoding/committing a near-limit package (informational for v1 — no streaming architecture unless measured peak is unacceptable).
-3. Deleting a record removes its external data from the app’s usable store (no Memopila-managed orphan protocol required).
-4. **Rollback / failure consistency (two levels — do not make the spike unsatisfiable):**
-   - **Mandatory:** simulate failure **before** a successful commit (e.g. abort path that calls `rollback()` / never saves): after **reopen store**, the new row/`payloadPackage` is **not** visible; prior records and payloads remain. Cover both “new insert only” and “insert + delete victims in one mutation.”
-   - **Optional / research:** if a **real** persistent-store write failure can be reproduced in a controlled way on a supported macOS version, document observed behavior. **Do not** fail the preferred-path spike solely because a low-level SwiftData/filesystem fault cannot be reliably injected. **Do not** treat the mandatory rollback test alone as proof that every real storage fault is safe.
-
-**If spike passes** (items 1–3 + mandatory rollback) → ship without `BlobStore`; §6 preferred quota/commit rules are the only active set. **If spike fails** on those gates → do **not** implement BlobStore until a **fallback-specific** quota/commit/orphan section is written into this PLAN (see appendix).
-
-**Mutation ownership (v1):**
-
-- Pure hash encoding may run **before** entering the store (deterministic, no persistence).
-- **Dedup lookup**, limit checks, package build, and SwiftData commit for an ingest run as **one** serialized `ClipboardStore` operation (two concurrent identical pastes cannot both miss and insert duplicates).
-- Flow: `SnapshotReader` → pure hash → **`ClipboardStore.ingest`** (lookup + preflight + encode `payloadPackage` + SwiftData) → UI.
-- All mutations of `ClipboardRecord` / tags / settings go only through `ClipboardStore`. UI passes IDs + commands; never mutates persistent models directly.
-
-#### Payload package v1 (`formatVersion = 1`)
-
-One **`Data`** value per record (`payloadPackage`), not a directory tree.
-
-**Locked codec (v1):** binary **property list** via `PropertyListEncoder` / `PropertyListDecoder` with `outputFormat = .binary`, encoding an explicit **Codable** schema below. No JSON, no custom hand-rolled binary framing, no alternate codecs under `formatVersion = 1`. A future package format requires a new `formatVersion` and a migration path.
-
-| Field | Meaning |
-|-------|---------|
-| `formatVersion` | `1` (Int); unsupported → unreadable |
-| `items` | Ordered pasteboard items (original retained order) |
-| `items[].representations` | After file coalesce (§3.3) |
-| `items[].representations[].uti` | UTI / type id (effective file UTI when coalesced) |
-| `items[].representations[].kind` | `"bytes"` \| `"filePaths"` |
-| `items[].representations[].bytes` | Raw payload for `kind == "bytes"` (`Data` in the plist) |
-| `items[].representations[].paths` | Ordered normalized paths for `kind == "filePaths"` (`CanonicalFileListV1` source) |
-
-Also store on the record (metadata, always loaded for quota/UI): **`payloadSizeBytes`**.
-
-**Stability contracts:**
-
-- **Identity of clipboard content** = MCS1 / `contentHash` (§4) — golden byte tests belong here.
-- **Package durability** = decode this Codable schema from a saved **fixture** `Data` (round-trip + reject bad `formatVersion`). Do **not** treat exact `PropertyListEncoder` output bytes as an identity contract unless a fixture regression requires it.
-- **`hashSchemeVersion`:** v1 writes and accepts **only `1` (MCS1)**. On Restore, dedup, or any hash verify: if `hashSchemeVersion != 1` → **reject** as unsupported (do **not** silently rehash with MCS1). Unknown future schemes need an explicit migration, not a quiet fallback.
-
-**Invariant (commit + Restore):** `payloadSizeBytes == payloadPackage.count`. Set both from the same final encoded `Data` at commit. On any load of `payloadPackage` for Restore (or other full-package read), re-check equality; mismatch → **corrupt / inconsistent**. List DTOs and quota use metadata only. Integration test: inconsistent metadata → Restore rejects before pasteboard mutation.
+**Why rows instead of one package blob:** no encode copy at ingest (peak ≈ 1× snapshot), previews load only the representation they need, and list queries cannot touch payload bytes.
 
 **Integrity before Restore (mandatory):**
 
-1. Reject `hashSchemeVersion != 1`. Decode binary plist package; reject missing/corrupt data, `formatVersion != 1`, schema violations, missing `bytes`/`paths` for the declared `kind`; enforce `payloadSizeBytes == payloadPackage.count`.
-2. Validate file-list `paths` with the same normalization rules as capture (no disk file-body read).
-3. Rebuild `CanonicalSnapshotEncodingV1` (MCS1 only) from decoded package contents; compare SHA-256 hex to `ClipboardRecord.contentHash`. Mismatch → **unreadable**.
-4. **Do not call `clearContents()`** until decode + size invariant + hash verification succeed and all pasteboard items are prepared in memory (§3.4).
+1. Reject `hashSchemeVersion != 1` and `storageFormatVersion != 1`.
+2. Rows sorted by `(itemIndex, repIndex)` are contiguous from 0; each row has the field its `kind` requires; `bytes.count == byteCount`; `Σ byteCount == payloadSizeBytes`.
+3. File paths validate with the capture normalization rules (§3.3.1; no file reads).
+4. Recompute MCS1 (§4) from the rows; SHA-256 hex must equal `contentHash`.
+5. Any failure → **unreadable**: error, no `clearContents()`.
 
-Under externalStorage there is **no** package path/`..`/symlink containment problem — those rules apply only if BlobStore fallback is active.
+**Commit:** one SwiftData save inserts the record + representations + thumbnail and deletes the retention/storage victims (§6) with their representations, thumbnails and `RecordTag` rows. On error → `rollback()`, history intact, result `failed(error)`. Deterministic refusal → `rejected(reason)`. Store results: `committed` | `merged` (dedup hit) | `rejected` | `failed` | `dropped(stale)`.
 
-#### BlobStore fallback (only if Phase 1 spike fails)
+**Mutation ownership:** hashing is pure and runs in `SnapshotReader`. Dedup lookup, limit checks, victim planning and commit run as **one** serialized `ClipboardStore` operation with no `await` between checks and save. All mutations of records, collections, rules and settings go through `ClipboardStore`; the UI passes IDs and commands only.
 
-**Not an auto-drop-in.** Preferred §6 (`Σ payloadSizeBytes`, single SwiftData transaction, no orphan walk) is a **different accounting model** from filesystem packages + orphans (orphans are not attached to any record’s `payloadSizeBytes`).
+**Phase 1 storage spike (mandatory, macOS 15 / 26 / 27):**
 
-If the spike fails, **before any BlobStore implementation** amend this PLAN with an **activated** fallback rule set covering at least: package directory layout + path containment; temp→promote commit order; orphan discovery/accounting and how orphans enter `maxStorageBytes`; post-commit unlink vs SwiftData success; startup recovery. Until that amendment exists, BlobStore remains deferred. Do not run both backends in production.
+1. Paged card DTO fetches (`fetchLimit` / `fetchOffset` + `propertiesToFetch`) and search predicates do not materialize representation bytes or thumbnails.
+2. Representations of 32 MiB and 256 MiB (hard max) round-trip: ingest, Restore, delete, reopen after force-quit. Measure peak footprint against §7.3.
+3. Deleting a record removes its external data files.
+4. A failure before commit (`rollback()` / no save) leaves nothing visible after reopening the store; covers "insert only" and "insert + victim deletes".
+5. Whether the long-lived `@ModelActor` context keeps inserted `bytes` resident after save. If it does, ingest uses a short-lived `ModelContext` per operation.
+
+If a mandatory gate fails → amend this PLAN with a fallback (layout, commit order, orphan accounting, recovery) **before** implementing any custom blob store.
+
+### 3.6 Editing records
+
+**Custom title** — any record: `customTitle: String?`. Shown on the card above the content preview; searchable; not part of `contentHash`. Shortcut ⌘R or context menu **Rename…**; empty title clears it.
+
+**Edit text** — records with `displayType` `text`, `richText` or `url` (not images, PDFs, colors, files, mixed):
+
+- Editor: plain-text editor inside the window (⌘E / **Edit…**), same monospaced font as cards, standard undo while open.
+- Records with rich formats (RTF, RTFD, HTML, web archive) show a warning: *Formatting will be removed*. Rich-text editing is deferred.
+- **Save** replaces the record's representations **in place** with one item holding `public.utf8-plain-text`. Recompute `contentHash`, `payloadSizeBytes`, `cardPreview`, `searchText`; `displayType` becomes `url` if the whole text is a single URL, else `text`. Keep favorite, collections, `copyCount`, timestamps, `customTitle`; set `editedAt`. No version history.
+- **Save & Copy** (⌘↩ in the editor): save, then Restore.
+- Empty text → save disabled. Text larger than `maxSinglePayloadBytes` → save rejected with a message.
+- **Dedup collision:** if the new hash equals another record → merge into that record (favorite = OR; collections = union; `copyCount` = sum; `firstCopiedAt` = min; `lastCopiedAt` = max; `customTitle` = the existing one, else the edited one), delete the edited record, select the survivor, show *Merged with an existing record*. One transaction.
+- **Concurrency:** Edit is a `ClipboardStore` mutation; it adds the old hash to the tombstones (§3.2 coordination rule 5). Record deleted meanwhile → *Record no longer exists*.
+
+**Tests:** plain edit; rich → plain with warning; URL detection; collision merge; title shown and searchable; Save & Copy; in-flight capture of pre-edit content not recreated.
 
 ---
 
 ## 4. Dedup semantics
 
-A **dedup hit** means the **canonical snapshot hash** is identical. Update record metadata only; **never rewrite** the existing `payloadPackage`.
+A **dedup hit** means the canonical snapshot hash is identical. Update record metadata only; **never rewrite** existing representations (editing is a separate explicit operation, §3.6).
 
-(If representations or **item boundaries** differed, the hash would differ — there is no “same hash but different structure” case when framing is applied.)
-
-**Versioning:** package `formatVersion` and canonical-hash scheme version are **independent**. Changing the hash framing/encoding must bump the hash scheme version (magic below **and** `ClipboardRecord.hashSchemeVersion`). Do not silently reuse old digests across schemes.
+**Versioning:** `storageFormatVersion` and the canonical-hash scheme are independent. Changing hash framing bumps the scheme (magic below **and** `ClipboardRecord.hashSchemeVersion`).
 
 ### CanonicalSnapshotEncodingV1
 
-All multi-byte integers are **UInt64 big-endian**. Hash covers **payload** allowlisted representations only.
+All multi-byte integers are **UInt64 big-endian**. The hash covers **stored payload** representations only.
 
-**Excluded:** `org.nspasteboard.source` and all Transient / Confidential / Auto-generated marker types. Changing source alone must **not** create a new record when payload encoding is identical.
+**Excluded:** `org.nspasteboard.source`, all marker types, `customTitle`, thumbnails. Changing source alone must **not** create a new record.
 
 ```
 CanonicalSnapshotEncodingV1:
   magic/version:  ASCII "MCS1" (4 bytes)   // Memopila Canonical Snapshot v1
-  itemCount:      UInt64   // retained items only (after filter/normalize)
+  itemCount:      UInt64   // retained items only
 
   for each retained item, in original pasteboard order among retained:
-    representationCount: UInt64   // payload reps after coalesce (§3.3)
+    representationCount: UInt64   // stored reps after coalesce and format policy
 
-    for each payload representation in that item’s canonical order (§3.3):
+    for each stored representation in that item's canonical order (§3.3):
       typeIdByteLength: UInt64
       typeIdBytes:      UTF-8 UTI/type string
 
@@ -665,22 +505,14 @@ CanonicalSnapshotEncodingV1:
       payloadBytes:      canonical payload for that type
 ```
 
-**`itemCount`:** count of items that remain after filtering and normalization and that contribute at least one payload representation. Items omitted because they have **zero** allowlisted payload reps (§3.2.1) are **not** encoded and do **not** inflate `itemCount`. “Original order” means order among **retained** items, not a sparse encoding of empty pasteboard slots.
+**`itemCount`:** items that contribute at least one stored representation. Items with zero stored representations are not encoded.
 
-`contentHash = SHA-256(CanonicalSnapshotEncodingV1)` stored as lowercase hex (64 chars). Compute via **incremental** SHA-256 updates over the framed fields (do not require a single pre-built buffer of the entire encoding).
-
-Persist alongside the digest:
-
-- `ClipboardRecord.contentHash: String`
-- `ClipboardRecord.hashSchemeVersion: UInt16` — **1** for MCS1 / v1
-
-Dedup compares only records with the **same** `hashSchemeVersion`. Digests from different schemes are not the same identity. **v1 implementation must reject `hashSchemeVersion != 1`** on ingest verify / Restore / any path that would apply MCS1 (no silent reinterpretation). Future MCS2+ requires an explicit migration that recomputes hashes from stored packages.
+`contentHash = SHA-256(CanonicalSnapshotEncodingV1)`, lowercase hex. Computed **incrementally** while reading (no concatenated buffer).
 
 | Class | `payloadBytes` |
 |-------|----------------|
-| Plain / rich text / URL / image / color / non-file | **Original** stored representation bytes under that UTI |
-| File-list types (`NSFilenamesPboardType`, file URL lists, etc.) | `CanonicalFileListV1` (below), **not** raw pasteboard plist bytes and **not** file contents |
-| Single `public.file-url` | `CanonicalFileListV1` with `pathCount = 1` using the normalized path |
+| Text / rich text / URL / image / PDF / color / rule-kept types | **Original** representation bytes |
+| File-list types | `CanonicalFileListV1` — not plist bytes, not file contents |
 
 ```
 CanonicalFileListV1:
@@ -691,20 +523,19 @@ CanonicalFileListV1:
     canonicalPathBytes: UTF-8
 ```
 
-**Structural invariant:** one item with two representations ≠ two items with one representation each — `itemCount` / per-item `representationCount` framing makes the encodings differ.
+**Structural invariant:** one item with two representations ≠ two items with one representation each.
 
-On duplicate identity (dedup hit), merge metadata from the ingest’s **`observedAt`** (and that observation’s source), never from retry wall-clock:
+Persist `contentHash: String` and `hashSchemeVersion: Int` (= 1). Dedup compares only records with the same scheme. v1 rejects `hashSchemeVersion != 1` on Restore and any verify path; future schemes need an explicit migration.
 
-- `firstCopiedAt = min(existing.firstCopiedAt, observedAt)`
-- `lastCopiedAt = max(existing.lastCopiedAt, observedAt)` — a late retry of an older observation must **not** roll `lastCopiedAt` backward
-- `copyCount` increments once per **distinct observation** of this identity (successful first persist of a pending owned snapshot), **not** per save/retry attempt. Re-submit after success is prevented by **pending retry ownership** (§3.2), not by comparing `observedAt` alone
-- `lastSourceAppBundleID` / `lastSourceAppName` update **only** when this observation is **not older** than the already stored last observation (i.e. when `observedAt >= existing.lastCopiedAt` before the merge, or equivalently when this observation wins the `max` for `lastCopiedAt`); an older retry must not overwrite newer attribution
-- Preserve tags and favorite; do **not** clear them
-- Move to top of history ordering by the resulting `lastCopiedAt` (and product UI rules)
+**Metadata merge on a dedup hit** (from the snapshot's `observedAt` and source, never retry wall-clock):
 
-**New record** from a deferred/retried owned snapshot: both `firstCopiedAt` and `lastCopiedAt` are set from that snapshot’s original `observedAt`.
+- `firstCopiedAt = min(existing, observedAt)`; `lastCopiedAt = max(existing, observedAt)`.
+- `copyCount += 1` once per distinct observation (the single-flight monitor never submits the same snapshot twice after success).
+- `lastSourceAppBundleID` / `lastSourceAppName` update only when `observedAt >= existing.lastCopiedAt`.
+- Preserve favorite, collections, `customTitle`.
+- New record: `firstCopiedAt = lastCopiedAt = observedAt`.
 
-**SoC:** canonical encoding + SHA-256 are a **pure, deterministic** function/type with no SwiftData or UI. `ContentDeduper` may orchestrate hash + lookup; `ClipboardStore` owns persistence.
+**SoC:** canonical encoding + SHA-256 are a pure, deterministic type with no SwiftData or UI.
 
 ---
 
@@ -712,248 +543,272 @@ On duplicate identity (dedup hit), merge metadata from the ingest’s **`observe
 
 - Fields: `firstCopiedAt`, `lastCopiedAt`, `copyCount`, `lastSourceAppBundleID`, `lastSourceAppName`.
 
-Distinguish **admission source** (gates payload) from **display source** (UI / diagnostics only).
+Distinguish **admission source** (gates payload; exclusions) from **display source** (UI, Apps sidebar, format rules).
 
-#### Reading `org.nspasteboard.source` (capture)
+#### Reading `org.nspasteboard.source`
 
-Do **not** use pasteboard-level `string(forType:)` alone for admission — it concatenates matching strings across items and can corrupt a repeated bundle ID into an invalid/concatenated value.
+Do **not** use pasteboard-level `string(forType:)` for admission — it concatenates values across items.
 
-Per-item algorithm:
-
-1. Collect values from **each** `NSPasteboardItem` whose `types` include `org.nspasteboard.source` (read per item).
+1. Collect values from **each** item whose `types` include `org.nspasteboard.source`.
 2. **No** item declares the type → source **absent**.
-3. An item **declares** the type but `string(forType:)` / decode returns **nil** or non-string → treat as **present but invalid** (not absent). Admission = **Unknown**; non-empty exclusions → **skip** capture; empty exclusions → may capture with Unknown attribution.
-4. Every successfully read present value is the **same valid** bundle ID (including identical repeats) → that ID.
-5. Any **empty**, **invalid**, nil-on-declared, or **conflicting** values → **Unknown**; non-empty exclusions → **skip**.
-6. Never admit on a concatenated pasteboard-level string.
+3. Declared but nil / non-string → **present but invalid**: admission = Unknown; non-empty exclusions → skip.
+4. Every present value is the **same valid** bundle ID → that ID.
+5. Any empty, invalid, nil-on-declared, or conflicting values → Unknown; non-empty exclusions → skip.
+6. Never admit on a concatenated string.
 
-**Required tests:** same valid ID on multiple items → that ID; conflicting IDs → Unknown / skip when exclusions non-empty; type declared + nil read → invalid (not absent), no payload when exclusions non-empty; pasteboard-level concat must not be the admission path.
+**Valid bundle ID (single validator — Settings, admission, DTOs, format rules):** UTF-8 length 1…255; no whitespace or control characters; split on `.` into ≥ 2 non-empty components; each component letters/digits/hyphen only, not starting or ending with `-`. Empty string is a present marker meaning unknown — not a valid ID.
 
-**Valid bundle ID (single validator everywhere — Settings load, source admit, DTOs):** reverse-DNS style.
+| Marker | Admission source | Display source |
+|--------|------------------|----------------|
+| Valid bundle ID | That ID | Same |
+| Present but empty / invalid / unreadable | **Unknown** | **Unknown** — never frontmost |
+| Absent | See exclusions | Frontmost app at capture time (best effort) |
 
-- UTF-8 length 1…255; no whitespace or ASCII control characters.
-- Split on `.` into **≥ 2** components; **no** empty component (rejects `com.example.`, `.example.app`, `com..example`, `...`).
-- Each component: non-empty; letters/digits/hyphen only (`A–Z` `a–z` `0–9` `-`); must not start or end with `-`.
-- Empty string is a **present** marker meaning unknown (nspasteboard.org) — **not** a valid bundle ID.
-
-**Required invalid cases:** leading/trailing `.`, empty component, whitespace, lone `...`.
-
-**`org.nspasteboard.source` interpretation:**
-
-| Marker | Admission source | Display / soft attribution |
-|--------|------------------|----------------------------|
-| Non-empty, **valid** bundle ID | That bundle ID | Same |
-| Present but **empty**, **invalid**, or **declared but unreadable (nil)** | **Unknown** | **Unknown** — **never** substitute frontmost |
-| Marker **absent** (type not declared on any item) | See exclude policy | Frontmost allowed as **best-effort** only when exclusion list is **empty** |
-
-**Exclude-apps (fail-closed) — admission decisions:**
+**Exclude-apps (fail-closed):**
 
 | Exclusion list | Rule |
 |----------------|------|
-| **Empty** | Capture allowed (subject to markers / access). Soft attribution: valid source → that ID; absent marker → frontmost OK; empty/invalid marker → **Unknown** (no frontmost) |
-| **Non-empty** | Admit payload **only** when a **valid** bundle ID is present **and** not on the list. Marker **absent**, empty, invalid, or declared-but-unreadable → **skip**. **Frontmost must never bypass** |
+| **Empty** | Capture allowed (markers / access permitting) |
+| **Non-empty** | Admit only when a **valid** bundle ID is present **and** not on the list. Absent / empty / invalid / unreadable → **skip**. Frontmost never bypasses |
 
-**Product / trust boundary (Settings + README):** exclusions are a **policy filter on self-reported metadata**, not an authenticated security boundary.
+**Trust boundary (Settings + README):** exclusions filter self-reported metadata; they are not an authenticated security boundary. With exclusions enabled, apps without a valid `org.nspasteboard.source` are skipped. A writer can claim another app's bundle ID.
 
-- With exclusions enabled, apps without a valid `org.nspasteboard.source` are skipped.
-- The marker is **informational** (nspasteboard.org attribution). A writer can put **another app’s** bundle ID; Memopila cannot authenticate it from the marker alone.
-- Do **not** imply that exclusions guarantee confidentiality against a malicious or spoofing pasteboard writer.
+- On Restore, write `org.nspasteboard.source` **exactly once** (§3.4).
+- Source is metadata, not payload; not in `contentHash`.
 
-- On Restore, always write `org.nspasteboard.source` **exactly once** (§3.4): saved valid bundle ID when known, else **empty string** (unknown).
-- Source is **metadata**, not payload; **not** in `contentHash`.
-
-**Required tests:** (1) `""` + non-empty exclusions → no payload; (2) marker absent + non-empty exclusions → no payload even if frontmost allowed; (3) valid source not excluded → capture; (4) empty exclusions + empty/invalid marker → capture with Unknown, not frontmost; (5) empty exclusions + absent marker → frontmost soft attribution OK; (6) invalid IDs rejected by shared validator; (7) type declared + nil read → invalid, skip when exclusions non-empty.
+**Required tests:** `""` + non-empty exclusions → no payload; absent + non-empty exclusions → no payload even if frontmost is allowed; valid source not excluded → capture; empty exclusions + empty/invalid marker → Unknown, not frontmost; empty exclusions + absent marker → frontmost display source; validator rejects leading/trailing `.`, empty component, whitespace, `...`; declared + nil → invalid; same valid ID on several items → that ID; conflicting IDs → Unknown.
 
 ---
 
 ## 6. Retention, storage limits, and deletion
 
-Two **independent** caps — max **count** and max **age** (whichever binds).
-
 ### Defaults (v1)
 
 | Setting | Default |
 |---------|---------|
-| `maxCount` | Default **500** non-favorite records; **allowed range 1…10_000** (v1). **0 is not allowed** — a zero free-cap cannot insert a new non-favorite without immediately violating `freeCount ≤ maxCount` |
-| `maxAge` | **30 days** (from `lastCopiedAt`) |
-| `maxStorageBytes` | **512 MiB** sum of all records’ **`payloadSizeBytes`** (soft product limit; not a user-facing setting in v1 unless added later). **Contract:** limits the **logical size of persisted clipboard payload packages**, **not** total filesystem usage by the app (SwiftData metadata, indexes, store overhead, and framework-internal files are outside this quota) |
-| `maxSinglePayloadBytes` | **50 MiB** accepted/durable package `Data.count` (§3.2); **not** a peak-RAM ceiling |
+| `maxCount` | **500** non-favorite records; range **1…10 000** (0 not allowed) |
+| `maxAge` | **30 days** from `lastCopiedAt` |
+| `maxStorageBytes` | **512 MiB** Σ `payloadSizeBytes` over all records (logical payload quota, not total disk usage; not a v1 setting) |
+| `maxSinglePayloadBytes` | **32 MiB**, Settings 4–256 MiB, per-app rule overrides, hard max 256 MiB (§3.2) |
 
 ### Rules
 
-- **Age** measured from **`lastCopiedAt`**.
-- **Favorites** (pinned): excluded from **`maxCount`**, from age eviction, and from storage-driven victim planning. **Never** auto-evict favorites. Tags do **not** pin a record for count purposes—only `isFavorite` does in v1.
-- Non-favorites are the only records counted toward `maxCount` and the only automatic eviction candidates.
-- Clear History / Manual Delete follow §3.2 (`scope` `.nonFavorites`|`.all`; `countAtClearStart` / `countAtDelete`; paused boundary `changeCount`; captureEpoch; busy reject).
-- **`RecordTag` cascade (all delete paths):** every removal of `ClipboardRecord` rows — manual Delete, age/count retention, Clear History, and ingest/storage **victims** — deletes matching `RecordTag` rows in the **same** SwiftData transaction as the records. Under preferred externalStorage, payload data is removed with the record — no separate post-commit file-unlink protocol.
-- Deleting a **Tag** deletes all `RecordTag` for that tag in the same transaction; **does not** delete records.
-- `RecordTag` uniqueness `(recordId, tagId)` is a **`ClipboardStore` invariant** (check-before-insert). Do **not** require SwiftData `#Unique` composite while min target is macOS 14.
+- **Favorites:** excluded from `maxCount`, age eviction and storage victim planning. Never auto-evicted. Collections do not pin.
+- Non-favorites are the only automatic eviction candidates.
+- **Cascade on every delete path** (manual Delete, retention, Clear, ingest victims, edit merge): representations, thumbnail and `RecordTag` rows go in the **same** transaction. External data goes with the record.
+- Deleting a **Collection** deletes its `RecordTag` rows; records stay.
+- `RecordTag` uniqueness `(recordId, tagId)` via `#Unique` (upsert on duplicate is harmless here).
 
-### Age schedule (`maxAge`)
+### Age schedule
 
-Run age-based deletion of non-favorites older than `maxAge`:
+Delete non-favorites older than `maxAge`: at startup; after successful history mutations (ingest, Clear, settings that shrink caps, unfavorite); every 24 h while running. After a successful **unfavorite**, run age cleanup in the same pipeline.
 
-1. At **app startup** (after store open).
-2. After **successful** storage mutations that change history (ingest commit, Clear History, settings that shrink caps, **successful unfavorite**, etc.).
-3. On a **periodic timer while running**: default **once per 24 hours**.
+### Count cap on ingest, settings change, and favorite toggle
 
-Age cleanup uses the same serial `ClipboardStore` mutation path (SwiftData delete of records + `RecordTag` in one transaction).
-
-**Unfavorite + age:** after a successful unfavorite, run age cleanup **in the same mutation pipeline** (immediately after the toggle commit), so a record already past `maxAge` can be removed right away rather than waiting for the 24h timer. UX may briefly show the item until the mutation finishes.
-
-### Count cap (`maxCount`) on ingest, settings change, and Favorite toggle
-
-`maxCount` applies only to **non-favorite** records (`freeCount`).
-
-**On ingest of a new unique non-favorite:**
-
-- Plan oldest non-favorite victims so that **after insert** `freeCount ≤ maxCount`.
-- Favorites never count toward `maxCount` and are never count-cap victims.
-- Example: 500 favorites + new unique non-favorite ⇒ allowed (`freeCount` becomes 1).
-- New captures are **not** auto-favorite in v1.
-- Count-cap victims share the **same** SwiftData transaction as the insert (union with storage victims, no duplicates).
-
-**On Settings save that lowers `maxCount`:**
-
-- Apply **immediately** in one `ClipboardStore` mutation: delete oldest non-favorites until `freeCount ≤ newMaxCount` (same victim rules as ingest). Do not wait for the next copy.
-
-**Favorite toggle** (always via `ClipboardStore` serial mutation owner):
-
-- **Favorite on:** record leaves `freeCount`; no eviction required for the count cap.
-- **Favorite off (unfavorite):** enforce `maxCount` in the **same** mutation. Evict oldest **other** non-favorites until `freeCount ≤ maxCount`, **preserving** the just-unfavorited record. Under the invariant `maxCount ≥ 1` and pre-toggle `freeCount ≤ maxCount`, at least one other free victim exists whenever the post-unfavorite free set would exceed the cap — **no** separate “reject toggle” UX path. Assert the planned victim set restores the invariant; do not invent an unreachable error branch.
-- Then run **immediate age cleanup** for newly eligible non-favorites (see above).
+- **New unique non-favorite:** plan oldest non-favorite victims so that after insert `freeCount ≤ maxCount`; victims share the insert transaction.
+- **Settings lowers `maxCount`:** apply immediately in one mutation.
+- **Favorite on:** no eviction. **Favorite off:** evict oldest **other** non-favorites until `freeCount ≤ maxCount` (the invariant guarantees a victim exists), then age cleanup.
 
 ### Storage preflight and safe commit (new ingest)
 
-Entire sequence runs inside **one** `ClipboardStore` mutation with **no `await` suspension** between invariant checks and SwiftData commit. **Never** delete existing history before the new record is successfully committed.
+One `ClipboardStore` mutation, no `await` between checks and commit. Never delete existing history before the new record commits.
 
-**Uniform storage metric (v1, preferred backend):** `maxStorageBytes` / preflight use the **sum of `payloadSizeBytes`** over all `ClipboardRecord`s (metadata only — do **not** load every `payloadPackage` to measure). `newPayloadBytes` = final encoded package `Data.count`. Victim bytes = each victim’s stored `payloadSizeBytes` (once). This is a **payload-package quota**, not a measurement of total Application Support / SQLite / external-storage filesystem footprint.
-
-**Package bytes:** encode the payload package to its **final** `Data` **once** before preflight; set `newPayloadBytes` and the new record’s `payloadSizeBytes` from that same `Data.count` (invariant §3.5). Do not re-encode for a second “verification” pass with different bytes.
-
-**Victim planning order (acyclic):**
-
-1. **Dedup lookup** — match ⇒ metadata only; no new package; no eviction.
-2. Build final `payloadPackage` `Data`; set `newPayloadBytes`; reject if &gt; `maxSinglePayloadBytes`.
-3. Measure `actualStoredBytes` = Σ `payloadSizeBytes` over existing records (from metadata).
-4. Plan **count victims** for post-insert `freeCount ≤ maxCount`; `countVictimBytes` = sum of those victims’ `payloadSizeBytes`.
+1. **Dedup lookup** — match ⇒ metadata merge only (`merged`).
+2. `newPayloadBytes` = Σ snapshot bytes; reject if above the effective size limit.
+3. `actualStoredBytes` = Σ `payloadSizeBytes` (metadata only).
+4. Count victims for `freeCount ≤ maxCount`; `countVictimBytes`.
 5. `requiredAdditionalBytes = max(0, actualStoredBytes + newPayloadBytes - maxStorageBytes - countVictimBytes)`.
-6. Plan **storage victims** = oldest non-favorites **not in** count victims until reclaimed bytes ≥ `requiredAdditionalBytes` (or none left).
-7. `allVictims` = unique union; `projectedBytes = actualStoredBytes + newPayloadBytes - victimBytes`.
-8. If still over limit without deleting favorites → **reject** with **no** SwiftData deletes (deterministic reject → mark change handled; no SnapshotReader loop).
-9. Else: **one** SwiftData transaction — insert new record (`payloadPackage`, `payloadSizeBytes`, metadata) **and** delete `allVictims` **including their `RecordTag` rows**. Failure → rollback; history intact; return **`notCommitted(retryable)`** / **`rejected`** / rare **`indeterminate`**. Success → **`committed`**. No separate temp/promote/orphan unlink step on the preferred path.
+6. Storage victims = oldest non-favorites not already chosen, until reclaimed ≥ required.
+7. `allVictims` = union.
+8. Still over the limit without favorites → `rejected(quota)`, no deletes.
+9. Else one transaction: insert record + representations + thumbnail, delete `allVictims` with cascades. Error → rollback → `failed`. Success → `committed`.
 
 ### Confidentiality of stored data
 
-- History payloads live under Application Support **without additional app-level encryption** in v1.
-- **Local-only** means no cloud sync — **not** encryption at rest.
-- UI/privacy copy must not imply that history is encrypted or that unmarked secrets are filtered.
+- History lives under Application Support **without app-level encryption** in v1. Local-only ≠ encrypted.
+- UI and privacy copy must not imply encryption or that unmarked secrets are filtered.
+- Logs never contain clipboard content: `os.Logger` with `privacy: .private` for anything derived from payloads; no payload bytes, previews or paths in logs.
 
 ---
 
 ## 7. Architecture
 
-This PLAN is the system design. **Do not** add a separate `SYSTEM_DESIGN.md`, per-decision ADR set, or full C4 pack unless a future decision truly needs one.
+This PLAN is the system design. No separate `SYSTEM_DESIGN.md`, ADR set or C4 pack unless a future decision needs one.
 
 ```mermaid
 flowchart LR
   subgraph capture [Capture]
-    PB[ClipboardMonitor]
-    Reader[SnapshotReader]
+    PB[ClipboardMonitor_MainActor]
+    Reader[SnapshotReader_offMain]
+    Policy[FormatPolicy]
   end
   subgraph store [Store]
     CS[ClipboardStore_ModelActor]
-    SD[Private_ModelContext_externalStorage]
+    SD[SwiftData_externalStorage]
   end
   subgraph ui [UI]
-    Main[MainWindow]
-    Detail[RecordPreview]
+    Panel[HistoryPanel]
+    Preview[Preview_and_Editor]
     Settings[Settings]
     MB[MenuBarStatusItem]
     HK[HotKey]
   end
+  Thumbs[ThumbnailService]
   Writer[PasteboardWriter]
   GP[GeneralPasteboard]
-  PB --> Reader --> CS
+  PB --> Reader
+  Reader --> Policy
+  Reader --> Thumbs
+  PB --> CS
   CS --> SD
-  CS -->|Sendable_DTOs| Main
-  Main -->|commands_ids_only| CS
-  Main --> Detail
-  Main -->|Restore| Writer
+  CS -->|Sendable_DTO_pages| Panel
+  Panel -->|commands_ids_only| CS
+  Panel --> Preview
+  Panel -->|Restore| Writer
   Writer --> GP
-  GP -.->|suppress_own_generation| PB
-  MB --> Main
-  HK --> Main
+  GP -.->|token_suppress_once| PB
+  PB -->|CurrentClipboard| Panel
+  MB --> Panel
+  HK --> Panel
   Settings --> HK
 ```
 
-### Layers (SRP) — keep boundaries lean
+### 7.1 Components
 
-No mandatory Repository / UseCase / Interactor / Coordinator. No `observationID` without a crash-durable pending requirement. No BlobStore until §3.5 spike fails **mandatory** gates and PLAN gains fallback rules. Add test seams only when needed to reproduce SwiftData or system API failures.
+No mandatory Repository / UseCase / Coordinator layers. Add test seams only where needed (pasteboard access policy, store failures).
 
 | Component | Responsibility |
 |-----------|----------------|
-| `ClipboardMonitor` | Policy before `changeCount`; post-read access gate before ingest; Retry admission ≠ reader; slot `preStart`/`active`; Clear/Delete busy (§3.2–§3.4) |
-| `SnapshotReader` | Full capture when continuous reading is allowed by platform policy (`.alwaysAllow` on 15.4+; compatible path on older macOS without `accessBehavior`); changeCount guard; pre-final + post-read access gates on 15.4+; markers once; per-item source; file coalesce |
-| Canonical hash encode (pure) | Incremental SHA-256 over `CanonicalSnapshotEncodingV1` / `CanonicalFileListV1` — no giant concat buffer; no SwiftData/UI |
-| Dedup helpers | Pure encode + in-store lookup only (never unlocked parallel lookup) |
-| `PayloadPackageCodec` | Binary property-list Codable ↔ `Data` (`formatVersion = 1` only); size invariant; reject `hashSchemeVersion != 1`; MCS1 verify for Restore (§3.5) |
-| `ClipboardStore` | **`@ModelActor` (or equivalent)** — sole mutation owner; capture generation (Clear); ingest returns `committed` / `rejected` / `notCommitted(retryable)` / `indeterminate`; no `await` between generation check and commit |
-| Read models | Store exposes **read methods** returning immutable **Sendable DTOs** (cards, tags, settings snapshots). List DTOs omit `payloadPackage`. UI never receives managed SwiftData models |
-| `PasteboardWriter` | Source once; clear→write under Monitor **`restoreInProgress`**; confirm `ownedCount`; publish token or no-token then clear barrier (§3.4) |
-| `WindowPresenter` | Remember previous app before key; show/hide; restore focus |
+| `ClipboardMonitor` (`@MainActor`) | Access policy (§3.1), timer, single flight, `opSeq`, Restore token, `CurrentClipboard`, Clear/Delete/Edit busy state (§3.2) |
+| `SnapshotReader` (off main) | Guarded read, markers once, per-item source, exclusions, format policy, size budget, file coalesce, incremental MCS1 hash |
+| `FormatPolicy` (pure) | Default policy + user rules → which types to read and the effective size limit (§3.2.2) |
+| `ThumbnailService` | Ingest: ImageIO downsampled thumbnail + pixel size (no full decode). Display: QuickLook thumbnails for files (§3.3). Shared memory cache (§7.3) |
+| `ClipboardStore` (`@ModelActor`) | Sole mutation owner; ingest results; tombstones / `lastClearSeq`; retention; edit/merge; DTO read methods |
+| Read models | Immutable `Sendable` DTOs; card DTOs carry no payload bytes and no thumbnail data |
+| `PasteboardWriter` | Verify → build items → synchronous clear/write/confirm on the main actor; Copy as plain text; Paste after restore (§3.4) |
+| `WindowPresenter` | Non-activating panel, screen choice, pin, frame per display (§8.1) |
 | `HotKeyMonitor` | Carbon register/unregister; rebind keeps old until new succeeds (§2) |
-| `LoginItemManager` | Launch at login |
-| `ActivationPolicyController` | Dock vs accessory — Phase 1 spike on concrete OS versions |
-| SwiftUI | Renders DTOs; issues commands to `ClipboardStore`; no direct persistent model reads/writes |
+| `LoginItemManager` | `SMAppService.mainApp` |
+| `ActivationPolicyController` | Dock vs accessory |
+| SwiftUI | Renders DTOs; issues commands to `ClipboardStore`; never reads or writes persistent models directly |
 
-**UI ↔ store read boundary (before Phase 3):** prefer DTOs from `ClipboardStore` over a second SwiftUI `modelContext` query path. After actor saves, UI refreshes via store-published snapshots / explicit reload — not by sharing the private `ModelContext` with MainActor views. No extra Repository/UseCase layers. **Never** put `@Attribute(.externalStorage)` properties in `#Predicate` filters.
+UI refreshes from store-published change notifications + explicit paged reloads; the private `ModelContext` is never shared with views.
 
-### Data model (conceptual)
+### 7.2 Data model
 
-- `ClipboardRecord` — `displayType`, `firstCopiedAt`, `lastCopiedAt`, `copyCount`, `lastSource*`, `isFavorite`, `contentHash`, `hashSchemeVersion` (UInt16, v1 = 1), truncated preview/search fields, **`payloadSizeBytes`**, **`payloadPackage: Data`** (`@Attribute(.externalStorage)`)
-- Package `formatVersion` independent from `hashSchemeVersion` / MCS magic (§3.5).
-- `Tag` + `RecordTag` (`recordId`, `tagId`) — uniqueness enforced by `ClipboardStore` on macOS 14+ (not `#Unique` composite)
-- `AppSettings` — hotkey, exclusions, retention count/age (defaults §6), `showDockIcon`, `loginAtStart` (polling interval fixed at 250 ms, not a setting)
+- `ClipboardRecord` — `id: UUID`, `displayType`, `firstCopiedAt`, `lastCopiedAt`, `copyCount`, `lastSourceAppBundleID`, `lastSourceAppName`, `isFavorite`, `contentHash`, `hashSchemeVersion` (= 1), `storageFormatVersion` (= 1), `payloadSizeBytes`, `cardPreview` (≤ 300 scalars), `searchText` (≤ 10 000 scalars), `customTitle?`, `editedAt?`, `pixelWidth?` / `pixelHeight?`, `colorHex?`, `fileCount?`, `fileNames?` (for search), `skippedTypes?` (badge), relationships `representations` (cascade) and `thumbnail` (cascade). `#Index` on `contentHash`, `lastCopiedAt`, `isFavorite`, `lastSourceAppBundleID`, `displayType`. Dedup uniqueness is enforced by `ClipboardStore`, not `#Unique` (SwiftData resolves `#Unique` conflicts by upserting, which would bypass the merge rules).
+- `PayloadRepresentation`, `RecordThumbnail` — §3.5.
+- `Tag` (UI: Collection) — `id`, `name`, `sortOrder`. `RecordTag` (`recordId`, `tagId`) with `#Unique`.
+- `FormatRule` — `id`, `appBundleID?`, `typePattern`, `isPrefix`, `action`, `maxSizeMiB?`, `order`.
+- `AppSettings` — hotkey, exclusions, retention, size limit, `showDockIcon`, `loginAtStart`, `pasteAfterRestore`, `ignoreRemoteClipboard`, `silentDefaultVerifiedOSBuild`, window frame per display. Polling interval is fixed (250 ms).
 
-### Preview and search extraction (UI indexes only)
+### 7.3 Memory budgets
 
-Full supported payload remains in `payloadPackage` / Restore regardless of these caps:
+History lives on disk; RAM holds only what is on screen plus bounded caches. Budgets are measured as **physical footprint** (Activity Monitor *Memory*, `footprint`, Instruments) on Apple silicon:
 
-| Use | Default cap (v1) |
-|-----|------------------|
-| Card preview text | **2 000** Unicode scalar values |
-| Search extract text | **10 000** Unicode scalar values (separate from card preview; tune in Phase 1–3 if needed) |
+| Scenario | Budget |
+|----------|--------|
+| Idle, window closed, 500 records | ≤ 50 MB |
+| Window open, scrolling through 10 000 records | ≤ 150 MB |
+| Capture of a snapshot of size S | ≤ idle + 2 × S, transient |
+| 10 s after the window closes / after a capture | within idle + 10 MB |
 
-**Text decode for indexes (single path, v1):**
+**Practices (normative):**
 
-- Derive preview/search strings only from text-like allowlisted UTIs (`public.utf8-plain-text` / `public.plain-text` / `public.utf16-plain-text`, and other text reps if indexed). Original representation **bytes** always stay in `payloadPackage` for Restore.
-- Decode with one shared helper: UTF-8 for UTF-8/plain; for `public.utf16-plain-text`: honor UTF-16 BOM when present; **if BOM is absent, decode as UTF-16LE** (fixed v1 choice — unit-tested; change only by explicit contract edit if AppKit evidence requires it later).
-- Invalid UTF-16 / undecodable sequences → **no** text index for that representation; **do not** fail capture or drop the payload.
-- Apply preview/search caps to **Unicode scalar values** of the successfully decoded string only.
-- Do not invent a separate text-decoding subsystem beyond this helper.
+- No in-memory mirror of history: the grid loads DTO pages (`fetchLimit` / `fetchOffset`, `propertiesToFetch`) for visible cards plus a small prefetch.
+- Card text ≤ 300 scalars; search runs as a store predicate with a limit; `searchText` never goes into DTOs.
+- Thumbnails are produced once at ingest with ImageIO downsampling (`CGImageSourceCreateThumbnailAtIndex`, longest side ≤ 512 px). Full-size images are never decoded for cards; preview downsamples to the view size.
+- One `NSCache` for card thumbnails and QuickLook file thumbnails, `totalCostLimit` 24 MB.
+- Window closed for 10 s → drop DTO pages and caches (the panel shell stays for instant reopen). Memory pressure (`DispatchSource.makeMemoryPressureSource`) → drop immediately.
+- `autoreleasepool` around each pasteboard representation read and around Restore item building; no retained `NSPasteboardItem`.
+- The monitor holds no payload bytes after a snapshot completes (no pending queue, §3.2).
+- Restore and preview load representations of one record and release them right after use.
 
-Do **not** load multi‑MB strings into every card. Exact caps may be validated on real data in Phase 1–3; the invariant is “payload unbounded by UI caps, indexes bounded.”
+**Verification:** Phase 1 records baselines; Phases 3–6 assert the budgets in a scripted scenario (UI test + `task_vm_info.phys_footprint`) and with Instruments (Allocations, VM Tracker) before the phase is done.
+
+### 7.4 Preview and search extraction
+
+Full payload stays in `PayloadRepresentation` regardless of these caps.
+
+| Use | Cap |
+|-----|-----|
+| Card preview (`cardPreview`, stored) | **300** Unicode scalars |
+| Search extract (`searchText`, stored, never in DTOs) | **10 000** Unicode scalars |
+| Detail preview (loaded on demand from the text representation) | **20 000** Unicode scalars |
+
+**Text decode helper (single path):** UTF-8 for UTF-8/plain; `public.utf16-plain-text` honors a BOM, else UTF-16LE (unit-tested). RTF/RTFD/HTML → plain text via `NSAttributedString` off the main actor, only when no plain-text representation exists. Undecodable → no text index for that representation; never fail capture. Caps apply to Unicode scalars of the decoded string.
 
 ---
 
 ## 8. UI
 
-- Sidebar: History | Favorites | Apps | Types | Tags (+ New Tag)
-- Card grid; context menu: favorite, tags, delete, Reveal in Finder (file items)
-- Double-click / Enter (grid focused) → **Restore to Clipboard** + close + focus previous app
-- Esc → close without clipboard change + focus previous app
-- Detail: **preview only** in v1 (no payload edit); respect preview caps above
-- **Clear History** — toolbar/Settings action with confirmation dialog:
-  - Primary: **Clear non-favorites** → Store scope **`.nonFavorites`** (default)
-  - Secondary: **Clear everything including favorites** → Store scope **`.all`** (extra confirmation wording)
-  - Both use the same §3.2 Clear protocol (`countAtClearStart`, pause/drain/barrier)
-- Settings: hotkey, exclusions, retention (count + age), login, Dock, privacy/access status
-- Exclusions UI must state: (1) with exclusions enabled, history requires a valid `org.nspasteboard.source` not on the list; (2) the marker is self-reported / not authenticated (§5)
-- Short note in Settings (and README): other clipboard managers may compete for hotkeys / pasteboard access policy; Memopila handles hotkey registration conflicts (§2) but does not implement a compatibility subsystem
-- Banner when **Capture paused** (access policy)
-- Banner / status when **pending save Retry** blocks new capture; distinct UI for **`indeterminate`** (no Retry button) vs normal `notCommitted` Retry (§3.2)
-- Persist window size/position
+Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, search bar on top, a 3-column grid of cards.
+
+### 8.1 Window
+
+- Non-activating `NSPanel` that can become key, so the previous app stays frontmost and keyboard input still reaches search and grid **(spike: text input, Esc, focus, full-screen spaces, multi-display; fallback: activating window + remembered previous app)**.
+- Floating level; `collectionBehavior` `.canJoinAllSpaces` + `.fullScreenAuxiliary` (shows over full-screen apps).
+- Opens on the screen with the mouse pointer; size and position remembered per display (default 720 × 490 pt, min 520 × 360). Search is focused and empty on every open; selection on the first card.
+- Closes on: Restore, Esc (empty search), focus loss, hotkey again — except while **pinned**.
+- **Pin** (⚓ button): keeps the window open on Restore and focus loss.
+- Follows system appearance; standard materials (Liquid Glass on 26+ comes from the SDK).
+
+### 8.2 Layout
+
+- **Sidebar** (toggle button, ⌃⌘S): **History**, **Favorites**; **Apps** — source apps with icons, most recent first; **Types** — only types present (Text, Rich text, URL, Image, PDF, Color, File); **Collections** with **+ New Collection**. A selection filters the grid; search applies inside it.
+- **Top bar:** search field, sidebar toggle, pin, settings.
+- **Grid:** adaptive columns (3 at default width), cards ≈ 4:3, selected card with a 3 pt accent border.
+- **Card content:**
+  - Text — `customTitle` (if set) as a heading, then the first lines, monospaced.
+  - URL — monospaced, link color.
+  - Image / PDF — thumbnail centered, aspect-fit, on a checkerboard background (transparency).
+  - Color — swatch + hex.
+  - File — QuickLook thumbnail or icon + file name; *Unavailable* dimmed when missing.
+- **Card footer:** source app icon (type icon when unknown) + metric (*N characters*, *W × H px*, *N files · 12.3 MB*, *#RRGGBB*) + relative time (*Now*, *2m*, *3h*, *4d*); heart if favorite; pencil if edited; *+N skipped formats* badge (§3.2.3).
+- **Red Current card** first in History (§3.2.3).
+- **Banners** above the grid: Enable capture (onboarding), Capture paused, storage errors.
+- Empty states for History, filters and search.
+
+### 8.3 Keyboard
+
+| Key | Action |
+|-----|--------|
+| Typing | Goes to search |
+| ↑ ↓ ← → | Move selection (also while search is focused) |
+| ↩ | Restore selected |
+| ⇧↩ | Copy as plain text |
+| ⌘1 … ⌘9 | Restore the Nth visible card |
+| Space (grid focused) / ⌘Y (anywhere) | Toggle preview |
+| ⌘E | Edit text (§3.6) |
+| ⌘R | Rename (custom title) |
+| ⌘D | Toggle favorite |
+| ⌘⌫ | Delete selected (favorites ask for confirmation) |
+| ⌘F | Focus search |
+| ⌃⌘S | Toggle sidebar |
+| Esc | Clear search → close |
+| ⌘, | Settings |
+
+### 8.4 Context menu
+
+Copy to Clipboard; Copy as Plain Text; Edit…; Rename…; Favorite / Unfavorite; Add to Collection ▸; Reveal in Finder (files); Delete.
+
+### 8.5 Preview
+
+In-window overlay (not the system Quick Look panel): text up to 20 000 scalars; image/PDF downsampled to the view size; file — QuickLook thumbnail, path, size, Reveal; color swatch. Metadata: source app, first / last copied, copy count, stored formats, skipped formats.
+
+### 8.6 Search
+
+- Case- and diacritic-insensitive substring match (`localizedStandardContains`) over `searchText`, `customTitle`, source app name and file names. Several words → all must match.
+- Results ordered by `lastCopiedAt` (newest first); sidebar filter AND search.
+- Budget: ≤ 50 ms per keystroke for 10 000 records on Apple silicon (Phase 3 measurement). If SwiftData misses it, move search text to an SQLite FTS5 side index and record the decision here.
+
+### 8.7 Settings
+
+- **General:** hotkey, launch at login, Dock icon, Paste after restore (Accessibility status + guidance).
+- **Capture:** pasteboard access status and guidance (§3.1), exclusions with the trust-boundary note (§5), Ignore content from other devices.
+- **Formats:** size limit, format rules, Inspect current clipboard (§3.2.2).
+- **Storage:** `maxCount`, `maxAge`, Clear History — **Clear non-favorites** (default, `.nonFavorites`) and **Clear everything including favorites** (`.all`, extra confirmation).
+- **About / privacy:** local-only, not encrypted, markers ≠ full secret protection; other clipboard managers may compete for the hotkey and pasteboard access.
 
 ---
 
@@ -961,65 +816,54 @@ Do **not** load multi‑MB strings into every card. Exact caps may be validated 
 
 | Concern | v1 behavior |
 |---------|-------------|
-| Pasteboard access (15.4+) | Re-check policy **before** `changeCount`/content access; continuous only while `.alwaysAllow`; `.ask`/`.alwaysDeny` = no periodic pasteboard poll; **manual** OS dialog |
-| macOS &lt; 15.4 | Compatible read path; no accessBehavior API |
-| Exclude apps | Non-empty list: admit **only** via **valid** bundle ID (§5); absent/empty/invalid → skip; empty list: empty marker = Unknown (no frontmost) |
-| Transient / confidential / auto-generated markers | Skip entire change (§3.1); unit test **each** listed identifier |
-| Self-writes | Suppress only confirmed `ownedCount` after clear+write (§3.4); no token on race → monitor ingests current state |
-| Accessibility | Not required for v1 |
-| Files | Normalized paths only (§3.3.1); Unavailable when missing; no content copy; no symlink resolve |
-| At-rest encryption | **None** in v1 — local-only ≠ encrypted |
-| Secrets without markers | No guarantee; do not claim full protection |
+| Pasteboard access (15.4+) | §3.1: Enable capture onboarding; continuous only while allowed; `.ask` / `.alwaysDeny` = Capture paused with System Settings guidance; never an alert from background polling |
+| macOS 15.0–15.3 | No access API; continuous capture |
+| Exclude apps | Fail-closed on admission source (§5) |
+| Markers | Skip entire change; test each identifier (§3.1) |
+| Self-writes | Suppress only a confirmed `ownedCount` once (§3.4) |
+| Accessibility | Only for **Paste after restore** (off by default) |
+| Files | Paths only; display-only QuickLook thumbnails; Unavailable when missing (§3.3) |
+| At-rest encryption | None in v1 |
+| Logs | No clipboard content (§6) |
 | Sandbox | Off in v1 |
 
 ---
 
 ## 10. Implementation phases and acceptance criteria
 
-**SSOT:** normative rules live in **§3–§6** (and §7 components). This section states **phase done-when** only — do not restate full contracts here. New race/edge cases → add a test next to the owning contract in §3–§6, then a one-line phase pointer if needed.
+**SSOT:** normative rules live in §3–§8. This section states phase done-when only.
 
-### Implementation order (vertical slices)
-
-1. **Phase 1 spike** — externalStorage (§3.5); record pass/fail; **no** BlobStore ahead of need.
-2. **First vertical slice** — plain text → stable `SnapshotReader` → MCS1 → SwiftData → history list → Restore. One working path before other representations.
-3. **Privacy + concurrency** — markers, exclusions, access policy, `restoreInProgress` / token, pending Retry, Clear/Delete (§3.1–§3.4). Strict contract tests where data loss or privacy is at stake.
-4. **Expand storage + UI** — other reps, files/images, retention, favorites/tags, search, hotkey polish. Add real failure handling as injectable seams appear.
-
-Early slices must still obey accepted contracts; they implement **one scenario at a time** on working code, not every UTI/error combination first.
-
-### Phase 1 — Spike + shell
+### Phase 1 — Spikes + shell
 
 **Done when:**
 
-- §3.5 spike recorded (metadata DTOs, ~50 MiB + peak RSS, delete + reopen, **mandatory** simulated rollback; optional real store-fault research). Pass → preferred backend; fail on mandatory gates → BlobStore only after PLAN fallback amendment.
-- App shell: menu bar, window, Carbon hotkey (rebind keeps old until new succeeds), Esc/Enter focus rules, Dock/activation spike on supported OS versions, pasteboard access paused UX (15.4+ bootstrap / `.alwaysAllow` continuous; &lt;15.4 compatible path).
-- Xcode layout + test targets defined from component boundaries (§7).
+- Storage spike (§3.5 items 1–5) recorded, including memory baselines (§7.3).
+- Access spike (§3.1 questions 1–5) recorded on 15.x, 26.x, 27.0.x and 27.2+.
+- Window spike: non-activating panel — text input, Esc, focus stays in the previous app, full-screen spaces, multiple displays.
+- Carbon hotkey works on 27.x; the conflict error appears when Pasta holds ⌥⌘V.
+- Off-main `NSPasteboard` reads; timer cadence with the window closed (App Nap, Low Power Mode); ImageIO HEIC thumbnails with alpha.
+- Signing: the pasteboard access choice survives a rebuild with the Apple Development identity.
+- App shell: menu bar, panel, hotkey, Esc/Enter rules, Enable capture onboarding, Capture paused banner.
 
-### Phase 2 — First vertical slice + capture/restore core
+### Phase 2 — First vertical slice
 
-**Done when:**
+**Done when:** plain text end to end — capture → MCS1 → store → grid → Restore — with markers (§3.1), exclusions (§5), access gates (§3.1), capture coordination (§3.2), Restore token (§3.4), Current card statuses (§3.2.3), launch observation (§3.2).
 
-- Plain-text path works end-to-end; then multi-item/multi-rep round-trip within allowlist (§3.2–§3.4).
-- Contracts under test (by reference): markers §3.1; UTF-16LE decode §7; source once §5/§3.4; exclude fail-closed §5; changeCount guard + size forecast §3.2; file coalesce/paths §3.3; `restoreInProgress` token §3.4; launch observation §3.2.
+### Phase 3 — History UI, search, retention
 
-### Phase 3 — Dedup, history UI, retention
+**Done when:** Pasta layout (§8.2) with Apps/Types filters, keyboard map (§8.3), paged DTOs, thumbnails pipeline (§7.1), search within budget (§8.6), dedup merges (§4), retention + storage preflight (§6), memory budgets for idle and window open (§7.3).
 
-**Done when:**
+### Phase 4 — Formats and files
 
-- Dedup / MCS1 framing / `copyCount` / `observedAt` merges (§4); serialized ingest (§3.5/§6).
-- Retention + storage preflight (§6); list DTOs omit `payloadPackage` (§7); favorites never auto-evicted.
+**Done when:** all allowlisted representations (§3.2.1), redundant-image rule and format rules + inspector (§3.2.2), Save anyway, files with coalesce / normalization / QuickLook thumbnails / Unavailable (§3.3), integrity before Restore (§3.5), Clear scopes (§3.2), capture memory budget (§7.3). Decide on the lazy TIFF provider.
 
-### Phase 4 — Favorites, Tags, DnD, context menus
+### Phase 5 — Editing and organization
 
-**Done when:** Tag/`RecordTag` rules, unfavorite + `maxCount`, Settings `maxCount` shrink (§6).
+**Done when:** custom titles and text editing with merge on collision (§3.6), Favorites, Collections (`RecordTag`), unfavorite + `maxCount`, Settings `maxCount` shrink (§6), preview overlay (§8.5), Copy as plain text (§3.4).
 
-### Phase 5 — Rich text, files, color/image polish
+### Phase 6 — Polish
 
-**Done when:** Remaining allowlisted reps; multi-file Restore + Unavailable paths (§3.3); Clear scopes (§3.2); package integrity before clear (§3.5); preview-only detail.
-
-### Phase 6 — Login, polish, privacy copy
-
-**Done when:** Login item; window frame; Clear confirmation; privacy copy does not over-claim (§9).
+**Done when:** login item, window frame per display, Paste after restore (§3.4), privacy copy does not over-claim (§9), VoiceOver labels on cards and controls, English and Russian localization, all memory budgets re-verified.
 
 ---
 
@@ -1027,27 +871,27 @@ Early slices must still obey accepted contracts; they implement **one scenario a
 
 | Level | Scope (by contract ref) | Approach |
 |-------|-------------------------|----------|
-| Unit | §3.1 markers; §3.2 size/pending; §3.3 paths/coalesce; §3.5 package codec; §4 MCS1/file-list; §5 source/exclude; §6 retention/preflight | TDD on the owning section — Red → Green → Refactor |
-| Integration | §3.2 slot/Clear/Delete/Retry; §3.4 Writer + `restoreInProgress`; §3.5 SwiftData + `payloadPackage`; §6 commit | Contract test first; inject seams for Store failures |
-| System / manual | §3.1 access prompts; §2 hotkey/Dock; focus; Login | Automate stable cases; OS dialogs on **concrete supported** macOS versions |
+| Unit | §3.1 markers; §3.2 size budget; §3.2.2 format policy; §3.3 paths/coalesce; §4 MCS1/file list; §5 source/exclude; §6 retention/preflight; §3.6 edit/merge; §7.4 decode | TDD on the owning section |
+| Integration | §3.2 coordination (Clear/Delete/Edit races, save failures); §3.4 Writer + token; §3.5 SwiftData rows, integrity, rollback | Contract test first; seams for store failures |
+| System / manual | §3.1 access alerts on each OS of the matrix; §2 hotkey/Dock; §8.1 panel focus; login; Paste after restore | Automate stable cases; OS dialogs on concrete versions |
+| Performance | §7.3 memory budgets; §8.6 search budget | Scripted scenarios + `phys_footprint`; Instruments before each phase is done |
 
 **Rules:**
 
-- **One SSOT:** do not duplicate full invariant prose here — link §3–§6. Put new race cases next to the contract that owns them.
-- Supported OS set is explicit (§2); automate reproducible scenarios; verify system APIs on those versions — do not try to prove every theoretical guarantee on every macOS release in the PLAN.
-- Do **not:** 100% coverage theater; mock/DI stacks only for ceremony; Repository/UseCase/Coordinator without need; `observationID` without crash-durable pending requirement; BlobStore before spike failure + PLAN amendment; a FS-diagnostics subsystem for every theoretical fault.
+- One SSOT: link §3–§8 instead of restating invariants; put new race cases next to the owning contract.
+- Pasteboard tests use named pasteboards (`NSPasteboard(name:)` / `withUniqueName()`); since only the General pasteboard is gated, access-policy behavior is tested through an injected `PasteboardAccessPolicy` seam, plus manual checks on real OS versions.
+- Do **not:** chase 100 % coverage; build mock/DI stacks for ceremony; add a custom blob store before a failed spike and a PLAN amendment.
 
 ---
 
 ## 12. Deferred (next versions)
 
-- Auto-rules
-- Edit payload
-- Snippets
+- Rich-text editing, image editing, edit history
+- Auto-rules (transforms, auto-tagging), snippets
+- Lazy TIFF data provider (unless Phase 4 shows it is needed)
+- System Quick Look panel, text transforms, drag-out, undo-delete
 - Security-scoped bookmarks / App Sandbox
-- Custom BlobStore (only if externalStorage spike fails **and** PLAN gains an activated fallback quota/commit/orphan section — otherwise out of v1)
-- App-level encryption at rest / user-facing `maxStorageBytes` control
+- Custom blob store (only after a failed storage spike **and** a PLAN amendment)
+- App-level encryption at rest; user-facing `maxStorageBytes`
 - OCR, eyedropper-from-image, lock, export/import, iCloud
-- Accessibility auto-paste, Quick Look, transforms, drag-out, undo-delete
 - Notarized binary / MAS
-- Separate `SYSTEM_DESIGN.md` / Clean Architecture layering (not required — this PLAN is sufficient)
