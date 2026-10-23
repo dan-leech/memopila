@@ -40,8 +40,8 @@
 | **Data** | Local only under Application Support; no account, sync, or cloud |
 | **Distribution (v1)** | Build and run from source (Xcode). Sign with a stable **Apple Development** identity (a free personal team is enough), not ad-hoc "Sign to Run Locally": the per-app pasteboard access choice in System Settings is tied to the app's code identity, and an identity that changes on every build is expected to reset it **(spike)**. Downloadable binary is a later deliverable |
 | **Sandbox** | **Not sandboxed** in v1. Store file **URLs/paths** for restore; no security-scoped bookmarks |
-| **Stack** | SwiftUI + AppKit, Swift 6 language mode. **Minimum macOS 15.0** (SwiftData `#Index`/`#Unique`; pasteboard access API from 15.4). Build with the current Xcode (27.x) and macOS 27 SDK |
-| **OS test matrix** | Latest 15.x, latest 26.x, 27.0.x, 27.2+. 27.2 is listed separately: its release notes remove the `EnablePasteboardPrivacyDeveloperPreview` default (186955507), so the pasteboard access alert is expected to be enforced from 27.2 **(spike)** |
+| **Stack** | SwiftUI + AppKit, Swift 6 language mode. **Minimum macOS 26.0**: current and previous major release, one visual design (Liquid Glass), `accessBehavior` always available (no pre-15.4 path), SwiftData `#Index`/`#Unique`. Raising the minimum to 27 later costs nothing; lowering it after adopting 27-only APIs would. Build with the current Xcode (27.x) and macOS 27 SDK; 27-only APIs behind `#available` |
+| **OS test matrix** | Latest 26.x (VM is enough), 27.0.x / 27.1, 27.2+. 27.2 is listed separately: its release notes remove the `EnablePasteboardPrivacyDeveloperPreview` default (186955507), so the pasteboard access alert is expected to be enforced from 27.2 **(spike)** |
 | **Payload persistence** | One SwiftData `PayloadRepresentation` row per stored representation with `@Attribute(.externalStorage) bytes` (§3.5). No single package blob, no custom BlobStore |
 | **Memory** | History lives on disk. No in-memory mirror of history. RAM budgets (§7.3) are phase acceptance criteria |
 | **App presentation** | Menu-bar-first (`NSApplication.ActivationPolicy.accessory` / `LSUIElement`); Dock via activation-policy toggle — Phase 1 spike on each OS of the matrix |
@@ -54,7 +54,7 @@
 
 ### 3.1 Pasteboard access and privacy
 
-#### Access behavior (`NSPasteboard.AccessBehavior`, macOS 15.4+)
+#### Access behavior (`NSPasteboard.AccessBehavior`)
 
 Facts from Apple's documentation:
 
@@ -68,7 +68,7 @@ Facts from Apple's documentation:
 
 **Spike questions** — answer on every OS of the matrix (§2) and record the results here:
 
-1. Is the alert enforced by default? Expected: off on 15.4–27.1 (developer preview only), on from 27.2.
+1. Is the alert enforced by default? Expected: off on 26.x–27.1 (developer preview only), on from 27.2.
 2. Which calls raise it: `changeCount`, `types`, `data(forType:)` / `string(forType:)`? Expected: content reads only.
 3. With enforcement off, does `accessBehavior` stay `.default` after a successful content read?
 4. Does a gated read block until the user answers? What does a denied read return?
@@ -83,7 +83,6 @@ Facts from Apple's documentation:
 | `.default`, not verified | **No background content reads.** Onboarding shows **Enable capture**; pressing it runs the bootstrap read |
 | `.ask` | **Capture paused.** Banner + guidance: System Settings → Privacy & Security → *pane (spike)* → Memopila → Always Allow. No reads, no prompt loops |
 | `.alwaysDeny` | **Capture paused**, same guidance |
-| macOS 15.0–15.3 | No API: continuous capture |
 
 **Bootstrap read** (only from the explicit **Enable capture** action while the state is `.default`; the paused banner's **Check again** only re-reads `accessBehavior` and never reads content):
 
@@ -449,7 +448,7 @@ flowchart TD
 
 **Mutation ownership:** hashing is pure and runs in `SnapshotReader`. Dedup lookup, limit checks, victim planning and commit run as **one** serialized `ClipboardStore` operation with no `await` between checks and save. All mutations of records, collections, rules and settings go through `ClipboardStore`; the UI passes IDs and commands only.
 
-**Phase 1 storage spike (mandatory, macOS 15 / 26 / 27):**
+**Phase 1 storage spike (mandatory, macOS 26 / 27):**
 
 1. Paged card DTO fetches (`fetchLimit` / `fetchOffset` + `propertiesToFetch`) and search predicates do not materialize representation bytes or thumbnails.
 2. Representations of 32 MiB and 256 MiB (hard max) round-trip: ingest, Restore, delete, reopen after force-quit. Measure peak footprint against §7.3.
@@ -749,9 +748,9 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 - Non-activating `NSPanel` that can become key, so the previous app stays frontmost and keyboard input still reaches search and grid **(spike: text input, Esc, focus, full-screen spaces, multi-display; fallback: activating window + remembered previous app)**.
 - Floating level; `collectionBehavior` `.canJoinAllSpaces` + `.fullScreenAuxiliary` (shows over full-screen apps).
 - Opens on the screen with the mouse pointer; size and position remembered per display (default 720 × 490 pt, min 520 × 360). Search is focused and empty on every open; selection on the first card.
-- Closes on: Restore, Esc (empty search), focus loss, hotkey again — except while **pinned**.
-- **Pin** (⚓ button): keeps the window open on Restore and focus loss.
-- Follows system appearance; standard materials (Liquid Glass on 26+ comes from the SDK).
+- Closes on: Esc (empty search), hotkey again, and — unless **pinned** — Restore and focus loss.
+- **Pin** (⚓ button, as in Pasta): the window stays on screen when focus moves to another app and after Restore, until unpinned or closed with Esc / hotkey.
+- Follows system appearance; standard materials (Liquid Glass comes from the SDK).
 
 ### 8.2 Layout
 
@@ -816,8 +815,7 @@ In-window overlay (not the system Quick Look panel): text up to 20 000 scalars; 
 
 | Concern | v1 behavior |
 |---------|-------------|
-| Pasteboard access (15.4+) | §3.1: Enable capture onboarding; continuous only while allowed; `.ask` / `.alwaysDeny` = Capture paused with System Settings guidance; never an alert from background polling |
-| macOS 15.0–15.3 | No access API; continuous capture |
+| Pasteboard access | §3.1: Enable capture onboarding; continuous only while allowed; `.ask` / `.alwaysDeny` = Capture paused with System Settings guidance; never an alert from background polling |
 | Exclude apps | Fail-closed on admission source (§5) |
 | Markers | Skip entire change; test each identifier (§3.1) |
 | Self-writes | Suppress only a confirmed `ownedCount` once (§3.4) |
@@ -838,7 +836,7 @@ In-window overlay (not the system Quick Look panel): text up to 20 000 scalars; 
 **Done when:**
 
 - Storage spike (§3.5 items 1–5) recorded, including memory baselines (§7.3).
-- Access spike (§3.1 questions 1–5) recorded on 15.x, 26.x, 27.0.x and 27.2+.
+- Access spike (§3.1 questions 1–5) recorded on 26.x, 27.0.x and 27.2+.
 - Window spike: non-activating panel — text input, Esc, focus stays in the previous app, full-screen spaces, multiple displays.
 - Carbon hotkey works on 27.x; the conflict error appears when Pasta holds ⌥⌘V.
 - Off-main `NSPasteboard` reads; timer cadence with the window closed (App Nap, Low Power Mode); ImageIO HEIC thumbnails with alpha.
