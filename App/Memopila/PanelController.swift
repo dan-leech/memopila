@@ -58,8 +58,16 @@ final class PanelController: NSObject, NSWindowDelegate {
     var isVisible: Bool { panel?.isVisible ?? false }
     var isKey: Bool { panel?.isKeyWindow ?? false }
 
+    /// Hotkey: closes a focused panel; brings a pinned panel that lost focus back to the front.
     func toggle() {
-        isVisible ? close() : show()
+        if isVisible, isKey {
+            close()
+        } else if isVisible, let panel {
+            panel.makeKeyAndOrderFront(nil)
+            model.focusSearch()
+        } else {
+            show()
+        }
     }
 
     func show() {

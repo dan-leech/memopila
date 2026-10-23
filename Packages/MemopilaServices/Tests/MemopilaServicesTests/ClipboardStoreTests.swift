@@ -140,11 +140,13 @@ struct ClipboardStoreTests {
         try await store.setMembership(record: b, collection: collection, isMember: true)
         #expect(try await store.page(HistoryQuery(scope: .collection(collection)), offset: 0, limit: 10).map(\.id) == [b])
         #expect(try await store.collections().first?.count == 1)
+        #expect(try await store.memberships(of: [a, b]) == [b: [collection]])
         #expect(try await store.apps().map(\.bundleID) == ["com.b.app", "com.a.app"])
         #expect(try await store.displayTypes() == [.text, .url])
 
         try await store.deleteCollection(collection)
         #expect(try await store.collections().isEmpty)
+        #expect(try await store.memberships(of: [a, b]).isEmpty)
         #expect(try await store.count(HistoryQuery()) == 2, "deleting a collection keeps its records")
     }
 

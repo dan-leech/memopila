@@ -92,14 +92,16 @@ enum ActionRegistry {
             })
         }
         if card.displayType == .file || !card.filePaths.isEmpty {
-            let urls = card.filePaths.map { URL(fileURLWithPath: $0) }
-            let existing = urls.filter { FileManager.default.fileExists(atPath: $0.path) }
-            items.append(ActionItem(
-                id: "reveal",
-                title: String(localized: "Reveal in Finder"),
-                systemImage: "folder",
-                disabledReason: existing.isEmpty ? String(localized: "The file is no longer available.") : nil
-            ) { NSWorkspace.shared.activateFileViewerSelecting(existing) })
+            // Existence is checked when the action runs, not while every card's menu is built.
+            let paths = card.filePaths
+            items.append(ActionItem(id: "reveal", title: String(localized: "Reveal in Finder"), systemImage: "folder") {
+                let existing = paths.filter { FileManager.default.fileExists(atPath: $0) }.map { URL(fileURLWithPath: $0) }
+                if existing.isEmpty {
+                    model.toasts.error(String(localized: "The file is no longer available."))
+                } else {
+                    NSWorkspace.shared.activateFileViewerSelecting(existing)
+                }
+            })
         }
         items.append(.divider("app"))
         items.append(appMenu(

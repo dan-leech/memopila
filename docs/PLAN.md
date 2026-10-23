@@ -181,7 +181,7 @@ All observation for one change — types, markers, app identity, per-app setting
 
 - `ClipboardMonitor` is `@MainActor`: timer, access checks, pause and skip state (§3.7), `lastHandledChangeCount`, single-flight flag `isCapturing`, `destructiveInProgress`, operation sequence `opSeq`, Restore suppression token (§3.4), `CurrentClipboard` state (§3.2.3).
 - `SnapshotReader` runs off the main actor (detached task) and returns a `Sendable` owned snapshot. Off-main `NSPasteboard` reads **(spike)**; fallback: read on the main actor, one representation per run-loop turn, so a slow lazy provider in the source app cannot freeze the UI for the whole snapshot.
-- `ClipboardStore` is a `@ModelActor` and the only mutation owner (§3.5).
+- `ClipboardStore` is an actor (a fresh `ModelContext` per call, §7.3) and the only mutation owner of history (§3.5).
 
 **Rules:**
 
@@ -798,7 +798,7 @@ No mandatory Repository / UseCase / Coordinator layers. Add test seams only wher
 | `FormatPolicy`, `AppProfiles` (pure) | Default policy + rules → which types to read and the effective size limit (§3.2.2); identity → per-app settings (§5.1) |
 | `ThumbnailService` | Ingest: ImageIO downsampled thumbnail + pixel size (no full decode). Display: QuickLook thumbnails for files (§3.3). Shared memory cache (§7.3) |
 | `TextRecognizer` | Background recognition queue, one job at a time (§3.8) |
-| `ClipboardStore` (`@ModelActor`) | Sole mutation owner; ingest results; tombstones / `lastClearSeq`; retention and expiry; edit/merge; app settings and rules; DTO read methods |
+| `ClipboardStore` (actor) | Sole mutation owner of history; ingest results; tombstones / `lastClearSeq`; retention and expiry; edit/merge; collections; DTO read methods |
 | `ActionRegistry` | One list of actions with availability rules, shared by the context menu, the ⌘K panel, the Apps sidebar menu and the menu bar (§8.4, §8.8) |
 | `TextActions` (pure) | §3.9 |
 | `CodeHighlighter` | Lazy, preview only (§8.5) |
@@ -817,8 +817,9 @@ UI refreshes from store-published change notifications + explicit paged reloads;
 - `ClipboardRecord` — `id: UUID`, `displayType`, `firstCopiedAt`, `lastCopiedAt`, `copyCount`, `lastSourceAppBundleID`, `lastSourceAppName`, `isFavorite`, `contentHash`, `hashSchemeVersion` (= 1), `storageFormatVersion` (= 1), `payloadSizeBytes`, `cardPreview` (≤ 300 scalars), `searchText` (≤ 10 000 scalars), `customTitle?`, `editedAt?`, `expiresAt?`, `ocrText?`, `ocrState`, `sourceURL?`, `sourceWindowTitle?`, `codeLanguage?` (manual preview override), `pixelWidth?` / `pixelHeight?`, `colorHex?`, `fileCount?`, `fileNames?` (for search), `skippedTypes?` (badge), relationships `representations` (cascade) and `thumbnail` (cascade). `#Index` on `contentHash`, `lastCopiedAt`, `isFavorite`, `lastSourceAppBundleID`, `displayType`, `expiresAt`. Dedup uniqueness is enforced by `ClipboardStore`, not `#Unique` (SwiftData resolves `#Unique` conflicts by upserting, which would bypass the merge rules).
 - `PayloadRepresentation`, `RecordThumbnail` — §3.5.
 - `Tag` (UI: Collection) — `id`, `name`, `sortOrder`. `RecordTag` (`recordId`, `tagId`) with `#Unique`.
-- `AppProfile` — `bundleID` (`#Unique`), `captureMode`, `retentionMinutes?`, `sizeLimitMiB?`, `recognizeText`, `recordSourcePage`.
-- `FormatRule` — `id`, `appBundleID?` (nil = all apps), `typePattern`, `isPrefix`, `action`, `maxSizeMiB?`, `order`.
+- **Configuration lives in `UserDefaults`, not SwiftData** (`SettingsStore`): it is small, read on every capture, and must not depend on the history store opening. `AppProfile` and `FormatRule` are `Codable` values stored as JSON.
+- `AppProfile` — `bundleID` (unique by construction), `captureMode` (`save` / `dontSave` / `deleteAfter(minutes)`), `sizeLimitMiB?`, `recognizeText`, `recordSourcePage`.
+- `FormatRule` — `appBundleID?` (nil = all apps), `typePattern?`, `isPrefix`, `action`, `maxSizeMiB?`; list order is the tie-breaker.
 - `AppSettings` — window hotkey, pause / skip hotkeys, identity mode, retention, size limit, `showDockIcon`, `loginAtStart`, `pasteAfterRestore`, `ignoreRemoteClipboard`, `silentDefaultVerifiedOSBuild`, `pausedUntil?`, `pausedIndefinitely`, text recognition on/off + languages, window frame per display. Polling interval is fixed (250 ms).
 
 ### 7.3 Memory budgets
@@ -863,7 +864,8 @@ Full payload stays in `PayloadRepresentation` regardless of these caps.
 ### 7.5 Repository layout
 
 - `Packages/MemopilaCore` — Swift package with everything that does not need AppKit, SwiftData or Vision: privacy markers, app identity and per-app admission, format policy, file paths, MCS1 hashing, `SnapshotReader` behind a `PasteboardSource` protocol, text decoding and actions, source page parsing, retention and dedup planning, payload integrity, `CaptureCoordinator` and `IngestStaleGuard`. Builds and tests on Linux and macOS (`swift test --package-path Packages/MemopilaCore`).
-- `App/Memopila.xcodeproj` + `App/Memopila/` — the macOS app; the target uses a synchronized folder, so new source files need no project edits. AppKit/SwiftUI adapters (`GeneralPasteboardSource`, `PasteboardWriter`, panel, hotkeys) live here.
+- `Packages/MemopilaServices` — macOS-only package: SwiftData store (`ClipboardStore`, models, DTOs), pasteboard adapters (`GeneralPasteboardSource`, `PasteboardWriter`, an Objective-C exception boundary), ingest enrichment and thumbnails (ImageIO, PDFKit), text recognition (Vision). Tested on macOS (`swift test --package-path Packages/MemopilaServices`).
+- `App/Memopila.xcodeproj` + `App/Memopila/` — the macOS app (monitor, history model, panel, hotkeys, views, settings); the target uses a synchronized folder, so new source files need no project edits. Strings in `Localizable.xcstrings` (English, Russian).
 - `.github/workflows/ci.yml` — core tests on Linux (Swift container) and macOS, app build with Xcode on macOS.
 
 ---
@@ -934,7 +936,7 @@ Card context menu:
 In-window overlay (not the system Quick Look panel), with metadata: source app, source page (*Copied from example.com*), first / last copied, copy count, stored formats, skipped formats.
 
 - **Text:** up to 20 000 scalars.
-- **Code:** syntax highlighting when the text looks like code (content heuristics; source app is an editor or terminal as a hint). Language auto-detected; a language picker in the preview header overrides it and is saved as `codeLanguage`. Theme follows light/dark. Loaded lazily, only while the preview shows code; released 10 s after it closes (§7.3). Library chosen in Phase 5 against these requirements — candidates: Highlightr (highlight.js on JavaScriptCore; many languages, built-in auto-detect, heavier) and tree-sitter via SwiftTreeSitter (native and precise; one grammar per language, no auto-detect).
+- **Code:** syntax highlighting when the text looks like code (content heuristics; source app is an editor or terminal as a hint). Language auto-detected; a language picker in the preview header overrides it and is saved as `codeLanguage`. Theme follows light/dark. Loaded lazily, only while the preview shows code; released when it closes (§7.3). **Decision (Phase 5):** an own lightweight tokenizer in `MemopilaCore` (`CodeHighlighter`: detection plus keywords, strings, comments, numbers, keys, tags for 19 languages). Highlightr (JavaScriptCore + highlight.js) costs tens of MB and tree-sitter needs a grammar per language and has no detection; preview-grade coloring does not need either. Revisit if users ask for more precision.
 - **Image / PDF:** downsampled to the view size; recognized text panel with **Copy text** (§3.8).
 - **File:** QuickLook thumbnail, path, size, Reveal.
 - **Color:** swatch and hex.

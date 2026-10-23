@@ -46,7 +46,7 @@ enum AccessibilityBridge {
               let window, CFGetTypeID(window) == AXUIElementGetTypeID() else { return nil }
         var title: CFTypeRef?
         // The type check above makes this cast safe.
-        let element = unsafeBitCast(window, to: AXUIElement.self)
+        let element = unsafeDowncast(window, to: AXUIElement.self)
         guard AXUIElementCopyAttributeValue(element, "AXTitle" as CFString, &title) == .success,
               let title = title as? String else { return nil }
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
