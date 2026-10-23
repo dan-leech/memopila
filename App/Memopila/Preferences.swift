@@ -2,7 +2,7 @@ import Foundation
 
 /// Small settings kept in `UserDefaults` until the SwiftData store lands (PLAN §7.2 `AppSettings`).
 enum Preferences {
-    private static let defaults = UserDefaults.standard
+    private static var defaults: UserDefaults { .standard }
 
     private enum Key {
         static let shortcut = "hotKeyShortcut"

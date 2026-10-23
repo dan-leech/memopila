@@ -62,6 +62,6 @@ enum PasteboardAccess {
         sysctlbyname("kern.osversion", nil, &size, nil, 0)
         var buffer = [CChar](repeating: 0, count: max(size, 1))
         sysctlbyname("kern.osversion", &buffer, &size, nil, 0)
-        return String(cString: buffer)
+        return String(decoding: buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }, as: UTF8.self)
     }()
 }

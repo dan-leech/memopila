@@ -860,6 +860,12 @@ Full payload stays in `PayloadRepresentation` regardless of these caps.
 
 **Text decode helper (single path):** UTF-8 for UTF-8/plain; `public.utf16-plain-text` honors a BOM, else UTF-16LE (unit-tested). RTF/RTFD/HTML → plain text via `NSAttributedString` off the main actor, only when no plain-text representation exists. Undecodable → no text index for that representation; never fail capture. Caps apply to Unicode scalars of the decoded string.
 
+### 7.5 Repository layout
+
+- `Packages/MemopilaCore` — Swift package with everything that does not need AppKit, SwiftData or Vision: privacy markers, app identity and per-app admission, format policy, file paths, MCS1 hashing, `SnapshotReader` behind a `PasteboardSource` protocol, text decoding and actions, source page parsing, retention and dedup planning, payload integrity, `CaptureCoordinator` and `IngestStaleGuard`. Builds and tests on Linux and macOS (`swift test --package-path Packages/MemopilaCore`).
+- `App/Memopila.xcodeproj` + `App/Memopila/` — the macOS app; the target uses a synchronized folder, so new source files need no project edits. AppKit/SwiftUI adapters (`GeneralPasteboardSource`, `PasteboardWriter`, panel, hotkeys) live here.
+- `.github/workflows/ci.yml` — core tests on Linux (Swift container) and macOS, app build with Xcode on macOS.
+
 ---
 
 ## 8. UI
@@ -1028,6 +1034,7 @@ Menu: **Open Memopila** (shows the hotkey) · **Pause ▸** 5 minutes / 15 minut
 
 - One SSOT: link §3–§8 instead of restating invariants; put new race cases next to the owning contract.
 - Pasteboard tests use named pasteboards (`NSPasteboard(name:)` / `withUniqueName()`); since only the General pasteboard is gated, access-policy behavior is tested through an injected `PasteboardAccessPolicy` seam, plus manual checks on real OS versions.
+- Capture logic is tested in `MemopilaCore` against an in-memory `PasteboardSource` fake (no AppKit), so it runs on Linux CI as well; MCS1 golden values come from an independent implementation.
 - Do **not:** chase 100 % coverage; build mock/DI stacks for ceremony; add a custom blob store before a failed spike and a PLAN amendment.
 
 ---
