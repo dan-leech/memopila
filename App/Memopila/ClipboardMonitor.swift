@@ -27,6 +27,10 @@ final class ClipboardMonitor {
     /// A record was committed or merged.
     @ObservationIgnored var onSaved: ((UUID) -> Void)?
     @ObservationIgnored var panelIsKey: () -> Bool = { false }
+    @ObservationIgnored private let frontmostTracker = FrontmostTracker()
+    /// What was on the clipboard at launch was copied by an unknown app (§3.2 rule 4).
+    @ObservationIgnored private var launchChangeCount: Int?
+    @ObservationIgnored private var previousTick = Date()
 
     static let ownBundleID = Bundle.main.bundleIdentifier ?? "io.github.dan-leech.Memopila"
 
@@ -50,6 +54,7 @@ final class ClipboardMonitor {
     }
 
     func start() {
+        launchChangeCount = NSPasteboard.general.changeCount
         refreshAccess()
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
@@ -93,9 +98,11 @@ final class ClipboardMonitor {
             NSPasteboard.general.changeCount
         }
         if next != coordinator { coordinator = next }
+        let tickStart = previousTick
+        previousTick = Date()
         switch decision {
         case .startReader(let readerSeq):
-            startReader(readerSeq: readerSeq, saveAnyway: false)
+            startReader(readerSeq: readerSeq, saveAnyway: false, sourceSince: tickStart)
         case .resumed(let changeCount):
             persistPause()
             record("pause ended; change \(changeCount) skipped")
@@ -110,8 +117,8 @@ final class ClipboardMonitor {
 
     /// - Parameter expectedChangeCount: *Save anyway* reads only the change its red card shows;
     ///   any other count is treated as unstable.
-    private func startReader(readerSeq: Int, saveAnyway: Bool, expectedChangeCount: Int? = nil) {
-        let reader = SnapshotReader(context: captureContext(saveAnyway: saveAnyway))
+    private func startReader(readerSeq: Int, saveAnyway: Bool, expectedChangeCount: Int? = nil, sourceSince: Date? = nil) {
+        let reader = SnapshotReader(context: captureContext(saveAnyway: saveAnyway, sourceSince: sourceSince))
         let frontmost = NSWorkspace.shared.frontmostApplication
         let titleSource = AccessibilityBridge.isTrusted ? frontmost.map { ($0.processIdentifier, $0.bundleIdentifier) } : nil
         Task.detached(priority: .userInitiated) { [weak self] in
@@ -129,11 +136,17 @@ final class ClipboardMonitor {
         }
     }
 
-    private func captureContext(saveAnyway: Bool) -> CaptureContext {
-        CaptureContext(
+    private func captureContext(saveAnyway: Bool, sourceSince: Date?) -> CaptureContext {
+        var source = frontmostTracker.source(since: sourceSince ?? Date())
+        if let launchChangeCount, NSPasteboard.general.changeCount == launchChangeCount {
+            source = nil
+        } else {
+            launchChangeCount = nil
+        }
+        return CaptureContext(
             profiles: settings.profiles,
             formatPolicy: settings.formatPolicy,
-            frontmostBundleID: NSWorkspace.shared.frontmostApplication?.bundleIdentifier,
+            frontmostBundleID: source,
             panelIsKey: panelIsKey(),
             ownBundleID: Self.ownBundleID,
             ignoreRemoteClipboard: settings.ignoreRemoteClipboard,

@@ -13,12 +13,11 @@ struct HistoryView: View {
             HStack(spacing: 0) {
                 if model.settings.showSidebar {
                     SidebarView(model: model)
-                        .frame(width: 190)
+                        .frame(width: 168)
                     Divider()
                 }
                 VStack(spacing: 0) {
                     topBar
-                    Divider()
                     BannerStack(model: model)
                     HistoryGrid(model: model)
                 }
@@ -28,6 +27,8 @@ struct HistoryView: View {
         .overlay(alignment: .bottom) { ToastView(center: model.toasts) }
         .animation(.easeOut(duration: 0.15), value: model.toasts.current?.id)
         .animation(.easeOut(duration: 0.12), value: model.overlay)
+        // The title bar is transparent and its buttons hidden: content starts at the top edge, like Pasta.
+        .ignoresSafeArea()
         .frame(minWidth: 520, minHeight: 360)
         .background(.regularMaterial)
         .onAppear {
@@ -39,16 +40,7 @@ struct HistoryView: View {
 
     private var topBar: some View {
         @Bindable var history = model.history
-        return HStack(spacing: 10) {
-            Button {
-                model.settings.showSidebar.toggle()
-            } label: {
-                Image(systemName: "sidebar.left")
-            }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Show or hide the sidebar (⌃⌘S)"))
-            .accessibilityLabel(Text("Sidebar"))
-
+        return HStack(spacing: 12) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
             TextField("Search", text: $history.search)
                 .textFieldStyle(.plain)
@@ -63,25 +55,81 @@ struct HistoryView: View {
             }
 
             Button {
+                model.settings.showSidebar.toggle()
+            } label: {
+                Image(systemName: "sidebar.left").foregroundStyle(.secondary)
+            }
+            .help(String(localized: "Show or hide the sidebar (⌥⌘S)"))
+            .accessibilityLabel(Text("Sidebar"))
+
+            Button {
                 model.isPinned.toggle()
             } label: {
                 Image(systemName: model.isPinned ? "pin.fill" : "pin")
+                    .foregroundStyle(model.isPinned ? Color.accentColor : Color.secondary)
             }
-            .buttonStyle(.borderless)
             .help(model.isPinned ? String(localized: "Unpin: close after copying and on focus loss") : String(localized: "Pin: keep the window open"))
             .accessibilityLabel(model.isPinned ? Text("Unpin window") : Text("Pin window"))
 
-            Button {
-                model.openSettings()
+            Menu {
+                PanelMenu(model: model)
             } label: {
-                Image(systemName: "gearshape")
+                Image(systemName: "gearshape").foregroundStyle(.secondary)
             }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Settings (⌘,)"))
-            .accessibilityLabel(Text("Settings"))
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .accessibilityLabel(Text("Menu"))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .buttonStyle(.borderless)
+        .font(.system(size: 15))
+        .padding(.leading, 16)
+        .padding(.trailing, 14)
+        .padding(.top, 12)
+        .padding(.bottom, 10)
+    }
+}
+
+/// The gear menu, as in Pasta: capture controls, window options, Settings, Quit.
+private struct PanelMenu: View {
+    let model: AppModel
+
+    var body: some View {
+        let monitor = model.monitor
+        if monitor.isPaused {
+            Button("Resume Capture") { monitor.resume() }
+                .keyboardShortcut(".")
+        } else {
+            Button("Pause Capture") { monitor.pauseIndefinitely() }
+                .keyboardShortcut(".")
+        }
+        if monitor.skipArmed {
+            Button("Cancel Skip") { monitor.toggleSkip() }
+        } else {
+            Button("Skip Next Copy") { monitor.toggleSkip() }
+        }
+        Button("Clear History…") { model.present(.confirmClear) }
+            .disabled(monitor.isBusy)
+        Divider()
+        if model.isPinned {
+            Button("Unpin Window") { model.isPinned = false }
+                .keyboardShortcut("p")
+        } else {
+            Button("Pin Window") { model.isPinned = true }
+                .keyboardShortcut("p")
+        }
+        if model.settings.showSidebar {
+            Button("Hide Sidebar") { model.settings.showSidebar = false }
+                .keyboardShortcut("s", modifiers: [.option, .command])
+        } else {
+            Button("Show Sidebar") { model.settings.showSidebar = true }
+                .keyboardShortcut("s", modifiers: [.option, .command])
+        }
+        Divider()
+        Button("Settings…") { model.openSettings() }
+            .keyboardShortcut(",")
+        Button("Quit Memopila") { NSApp.terminate(nil) }
+            .keyboardShortcut("q")
     }
 }
 
@@ -120,24 +168,28 @@ private struct SidebarView: View {
                     } icon: {
                         Image(systemName: "folder")
                     }
-                    .badge(collection.count)
                     .tag(HistoryScope.collection(collection.id))
                     .contextMenu {
                         Button("Rename…") { model.present(.renameCollection(collection.id)) }
                         Button("Delete Collection", role: .destructive) { model.deleteCollection(collection.id) }
                     }
                 }
-                Button {
-                    model.present(.newCollection(addingRecord: nil))
-                } label: {
-                    Label("New Collection", systemImage: "plus")
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.secondary)
             }
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            Button {
+                model.present(.newCollection(addingRecord: nil))
+            } label: {
+                Label("New Collection", systemImage: "plus")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.borderless)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+        }
     }
 
     private func appRow(_ app: AppSummary) -> some View {
@@ -151,7 +203,6 @@ private struct SidebarView: View {
                 Image(systemName: "app")
             }
         }
-        .badge(app.count)
         .tag(HistoryScope.app(app.bundleID))
         .contextMenu {
             ActionMenuItems(items: ActionRegistry.appActions(
@@ -285,6 +336,7 @@ private struct HistoryGrid: View {
                                 card: card,
                                 index: index,
                                 isSelected: card.id == model.history.selectedID,
+                                showsShortcut: model.isCommandHeld,
                                 thumbnails: model.thumbnails
                             )
                             .frame(height: cardHeight)
@@ -394,6 +446,13 @@ private struct OverlayHost: View {
             } cancel: {
                 model.present(nil)
             }
+        case .confirmClear:
+            ConfirmClearOverlay {
+                model.present(nil)
+                model.clear(.nonFavorites)
+            } cancel: {
+                model.present(nil)
+            }
         }
     }
 }
@@ -450,6 +509,30 @@ private struct NameOverlay: View {
         .padding(18)
         .frame(width: 340)
         .onAppear { focused = true }
+    }
+}
+
+/// Clear from the gear menu (§3.2 Clear History scopes): non-favorites only; Settings → Storage
+/// also offers clearing everything.
+private struct ConfirmClearOverlay: View {
+    let confirm: () -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Delete all items except favorites?").font(.headline)
+            Text("This can't be undone.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Cancel", action: cancel)
+                Button("Clear History", role: .destructive, action: confirm)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(18)
+        .frame(width: 360)
     }
 }
 

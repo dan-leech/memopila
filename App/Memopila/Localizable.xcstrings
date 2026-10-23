@@ -1453,6 +1453,16 @@
         }
       }
     },
+    "Hide Sidebar": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скрыть боковую панель"
+          }
+        }
+      }
+    },
     "History": {
       "localizations": {
         "ru": {
@@ -1719,6 +1729,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Чтобы вести историю, Memopila нужно читать буфер обмена в фоне."
+          }
+        }
+      }
+    },
+    "Menu": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Меню"
           }
         }
       }
@@ -2073,6 +2093,16 @@
         }
       }
     },
+    "Pause Capture": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приостановить захват"
+          }
+        }
+      }
+    },
     "Pause and Skip": {
       "localizations": {
         "ru": {
@@ -2109,6 +2139,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Пауза до %@"
+          }
+        }
+      }
+    },
+    "Pin Window": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Закрепить окно"
           }
         }
       }
@@ -2613,12 +2653,22 @@
         }
       }
     },
-    "Show or hide the sidebar (⌃⌘S)": {
+    "Show Sidebar": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Показать или скрыть боковую панель (⌃⌘S)"
+            "value": "Показать боковую панель"
+          }
+        }
+      }
+    },
+    "Show or hide the sidebar (⌥⌘S)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать или скрыть боковую панель (⌥⌘S)"
           }
         }
       }
@@ -2689,16 +2739,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Пропускается"
-          }
-        }
-      }
-    },
-    "Skipped formats: %@": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Пропущенные форматы: %@"
           }
         }
       }
@@ -3089,6 +3129,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Неизвестное приложение"
+          }
+        }
+      }
+    },
+    "Unpin Window": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открепить окно"
           }
         }
       }

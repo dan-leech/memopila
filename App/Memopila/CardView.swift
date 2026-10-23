@@ -8,6 +8,8 @@ struct CardView: View {
     let card: HistoryCard
     let index: Int
     let isSelected: Bool
+    /// ⌘ is held: show the card's ⌘1…⌘9 shortcut (§8.3).
+    let showsShortcut: Bool
     let thumbnails: ThumbnailCache
     @State private var image: NSImage?
     @State private var fileStatus: ThumbnailCache.FileStatus?
@@ -16,32 +18,33 @@ struct CardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            if card.customTitle != nil || index < 9 {
-                HStack(alignment: .firstTextBaseline) {
-                    if let title = card.customTitle {
-                        Text(title).font(.headline).lineLimit(1)
-                    }
-                    Spacer(minLength: 4)
-                    if index < 9 {
-                        Text("⌘\(index + 1)")
-                            .font(.caption2.monospaced())
-                            .foregroundStyle(.tertiary)
-                            .accessibilityHidden(true)
-                    }
-                }
+            if let title = card.customTitle {
+                Text(title).font(.headline).lineLimit(1)
             }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .clipped()
             footer
         }
-        .padding(10)
+        .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(RoundedRectangle(cornerRadius: 10).fill(.background.opacity(0.6)))
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(isSelected ? Color.accentColor : Color.secondary.opacity(0.2), lineWidth: isSelected ? 3 : 1)
-        )
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
+        .overlay {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor, lineWidth: 3)
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if showsShortcut, index < 9 {
+                Text("⌘\(index + 1)")
+                    .font(.caption.monospaced().bold())
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(.thickMaterial, in: Capsule())
+                    .padding(6)
+                    .accessibilityHidden(true)
+            }
+        }
         .opacity(isUnavailable ? 0.55 : 1)
         .contentShape(Rectangle())
         .help(card.sourceURL.map { String(localized: "Copied from \($0)") } ?? "")
@@ -94,7 +97,7 @@ struct CardView: View {
             }
         case .url:
             Text(card.preview)
-                .font(.system(.callout, design: .monospaced))
+                .font(.system(size: 13, design: .monospaced))
                 .foregroundStyle(Color.accentColor)
                 .lineLimit(6)
         case .text, .richText, .mixed:
@@ -102,7 +105,7 @@ struct CardView: View {
                 placeholder(card.displayType.systemImage)
             } else {
                 Text(card.preview)
-                    .font(.system(.callout, design: .monospaced))
+                    .font(.system(size: 13, design: .monospaced))
                     .lineLimit(8)
             }
         }
@@ -146,12 +149,6 @@ struct CardView: View {
         }
         if let expires = card.expiresAt, expires.timeIntervalSinceNow < 3_600 {
             Image(systemName: "clock").help(String(localized: "Deleted \(expires.formatted(.relative(presentation: .named)))"))
-        }
-        let skipped = card.skippedTypes.filter { !PasteboardType($0).isRasterImage }
-        if !skipped.isEmpty {
-            Text("+\(skipped.count)")
-                .font(.caption2.bold())
-                .help(String(localized: "Skipped formats: \(skipped.joined(separator: ", "))"))
         }
     }
 

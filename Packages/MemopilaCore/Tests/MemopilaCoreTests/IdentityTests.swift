@@ -66,6 +66,11 @@ struct AppIdentityTests {
         #expect(identity == AppIdentity(bundleID: ownBundleID, source: .frontmost))
     }
 
+    @Test func memopilaFrontmostWithoutItsPanelIsUnknown() {
+        let identity = AppIdentity.resolve(marker: .absent, frontmostBundleID: ownBundleID, panelIsKey: false, ownBundleID: ownBundleID)
+        #expect(identity == .unknown)
+    }
+
     @Test func absentMarkerAndNoFrontmostIsUnknown() {
         #expect(AppIdentity.resolve(marker: .absent, frontmostBundleID: nil, panelIsKey: false, ownBundleID: ownBundleID) == .unknown)
     }

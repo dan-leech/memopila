@@ -31,7 +31,11 @@ struct MenuBarMenu: View {
                 Button("Until I Resume") { monitor.pauseIndefinitely() }
             }
         }
-        Button(monitor.skipArmed ? "Cancel Skip" : "Skip Next Copy") { monitor.toggleSkip() }
+        if monitor.skipArmed {
+            Button("Cancel Skip") { monitor.toggleSkip() }
+        } else {
+            Button("Skip Next Copy") { monitor.toggleSkip() }
+        }
         Divider()
         Button("Settings…") {
             model.openSettingsAction = openSettings
@@ -39,6 +43,7 @@ struct MenuBarMenu: View {
         }
         .keyboardShortcut(",")
         Button("Diagnostics…") {
+            model.panel.close()
             NSApp.activate()
             openWindow(id: DiagnosticsView.windowID)
         }

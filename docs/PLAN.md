@@ -168,7 +168,7 @@ All observation for one change — types, markers, app identity, per-app setting
 | Oversize | Yes | Red *Larger than N MiB* (**Save anyway**, **Raise limit for app…**) |
 | Declared representation read fails (nil, error, ObjC exception) | Yes (no retry loop) | Red *Read failed* (**Save anyway**) |
 | Unstable `changeCount` / post-read gate fails | No | Unchanged |
-| Store `committed` / `merged` | Yes | Normal card (with *+N skipped formats* badge if user-relevant types were skipped) |
+| Store `committed` / `merged` | Yes | Normal card (skipped formats listed in the preview and the **<App> ▸** menu) |
 | Store `rejected` (deterministic, e.g. quota) | Yes | Red *Not saved: reason* |
 | Store `failed` twice (§3.2 coordination rule 3) | Yes | Red *Save failed: reason* (**Save anyway**) |
 | Store `dropped(stale)` (Clear/Delete/Edit raced, rule 5) | Yes | None |
@@ -279,7 +279,7 @@ The policy decides, **from the declared `types` only**, which representations ar
 
 - `ClipboardMonitor` keeps `CurrentClipboard` for the latest stable change **in memory only** (never persisted): `changeCount`, status, app identity, declared type names, known size (lower bound), optional thumbnail.
 - Status → UI:
-  - `saved(recordID)` → normal card (first in History by recency); badge *+N skipped formats* (tooltip lists them) when types other than redundant images were skipped.
+  - `saved(recordID)` → normal card (first in History by recency). Skipped formats are listed in the preview metadata and under **<App> ▸ Keep Skipped Formats**; no card badge (apps such as Xcode always add private types, so a badge was noise).
   - `notSaved(reason)` → **red card** first in History: reason (*Larger than 32 MiB*, *No supported formats*, *Read failed*, *Save failed: …*, *Not saved: quota*), source app, type list, known size.
   - `privacySkipped`, `appSkipped`, `paused`, `skipped` → no card (content is never shown; pause uses the banner).
 - The red card is replaced as soon as the clipboard changes.
@@ -606,7 +606,7 @@ Fields: `firstCopiedAt`, `lastCopiedAt`, `copyCount`, `lastSourceAppBundleID`, `
 
 1. `org.nspasteboard.source` yields a valid bundle ID (per-item algorithm below) → that ID (*marker*).
 2. Marker present but empty / invalid / unreadable / conflicting → **Unknown** (never frontmost).
-3. Marker absent → the frontmost application when the change was detected (*frontmost*, best effort); Memopila itself while its panel is key. Not available → Unknown.
+3. Marker absent → the frontmost application when the change was detected (*frontmost*, best effort); Memopila itself only while its panel is key. Not available → Unknown. Refinements: an app that stopped being frontmost since the previous poll is remembered, and the macOS screenshot agents (`com.apple.screencaptureui`, `com.apple.screenshot.launcher`) map to the Screenshot app; Memopila frontmost without its panel key (Settings window, launched from Xcode) → Unknown; the content already on the clipboard at launch → Unknown.
 
 Many apps (browsers, terminals, editors) do not write the marker **(spike: survey common apps)**, so frontmost is the usual source in practice. Neither is authenticated: an app can claim another bundle ID, and a background copy or a copy made just before switching apps (within one 250 ms poll) can be attributed to the wrong app.
 
@@ -879,14 +879,14 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 - Non-activating `NSPanel` that can become key, so the previous app stays frontmost and keyboard input still reaches search and grid **(spike: text input, Esc, focus, full-screen spaces, multi-display; fallback: activating window + remembered previous app)**.
 - Floating level; `collectionBehavior` `.canJoinAllSpaces` + `.fullScreenAuxiliary` (shows over full-screen apps).
 - Opens on the screen with the mouse pointer; size and position remembered per display (default 720 × 490 pt, min 520 × 360). Search is focused and empty on every open; selection on the first card.
-- Closes on: Esc (empty search), hotkey again, and — unless **pinned** — Restore and focus loss.
+- Closes on: Esc (empty search), hotkey again, and — unless **pinned** — Restore and focus loss. Opening another Memopila window (Settings, Diagnostics) always hides it first, pinned or not, so the floating panel never covers that window (as in Pasta).
 - **Pin** (⚓ button, as in Pasta): the window stays on screen when focus moves to another app and after Restore, until unpinned or closed with Esc / hotkey.
 - Follows system appearance; standard materials (Liquid Glass on 26+ comes from the SDK; 15.x gets the classic look from the same controls).
 
 ### 8.2 Layout
 
-- **Sidebar** (toggle button, ⌃⌘S): **History**, **Favorites**; **Apps** — source apps with icons, most recent first (right-click → **<App> ▸** quick actions, §5.1); **Types** — only types present (Text, Rich text, URL, Image, PDF, Color, File); **Collections** with **+ New Collection**. A selection filters the grid; search applies inside it.
-- **Top bar:** search field, sidebar toggle, pin, settings.
+- **Sidebar** (toggle button, ⌥⌘S as in Pasta; ⌃⌘S also works): **History**, **Favorites**; **Apps** — source apps with icons, most recent first (right-click → **<App> ▸** quick actions, §5.1); **Types** — only types present (Text, Rich text, URL, Image, PDF, Color, File); **Collections**; **+ New Collection** pinned at the bottom. No item counts (as in Pasta). A selection filters the grid; search applies inside it.
+- **Top bar** at the window's top edge (transparent title bar, no traffic lights): search field, then sidebar toggle, pin and a gear menu as in Pasta — Pause / Resume (⌘.), Skip Next Copy, Clear History…, Pin Window (⌘P), Hide Sidebar (⌥⌘S), Settings… (⌘,), Quit.
 - **Grid:** adaptive columns (3 at default width), cards ≈ 4:3, selected card with a 3 pt accent border.
 - **Card content:**
   - Text — `customTitle` (if set) as a heading, then the first lines, monospaced (no syntax colors on cards).
@@ -894,7 +894,7 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
   - Image / PDF — thumbnail centered, aspect-fit, on a checkerboard background (transparency).
   - Color — swatch + hex.
   - File — QuickLook thumbnail or icon + file name; *Unavailable* dimmed when missing.
-- **Card footer:** source app icon (type icon when unknown) + metric (*N characters*, *W × H px*, *N files · 12.3 MB*, *#RRGGBB*) + relative time (*Now*, *2m*, *3h*, *4d*); badges: heart (favorite), pencil (edited), **T** (text found in image), clock (expires soon), *+N skipped formats* (§3.2.3). Tooltip: source page (§5.2).
+- **Card footer:** source app icon (type icon when unknown) + metric (*N characters*, *W × H px*, *N files · 12.3 MB*, *#RRGGBB*) + relative time (*Now*, *2m*, *3h*, *4d*); badges: heart (favorite), pencil (edited), **T** (text found in image), clock (expires soon). Tooltip: source page (§5.2). Cards have no border except the selection; ⌘1…⌘9 hints appear while ⌘ is held.
 - **Red Current card** first in History (§3.2.3).
 - **Banners** above the grid: Enable capture (onboarding), Capture paused (access policy or user pause, with Resume), storage errors.
 - Empty states for History, filters and search.
@@ -915,7 +915,9 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 | ⌘D | Toggle favorite |
 | ⌘⌫ | Delete selected (favorites ask for confirmation) |
 | ⌘F | Focus search |
-| ⌃⌘S | Toggle sidebar |
+| ⌥⌘S (or ⌃⌘S) | Toggle sidebar |
+| ⌘P | Pin / unpin the window |
+| ⌘. | Pause / resume capture |
 | Esc | Clear search → close |
 | ⌘, | Settings |
 

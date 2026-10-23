@@ -6,6 +6,7 @@ import SwiftUI
 final class HistoryPanel: NSPanel {
     /// Sees every key press before the responder chain; `true` = handled (§8.3).
     var keyHandler: ((NSEvent) -> Bool)?
+    var onModifiersChanged: ((NSEvent.ModifierFlags) -> Void)?
     var onCancel: (() -> Void)?
 
     init() {
@@ -35,6 +36,7 @@ final class HistoryPanel: NSPanel {
 
     override func sendEvent(_ event: NSEvent) {
         if event.type == .keyDown, let keyHandler, keyHandler(event) { return }
+        if event.type == .flagsChanged { onModifiersChanged?(event.modifierFlags) }
         super.sendEvent(event)
     }
 
@@ -117,6 +119,12 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.keyHandler = { [weak self] event in
             MainActor.assumeIsolated { self?.handleKey(event) ?? false }
         }
+        panel.onModifiersChanged = { [weak self] flags in
+            let commandOnly = flags.intersection([.command, .option, .control, .shift]) == .command
+            MainActor.assumeIsolated {
+                if self?.model.isCommandHeld != commandOnly { self?.model.isCommandHeld = commandOnly }
+            }
+        }
         panel.contentView = NSHostingView(rootView: HistoryView(model: model))
         return panel
     }
@@ -186,6 +194,14 @@ final class PanelController: NSObject, NSWindowDelegate {
             if key.code == kVK_Escape { model.present(nil); return true }
             if key.isReturn { model.delete(ids, confirmed: true); return true }
             return false
+        case .confirmClear:
+            if key.code == kVK_Escape { model.present(nil); return true }
+            if key.isReturn {
+                model.present(nil)
+                model.clear(.nonFavorites)
+                return true
+            }
+            return false
         case .rename, .newCollection, .renameCollection:
             if key.code == kVK_Escape { model.present(nil); return true }
             return false
@@ -209,7 +225,8 @@ final class PanelController: NSObject, NSWindowDelegate {
             default: return false
             }
         }
-        if flags == [.control, .command], key.letter == "s" {
+        // ⌥⌘S as in Pasta; ⌃⌘S from the plan keeps working.
+        if flags == [.option, .command] || flags == [.control, .command], key.code == kVK_ANSI_S {
             model.settings.showSidebar.toggle()
             return true
         }
@@ -233,6 +250,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         case ",": model.openSettings()
         case "w": close()
         case "c": model.restoreSelected()
+        case "p": model.isPinned.toggle()
+        case ".": model.monitor.togglePause()
         default: return false
         }
         return true
@@ -336,6 +355,6 @@ struct KeyPress {
     private static let ansiLetters: [Int: Character] = [
         kVK_ANSI_A: "a", kVK_ANSI_C: "c", kVK_ANSI_D: "d", kVK_ANSI_E: "e", kVK_ANSI_F: "f", kVK_ANSI_K: "k",
         kVK_ANSI_R: "r", kVK_ANSI_S: "s", kVK_ANSI_V: "v", kVK_ANSI_W: "w", kVK_ANSI_X: "x", kVK_ANSI_Y: "y",
-        kVK_ANSI_Z: "z", kVK_ANSI_Comma: ",",
+        kVK_ANSI_Z: "z", kVK_ANSI_P: "p", kVK_ANSI_Comma: ",", kVK_ANSI_Period: ".",
     ]
 }

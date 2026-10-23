@@ -13,6 +13,7 @@ enum PanelOverlay: Equatable {
     case newCollection(addingRecord: UUID?)
     case renameCollection(UUID)
     case confirmDelete([UUID])
+    case confirmClear
 }
 
 enum RestoreVariant: Equatable {
@@ -50,6 +51,8 @@ final class AppModel {
     private(set) var actionsState: ActionsPanelState?
     private(set) var editorState: EditorState?
     var isPinned = false
+    /// ⌘ is held in the panel: cards show their ⌘1…⌘9 shortcuts.
+    var isCommandHeld = false
     /// Bumped whenever search should take focus (open, ⌘F, overlay closed).
     private(set) var focusSearchToken = 0
     private(set) var hotKeyErrors: [HotKeyRole: String] = [:]
@@ -185,6 +188,7 @@ final class AppModel {
 
     func panelDidClose() {
         present(nil)
+        isCommandHeld = false
         history.deactivate()
         purgeTask?.cancel()
         purgeTask = Task { [weak self] in
@@ -584,10 +588,11 @@ final class AppModel {
 
     // MARK: Settings window
 
+    /// Other windows never open under the floating panel: it hides first, pinned or not, as Pasta does.
     func openSettings(_ tab: SettingsTab? = nil, app: String? = nil) {
         if let tab { settingsTab = tab }
         if let app { settingsApp = app }
-        if !isPinned { panel.close() }
+        panel.close()
         NSApp.activate()
         if let openSettingsAction { openSettingsAction() }
     }

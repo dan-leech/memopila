@@ -82,6 +82,8 @@ public struct AppIdentity: Sendable, Equatable {
     /// - Parameters:
     ///   - frontmostBundleID: frontmost application when the change was detected.
     ///   - panelIsKey: Memopila's own panel is key, so its own copies are attributed to Memopila.
+    ///     Otherwise Memopila being frontmost (its Settings window, a launch from Xcode) says
+    ///     nothing about who copied, so the identity is unknown.
     public static func resolve(
         marker: SourceMarker,
         frontmostBundleID: String?,
@@ -96,6 +98,7 @@ public struct AppIdentity: Sendable, Equatable {
         case .absent:
             let candidate = panelIsKey ? ownBundleID : frontmostBundleID
             guard let candidate, BundleIdentifier.isValid(candidate) else { return .unknown }
+            if candidate == ownBundleID, !panelIsKey { return .unknown }
             return AppIdentity(bundleID: candidate, source: .frontmost)
         }
     }

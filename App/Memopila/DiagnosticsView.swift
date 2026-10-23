@@ -36,8 +36,10 @@ struct DiagnosticsView: View {
                     Button("changeCount") { probe("changeCount") { "\(NSPasteboard.general.changeCount)" } }
                     Button("types") {
                         probe("types") {
+                            // Type names only: they are metadata, never clipboard content.
                             let types = NSPasteboard.general.pasteboardItems?.map { $0.types.map(\.rawValue) } ?? []
-                            return "\(types.count) item(s), \(types.joined().count) type(s)"
+                            let list = types.enumerated().map { "item \($0.offset + 1): \($0.element.joined(separator: ", "))" }
+                            return "\(types.count) item(s); " + list.joined(separator: "; ")
                         }
                     }
                     Button("Read content") {
