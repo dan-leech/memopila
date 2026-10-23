@@ -142,7 +142,7 @@ final class RecordTag {
 }
 
 enum StoreSchema {
-    static let models: [any PersistentModel.Type] = [
-        ClipboardRecord.self, PayloadRepresentation.self, RecordThumbnail.self, CollectionModel.self, RecordTag.self,
-    ]
+    static var models: [any PersistentModel.Type] {
+        [ClipboardRecord.self, PayloadRepresentation.self, RecordThumbnail.self, CollectionModel.self, RecordTag.self]
+    }
 }

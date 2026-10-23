@@ -12,7 +12,7 @@ public enum IdentityMode: String, Sendable, Equatable, Codable {
 }
 
 /// Settings that apply to one change after resolving its app.
-public struct ResolvedAppSettings: Sendable, Equatable {
+public struct ResolvedAppSettings: Sendable, Equatable, Codable {
     public var captureMode: CaptureMode
     public var sizeLimitMiB: Int?
     public var recognizeText: Bool
@@ -32,7 +32,9 @@ public struct ResolvedAppSettings: Sendable, Equatable {
     }
 }
 
-public struct AppProfile: Sendable, Equatable {
+public struct AppProfile: Sendable, Equatable, Codable, Identifiable {
+    public var id: String { bundleID }
+
     public var bundleID: String
     public var settings: ResolvedAppSettings
 

@@ -456,12 +456,14 @@ public actor ClipboardStore {
 
     // MARK: - Helpers
 
-    private static let cardProperties: [PartialKeyPath<ClipboardRecord>] = [
+    private static var cardProperties: [PartialKeyPath<ClipboardRecord>] {
+        [
         \.id, \.displayTypeRaw, \.cardPreview, \.customTitle, \.textLength, \.pixelWidth, \.pixelHeight,
         \.filePaths, \.colorHex, \.payloadSizeBytes, \.firstCopiedAt, \.lastCopiedAt, \.copyCount, \.isFavorite,
         \.lastSourceAppBundleID, \.lastSourceAppName, \.sourceURL, \.editedAt, \.expiresAt, \.ocrStateRaw,
         \.skippedTypes, \.hasThumbnail, \.codeLanguage,
-    ]
+        ]
+    }
 
     private static func card(_ record: ClipboardRecord) -> HistoryCard {
         HistoryCard(
