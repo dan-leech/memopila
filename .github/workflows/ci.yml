@@ -36,6 +36,13 @@ jobs:
           ls -d /Applications/Xcode*.app
       - run: swift test --package-path Packages/MemopilaCore
 
+  services-macos:
+    name: Services (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: swift test --package-path Packages/MemopilaServices
+
   app-macos:
     name: App (macOS)
     runs-on: macos-latest
