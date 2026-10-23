@@ -43,6 +43,7 @@ struct HistoryView: View {
         .frame(minWidth: 520, minHeight: 360)
         .background(.regularMaterial)
         .onAppear { searchFocused = true }
+        .onChange(of: model.openCount) { _, _ in searchFocused = true }
         .onChange(of: model.searchText) { _, _ in model.selectedID = model.filteredHistory.first?.id }
     }
 

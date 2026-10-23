@@ -16,6 +16,8 @@ final class AppModel {
     var searchText = ""
     var selectedID: HistoryEntry.ID?
     var isPinned = false
+    /// Bumped on every open so the panel re-focuses search.
+    private(set) var openCount = 0
 
     init() {
         shortcut = Preferences.shortcut ?? .defaultShortcut
@@ -61,6 +63,7 @@ final class AppModel {
     func panelWillShow() {
         searchText = ""
         selectedID = monitor.history.first?.id
+        openCount += 1
     }
 
     // MARK: Hotkey (§2): the new combination is registered while the old one stays active.

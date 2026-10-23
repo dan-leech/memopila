@@ -48,17 +48,19 @@ private struct GeneralSettings: View {
     private func startRecording() {
         isRecording = true
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            MainActor.assumeIsolated { () -> NSEvent? in
-                if event.keyCode == 53 {
-                    stopRecording()
-                    return nil
-                }
-                guard let shortcut = HotKeyCenter.Shortcut(event: event) else { return nil }
-                model.setShortcut(shortcut)
-                stopRecording()
-                return nil
-            }
+            MainActor.assumeIsolated { record(event) }
+            return nil
         }
+    }
+
+    private func record(_ event: NSEvent) {
+        if event.keyCode == 53 {
+            stopRecording()
+            return
+        }
+        guard let shortcut = HotKeyCenter.Shortcut(event: event) else { return }
+        model.setShortcut(shortcut)
+        stopRecording()
     }
 
     private func stopRecording() {
