@@ -49,6 +49,8 @@ public struct RecordDetails: Sendable, Equatable {
     public let card: HistoryCard
     public let text: String?
     public let recognizedText: String?
+    /// Where text recognition stands for an image or PDF (§3.8): pending, done, no text, failed or off.
+    public let recognitionState: RecognitionState
     public let storedTypes: [String]
     public let sourceWindowTitle: String?
     public let collectionIDs: Set<UUID>

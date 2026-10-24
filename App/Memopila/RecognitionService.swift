@@ -11,8 +11,8 @@ final class RecognitionService {
     private var loop: Task<Void, Never>?
     private var pausedUntil: Date?
     private let logger = Logger(subsystem: "io.github.dan-leech.Memopila", category: "recognition")
-    /// A record's recognized text changed.
-    var onUpdate: ((UUID) -> Void)?
+    /// A record's recognition finished: done, no text or failed.
+    var onUpdate: ((UUID, RecognitionState) -> Void)?
 
     init(store: ClipboardStore, settings: SettingsStore) {
         self.store = store
@@ -70,7 +70,7 @@ final class RecognitionService {
                 // The store is failing; try again on the next wake instead of spinning.
                 return
             }
-            if state == .done { onUpdate?(id) }
+            onUpdate?(id, state)
             if failures >= 5 { return }
         }
     }

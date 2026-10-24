@@ -172,6 +172,7 @@ public actor ClipboardStore {
             card: Self.card(record),
             text: text,
             recognizedText: record.ocrText,
+            recognitionState: RecognitionState(rawValue: record.ocrStateRaw) ?? .off,
             storedTypes: rows.map(\.uti),
             sourceWindowTitle: record.sourceWindowTitle,
             collectionIDs: Set(tags.map(\.collectionID))

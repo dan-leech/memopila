@@ -47,7 +47,13 @@ struct RecordView: View {
     @State private var recognizedText = TextSelection()
     @State private var newCollectionName = ""
     @State private var showsChanges = false
+    @State private var isNamingCollection = false
+    @FocusState private var collectionNameFocused: Bool
+    @State private var dragStartHeight: Double?
     @AppStorage(RecordView.inspectorKey) private var showsInspector = true
+    @AppStorage("recordRecognizedTextShown") private var showsRecognizedText = true
+    @AppStorage("recordRecognizedTextHeight") private var recognizedTextHeight = 170.0
+    @AppStorage("recordDetailsExpanded") private var showsDetails = false
 
     static let inspectorKey = "recordInspectorShown"
 
@@ -75,6 +81,11 @@ struct RecordView: View {
         .frame(minWidth: 640, maxWidth: .infinity, minHeight: 380, maxHeight: .infinity)
         .animation(.easeOut(duration: 0.15), value: showsInspector)
         .task(id: state.id) { await load() }
+        // Recognition finished while the record is open: its text appears under the image.
+        .onChange(of: model.recognitionTick) { _, _ in
+            Task { details = await model.details(state.id, maxTextScalars: 0) }
+        }
+        .onChange(of: state.language) { _, value in model.setCodeLanguage(state.id, value.stored) }
         .sheet(isPresented: $showsChanges) {
             ChangesSheet(original: state.initialText, edited: state.currentText() ?? state.initialText) { model.saveItem() }
         }
@@ -220,11 +231,19 @@ struct RecordView: View {
                 if !state.isLoaded, state.error == nil { ProgressView().controlSize(.small) }
             }
         } else if isImage {
-            // Zoom with ⌘+ / ⌘− / ⌘0, a pinch or the toolbar; scroll when larger than the window.
-            if let image {
-                ZoomableImage(image: image, zoom: state.imageZoom)
-            } else {
-                ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
+            GeometryReader { proxy in
+                VStack(spacing: 0) {
+                    // Zoom with ⌘+ / ⌘− / ⌘0, a pinch or the toolbar; scroll when larger than the window.
+                    Group {
+                        if let image {
+                            ZoomableImage(image: image, zoom: state.imageZoom)
+                        } else {
+                            ProgressView().controlSize(.small)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    recognizedTextPane(availableHeight: proxy.size.height)
+                }
             }
         } else {
             Group {
@@ -270,29 +289,18 @@ struct RecordView: View {
                         }
                         .help(String(localized: "Shown on the card and found by search; saved when you leave the field"))
                 }
+                Divider()
                 inspectorSection(String(localized: "Source")) { source }
+                Divider()
                 inspectorSection(String(localized: "Collections")) { collections }
-                if state.hasText, card.displayType != .url {
-                    inspectorSection(String(localized: "Highlighting")) { languagePicker }
-                }
-                if let text = details?.recognizedText {
-                    inspectorSection(String(localized: "Text in Image")) {
-                        TextPane(isEditable: false, font: .systemFont(ofSize: 12)) { textView in
-                            recognizedText.attach(textView, text: text)
-                        } onSelectionChange: {
-                            recognizedText.update()
-                        }
-                        .frame(height: 160)
-                        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
-                        Button(recognizedText.hasSelection ? String(localized: "Copy Selected Text") : String(localized: "Copy All Text")) {
-                            model.copyNewText(recognizedText.selectedOrAll ?? text, from: state.id)
-                        }
-                        .controlSize(.small)
-                        .help(String(localized: "The text goes to the clipboard and appears in history as a new item"))
-                    }
-                }
                 if let details {
-                    inspectorSection(String(localized: "Details")) { metadata(details) }
+                    Divider()
+                    DisclosureGroup(isExpanded: $showsDetails) {
+                        metadata(details).padding(.top, 6)
+                    } label: {
+                        Text("Details").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    }
+                    .help(String(localized: "When it was copied, how often, its size and formats"))
                 }
             }
             .padding(12)
@@ -337,45 +345,173 @@ struct RecordView: View {
         .font(.callout)
     }
 
-    /// Every collection with a checkbox: membership is seen and changed in one place.
+    /// The collections the record is in, each removable, and *Add to Collection* for the others
+    /// (first-run feedback: a checkbox for every collection read as a pile).
     private var collections: some View {
         let history = model.history
         let members = history.memberships[state.id] ?? []
-        return VStack(alignment: .leading, spacing: 4) {
-            ForEach(history.collections) { collection in
-                let recordID = state.id
-                let collectionID = collection.id
-                Toggle(collection.name, isOn: Binding.main(
-                    get: { members.contains(collectionID) },
-                    set: { [model] isMember in model.setMembership(recordID, collection: collectionID, isMember: isMember) }
-                ))
-                .toggleStyle(.checkbox)
-                .lineLimit(1)
+        let recordID = state.id
+        return VStack(alignment: .leading, spacing: 6) {
+            if members.isEmpty {
+                Text("In no collection").foregroundStyle(.secondary)
             }
-            TextField("New Collection", text: $newCollectionName, prompt: Text("New collection…"))
-                .textFieldStyle(.roundedBorder)
-                .labelsHidden()
-                .onSubmit {
-                    model.createCollection(named: newCollectionName, adding: state.id)
-                    newCollectionName = ""
+            ForEach(history.collections.filter { members.contains($0.id) }) { collection in
+                let collectionID = collection.id
+                HStack(spacing: 6) {
+                    Label(collection.name, systemImage: "folder").lineLimit(1)
+                    Spacer(minLength: 4)
+                    Button {
+                        model.setMembership(recordID, collection: collectionID, isMember: false)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.borderless)
+                    .help(String(localized: "Remove from “\(collection.name)”"))
                 }
-                .help(String(localized: "Type a name and press Return: the collection is created with this record in it"))
+            }
+            if isNamingCollection {
+                TextField("New Collection", text: $newCollectionName, prompt: Text("Name of the new collection"))
+                    .textFieldStyle(.roundedBorder)
+                    .labelsHidden()
+                    .focused($collectionNameFocused)
+                    .onAppear { collectionNameFocused = true }
+                    .onSubmit {
+                        model.createCollection(named: newCollectionName, adding: recordID)
+                        newCollectionName = ""
+                        isNamingCollection = false
+                    }
+                    .onChange(of: collectionNameFocused) { _, focused in
+                        if !focused { isNamingCollection = false }
+                    }
+                    .help(String(localized: "Press Return: the collection is created with this record in it; Esc cancels"))
+            } else {
+                Menu {
+                    ForEach(history.collections) { collection in
+                        let collectionID = collection.id
+                        Toggle(collection.name, isOn: Binding.main(
+                            get: { members.contains(collectionID) },
+                            set: { [model] isMember in model.setMembership(recordID, collection: collectionID, isMember: isMember) }
+                        ))
+                    }
+                    if !history.collections.isEmpty { Divider() }
+                    Button("New Collection…") { isNamingCollection = true }
+                } label: {
+                    Label("Add to Collection", systemImage: "plus")
+                }
+                .menuStyle(.button)
+                .buttonStyle(.borderless)
+                .fixedSize()
+                .help(String(localized: "Put this record into a collection, or into a new one"))
+            }
         }
         .font(.callout)
     }
 
-    private var languagePicker: some View {
-        Picker("Language", selection: $state.language) {
-            Text(String(localized: "Automatic (\(state.detectedLanguage?.displayName ?? String(localized: "plain text")))")).tag(LanguageChoice.auto)
-            Text("Plain Text").tag(LanguageChoice.plain)
+    /// Syntax highlighting in the status bar, as code editors have it: the language shown, the
+    /// choice saved with the record.
+    private var languageMenu: some View {
+        Menu {
+            Picker("Language", selection: $state.language) {
+                Text(String(localized: "Automatic (\(state.detectedLanguage?.displayName ?? String(localized: "plain text")))")).tag(LanguageChoice.auto)
+                Text("Plain Text").tag(LanguageChoice.plain)
+                Divider()
+                ForEach(CodeLanguage.allCases, id: \.self) { language in
+                    Text(language.displayName).tag(LanguageChoice.language(language))
+                }
+            }
+            .pickerStyle(.inline)
+            .labelsHidden()
+        } label: {
+            Text(state.highlightedLanguage?.displayName ?? String(localized: "Plain Text"))
+        }
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
+        .fixedSize()
+        .help(String(localized: "Language for syntax highlighting; Automatic detects code"))
+    }
+
+    // MARK: Text in Image
+
+    /// Under the image: what text recognition found, selectable and copyable, in a pane that can be
+    /// folded away and made taller by dragging its header (first-run feedback: in the inspector
+    /// the text was out of sight).
+    private func recognizedTextPane(availableHeight: CGFloat) -> some View {
+        let text = details?.recognizedText
+        let isOpen = showsRecognizedText && text != nil
+        let maxHeight = max(80, availableHeight - 140)
+        return VStack(spacing: 0) {
             Divider()
-            ForEach(CodeLanguage.allCases, id: \.self) { language in
-                Text(language.displayName).tag(LanguageChoice.language(language))
+            HStack(spacing: 8) {
+                Button {
+                    showsRecognizedText.toggle()
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .rotationEffect(.degrees(isOpen ? 90 : 0))
+                        .frame(width: 14)
+                }
+                .buttonStyle(.borderless)
+                .disabled(text == nil)
+                .help(isOpen ? String(localized: "Hide the text") : String(localized: "Show the text"))
+                Label("Text in Image", systemImage: "text.viewfinder")
+                    .font(.callout.weight(.semibold))
+                Text(recognitionSummary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Spacer(minLength: 8)
+                recognitionActions(text)
+            }
+            .controlSize(.small)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
+            .pointerStyle(isOpen ? PointerStyle.rowResize : nil)
+            .gesture(DragGesture(minimumDistance: 3).onChanged { value in
+                guard isOpen else { return }
+                let start = dragStartHeight ?? recognizedTextHeight
+                dragStartHeight = start
+                recognizedTextHeight = min(max(start - Double(value.translation.height), 80), Double(maxHeight))
+            }.onEnded { _ in dragStartHeight = nil })
+            if isOpen, let text {
+                Divider()
+                TextPane(isEditable: false, font: .systemFont(ofSize: 13)) { textView in
+                    recognizedText.attach(textView, text: text)
+                } onSelectionChange: {
+                    recognizedText.update()
+                }
+                .frame(height: min(CGFloat(recognizedTextHeight), maxHeight))
             }
         }
-        .labelsHidden()
-        .help(String(localized: "Language for syntax highlighting"))
-        .onChange(of: state.language) { _, value in model.setCodeLanguage(state.id, value.stored) }
+        .background(.bar)
+    }
+
+    private var recognitionSummary: String {
+        guard let details else { return "" }
+        switch details.recognitionState {
+        case .done:
+            let lines = TextStats.lineCount(details.recognizedText ?? "")
+            return lines > 1 ? String(localized: "\(lines) lines") : ""
+        case .pending: return String(localized: "Recognizing…")
+        case .noText: return String(localized: "No text found")
+        case .failed: return String(localized: "Could not be recognized")
+        case .off: return String(localized: "Off for this app")
+        }
+    }
+
+    @ViewBuilder
+    private func recognitionActions(_ text: String?) -> some View {
+        if let text {
+            Button(recognizedText.hasSelection ? String(localized: "Copy Selected Text") : String(localized: "Copy All Text")) {
+                model.copyNewText(recognizedText.selectedOrAll ?? text, from: state.id)
+            }
+            .help(String(localized: "The text goes to the clipboard and appears in history as a new item"))
+        } else if details?.recognitionState == .pending {
+            ProgressView().controlSize(.mini)
+        } else if details?.recognitionState == .off, let bundleID = card.sourceAppBundleID {
+            let name = card.sourceAppName ?? bundleID
+            Button("Recognize Text") { model.setRecognition(true, for: bundleID, name: name) }
+                .help(String(localized: "Recognize text in images from \(name), on this Mac"))
+        }
     }
 
     private func metadata(_ details: RecordDetails) -> some View {
@@ -437,7 +573,13 @@ struct RecordView: View {
                         .help(String(localized: "Size of the text against the “Largest item” limit (Settings → Apps → All Apps)"))
                 }
                 Text(stats).font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                if card.displayType != .url { languageMenu }
                 viewMenu
+            } else if isImage, let width = card.pixelWidth, let height = card.pixelHeight {
+                Text(verbatim: "\(width) × \(height) px · \(ByteCount.string(card.payloadSizeBytes))")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
             }
             if state.isDirty {
                 Button("Changes…") { showsChanges = true }

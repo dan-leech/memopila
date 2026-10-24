@@ -1573,6 +1573,16 @@
         }
       }
     },
+    "Could not be recognized": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось распознать"
+          }
+        }
+      }
+    },
     "Could not write to the clipboard.": {
       "localizations": {
         "ru": {
@@ -2435,6 +2445,16 @@
         }
       }
     },
+    "Hide the text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скрыть текст"
+          }
+        }
+      }
+    },
     "Hide the title, source and details (⌥⌘I)": {
       "localizations": {
         "ru": {
@@ -2571,6 +2591,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "В коллекциях: %@"
+          }
+        }
+      }
+    },
+    "In no collection": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ни в одной коллекции"
           }
         }
       }
@@ -2741,6 +2771,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Язык для подсветки синтаксиса"
+          }
+        }
+      }
+    },
+    "Language for syntax highlighting; Automatic detects code": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Язык подсветки синтаксиса; «Автоматически» распознаёт код"
           }
         }
       }
@@ -3045,6 +3085,16 @@
         }
       }
     },
+    "Name of the new collection": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Название новой коллекции"
+          }
+        }
+      }
+    },
     "Needs text with several lines.": {
       "localizations": {
         "ru": {
@@ -3076,16 +3126,6 @@
       }
     },
     "New Collection…": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Новая коллекция…"
-          }
-        }
-      }
-    },
-    "New collection…": {
       "localizations": {
         "ru": {
           "stringUnit": {
@@ -3171,6 +3211,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Нет поддерживаемых форматов"
+          }
+        }
+      }
+    },
+    "No text found": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст не найден"
           }
         }
       }
@@ -3271,6 +3321,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Сейчас"
+          }
+        }
+      }
+    },
+    "Off for this app": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выключено для этого приложения"
           }
         }
       }
@@ -3585,6 +3645,16 @@
         }
       }
     },
+    "Press Return: the collection is created with this record in it; Esc cancels": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нажмите Return — коллекция будет создана с этой записью; Esc — отмена"
+          }
+        }
+      }
+    },
     "Press a shortcut…": {
       "localizations": {
         "ru": {
@@ -3645,6 +3715,16 @@
         }
       }
     },
+    "Put this record into a collection, or into a new one": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить запись в коллекцию или в новую"
+          }
+        }
+      }
+    },
     "Quit Memopila": {
       "localizations": {
         "ru": {
@@ -3685,6 +3765,16 @@
         }
       }
     },
+    "Recognize Text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Распознать текст"
+          }
+        }
+      }
+    },
     "Recognize Text in Images from %@": {
       "localizations": {
         "ru": {
@@ -3715,12 +3805,32 @@
         }
       }
     },
+    "Recognize text in images from %@, on this Mac": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Распознавать текст на изображениях из «%@» на этом Mac"
+          }
+        }
+      }
+    },
     "Recognized types": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Распознаваемые типы"
+          }
+        }
+      }
+    },
+    "Recognizing…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Распознаётся…"
           }
         }
       }
@@ -4415,6 +4525,16 @@
         }
       }
     },
+    "Show the text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать текст"
+          }
+        }
+      }
+    },
     "Show the title, source and details (⌥⌘I)": {
       "localizations": {
         "ru": {
@@ -5015,16 +5135,6 @@
         }
       }
     },
-    "Type a name and press Return: the collection is created with this record in it": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Введите название и нажмите Return: коллекция будет создана, и запись окажется в ней"
-          }
-        }
-      }
-    },
     "Type, e.g. com.adobe.photoshop-image": {
       "localizations": {
         "ru": {
@@ -5221,6 +5331,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Если в копии есть секрет"
+          }
+        }
+      }
+    },
+    "When it was copied, how often, its size and formats": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Когда скопировано, сколько раз, размер и форматы"
           }
         }
       }

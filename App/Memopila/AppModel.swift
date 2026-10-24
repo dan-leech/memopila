@@ -118,7 +118,11 @@ final class AppModel {
         monitor.panelIsKey = { [weak self] in self?.panel.isKey ?? false }
         monitor.onSaved = { [weak self] _ in self?.didSave() }
         history.clipboardRecordID = { [weak monitor] in monitor?.clipboardRecordID }
-        recognition.onUpdate = { [weak self] _ in self?.history.storeDidChange() }
+        recognition.onUpdate = { [weak self] id, state in
+            if state == .done { self?.history.storeDidChange() }
+            // The record window shows the result under the image.
+            if self?.itemState?.id == id { self?.recognitionTick += 1 }
+        }
         settings.onRetentionChange = { [weak self] in self?.runRetention() }
         settings.onRecognitionChange = { [weak self] bundleID in self?.enableRecognition(forApp: bundleID) }
     }
@@ -1023,6 +1027,9 @@ final class AppModel {
         settings.updateProfile(bundleID) { $0.sizeLimitMiB = mib }
         toasts.show(String(localized: "\(name): items up to \(mib) MB"), actions: [undoAction(undo)])
     }
+
+    /// Counts recognitions of the record in the record window, so it shows the new text.
+    private(set) var recognitionTick = 0
 
     func setRecognition(_ enabled: Bool, for bundleID: String, name: String) {
         let undo = settings.snapshot

@@ -55,8 +55,9 @@ final class ImageZoom {
     }
 }
 
-/// The image at any zoom, scrollable, centered while smaller than the window, on a checkerboard
-/// so transparency shows.
+/// The image at any zoom, scrollable, centered while smaller than the window, on the background
+/// Preview and Quick Look use. No checkerboard under transparency: a window screenshot's wide
+/// transparent shadow margin showed as a strange patterned frame (first-run feedback).
 struct ZoomableImage: NSViewRepresentable {
     let image: NSImage
     let zoom: ImageZoom
@@ -69,11 +70,13 @@ struct ZoomableImage: NSViewRepresentable {
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = true
         scrollView.autohidesScrollers = true
-        scrollView.drawsBackground = false
+        // Drawn, so the area around a small image is cleared while zooming instead of smearing.
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = .underPageBackgroundColor
         scrollView.allowsMagnification = true
         scrollView.minMagnification = 0.02
         scrollView.maxMagnification = 32
-        let imageView = CheckerImageView()
+        let imageView = NSImageView()
         imageView.image = image
         imageView.imageScaling = .scaleAxesIndependently
         imageView.frame = NSRect(origin: .zero, size: Self.pixelSize(of: image))
@@ -132,26 +135,5 @@ private final class CenteringClipView: NSClipView {
         if rect.width > frame.width { rect.origin.x = (frame.width - rect.width) / 2 }
         if rect.height > frame.height { rect.origin.y = (frame.height - rect.height) / 2 }
         return rect
-    }
-}
-
-/// An image view on a checkerboard, so transparent parts of the image are visible.
-private final class CheckerImageView: NSImageView {
-    private static let pattern: NSColor = {
-        let tile = NSImage(size: NSSize(width: 16, height: 16), flipped: false) { rect in
-            NSColor(white: 0.85, alpha: 1).setFill()
-            rect.fill()
-            NSColor(white: 0.72, alpha: 1).setFill()
-            NSRect(x: 0, y: 0, width: 8, height: 8).fill()
-            NSRect(x: 8, y: 8, width: 8, height: 8).fill()
-            return true
-        }
-        return NSColor(patternImage: tile)
-    }()
-
-    override func draw(_ dirtyRect: NSRect) {
-        Self.pattern.setFill()
-        dirtyRect.fill()
-        super.draw(dirtyRect)
     }
 }
