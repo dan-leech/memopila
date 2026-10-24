@@ -67,11 +67,18 @@ jobs:
 
           # A run from the Actions tab builds the selected ref. If the tag already exists it
           # must point at that same commit, or the release would not match its tag.
-          if [[ "$GITHUB_EVENT_NAME" != "push" ]] &&
-             git fetch --quiet --depth=1 origin "+refs/tags/$tag:refs/tags/$tag" 2>/dev/null; then
-            existing="$(git rev-parse "refs/tags/$tag^{commit}")"
-            if [[ "$existing" != "$GITHUB_SHA" ]]; then
-              echo "::error::Tag $tag already exists at ${existing:0:12}, but this run builds ${GITHUB_SHA:0:12}. Run the workflow from the tag $tag, or choose another version."
+          if [[ "$GITHUB_EVENT_NAME" != "push" ]]; then
+            found=0
+            git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null || found=$?
+            if [[ $found -eq 0 ]]; then
+              git fetch --quiet --depth=1 origin "+refs/tags/$tag:refs/tags/$tag"
+              existing="$(git rev-parse "refs/tags/$tag^{commit}")"
+              if [[ "$existing" != "$GITHUB_SHA" ]]; then
+                echo "::error::Tag $tag already exists at ${existing:0:12}, but this run builds ${GITHUB_SHA:0:12}. Run the workflow from the tag $tag, or choose another version."
+                exit 1
+              fi
+            elif [[ $found -ne 2 ]]; then
+              echo "::error::Could not check whether tag $tag exists (git ls-remote exit code $found)."
               exit 1
             fi
           fi
@@ -98,7 +105,7 @@ jobs:
           set -euo pipefail
           present=0
           for flag in "$HAS_CERTIFICATE" "$HAS_CERTIFICATE_PASSWORD" "$HAS_TEAM_ID" "$HAS_APPLE_ID" "$HAS_APP_PASSWORD"; do
-            [[ "$flag" == "true" ]] && present=$((present + 1))
+            if [[ "$flag" == "true" ]]; then present=$((present + 1)); fi
           done
           if [[ $present -eq 5 ]]; then
             echo "signed=true" >> "$GITHUB_OUTPUT"
@@ -195,6 +202,8 @@ jobs:
           codesign --display --verbose=2 "$APP"
 
       - name: Create disk image
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
         run: |
           set -euo pipefail
           mkdir -p "$DIST"
@@ -217,7 +226,7 @@ jobs:
             echo "hdiutil create failed (attempt $attempt), retrying"
             sleep $((attempt * 5))
           done
-          if [[ "${{ steps.signing.outputs.signed }}" == "true" ]]; then
+          if [[ "$SIGNED" == "true" ]]; then
             codesign --force --timestamp --keychain "$SIGNING_KEYCHAIN" --sign "$SIGNING_IDENTITY" "$dmg"
             codesign --verify --verbose=2 "$dmg"
           fi
