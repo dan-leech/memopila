@@ -36,7 +36,7 @@ final class ThumbnailCache {
         let image: NSImage?
         if card.hasThumbnail {
             image = (try? await store.thumbnail(for: card.id)).flatMap(NSImage.init(data:))
-        } else if card.displayType == .file, let path = card.filePaths.first {
+        } else if card.displayType == .file, let path = card.filePaths.first, FileVolumes.isLocal(path) {
             let scale = NSScreen.main?.backingScaleFactor ?? 2
             image = await Self.quickLookThumbnail(for: URL(fileURLWithPath: path), scale: scale)?.value
         } else {
@@ -52,7 +52,12 @@ final class ThumbnailCache {
     func fileStatus(for card: HistoryCard) async -> FileStatus {
         if let cached = fileStatus[card.id] { return cached }
         let paths = card.filePaths
-        let status = await Task.detached(priority: .utility) { Self.stat(paths) }.value
+        // Files on a network volume are not looked at: a share that has gone away blocks for its
+        // timeout. Size and existence stay unknown for them.
+        let unknown = FileStatus(missing: 0, totalBytes: nil, allMissing: false)
+        let status = await FileVolumes.run(timeout: 5) {
+            paths.allSatisfy(FileVolumes.isLocal) ? Self.stat(paths) : unknown
+        } ?? unknown
         fileStatus[card.id] = status
         return status
     }

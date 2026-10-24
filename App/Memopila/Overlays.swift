@@ -816,7 +816,7 @@ private struct FilePreview: View {
     @State private var access: FileAccess?
 
     enum FileAccess {
-        case readable, denied, missing
+        case readable, denied, missing, unreachable
     }
 
     private var previewPath: String? { shownPath ?? card.filePaths.first }
@@ -842,6 +842,10 @@ private struct FilePreview: View {
                     unavailable {
                         Text("Unavailable: the file was moved or deleted.").font(.callout).foregroundStyle(.orange)
                     }
+                case .unreachable:
+                    unavailable {
+                        Text("The volume with this file does not answer.").font(.callout).foregroundStyle(.orange)
+                    }
                 case nil:
                     ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -859,7 +863,10 @@ private struct FilePreview: View {
                     }
                     Spacer(minLength: 8)
                     Button("Reveal in Finder") {
-                        let urls = card.filePaths.map { URL(fileURLWithPath: $0) }.filter { FileManager.default.fileExists(atPath: $0.path) }
+                        // Network files are left to Finder: checking them could block (review finding).
+                        let urls = card.filePaths
+                            .filter { !FileVolumes.isLocal($0) || FileManager.default.fileExists(atPath: $0) }
+                            .map { URL(fileURLWithPath: $0) }
                         External.reveal(urls)
                     }
                     .disabled(status?.allMissing ?? false)
@@ -901,12 +908,13 @@ private struct FilePreview: View {
     /// macOS asks), while its existence is still visible.
     private static func access(to path: String?) async -> FileAccess {
         guard let path else { return .missing }
-        return await Task.detached(priority: .userInitiated) { () -> FileAccess in
+        // On a GCD thread with a time limit: a network share that has gone away would block here.
+        return await FileVolumes.run(timeout: 4) { () -> FileAccess in
             guard FileManager.default.fileExists(atPath: path) else { return .missing }
             guard let handle = FileHandle(forReadingAtPath: path) else { return .denied }
             try? handle.close()
             return .readable
-        }.value
+        } ?? .unreachable
     }
 
     private var paths: some View {
@@ -1023,6 +1031,9 @@ struct TextPane: NSViewRepresentable {
         // layout manager, without the switch from TextKit 2 that asking for one would cause.
         let storage = NSTextStorage()
         let layoutManager = NSLayoutManager()
+        // Only what is shown is laid out: ⌘↓ or Find near the end of megabytes of text laid out
+        // all of it first (review finding).
+        layoutManager.allowsNonContiguousLayout = true
         storage.addLayoutManager(layoutManager)
         let container = NSTextContainer(size: NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude))
         layoutManager.addTextContainer(container)

@@ -94,7 +94,8 @@ enum ActionRegistry {
             // Existence is checked when the action runs, not while every card's menu is built.
             let paths = card.filePaths
             open.append(ActionItem(id: "reveal", title: String(localized: "Reveal in Finder"), systemImage: "folder") {
-                let existing = paths.filter { FileManager.default.fileExists(atPath: $0) }.map { URL(fileURLWithPath: $0) }
+                // Network files are left to Finder: checking them could block (review finding).
+                let existing = paths.filter { !FileVolumes.isLocal($0) || FileManager.default.fileExists(atPath: $0) }.map { URL(fileURLWithPath: $0) }
                 if existing.isEmpty {
                     model.toasts.error(String(localized: "The file is no longer available."))
                 } else {

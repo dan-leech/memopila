@@ -541,17 +541,43 @@ final class ItemState {
     }
 
     private func updateCounts() {
-        let text = textView?.string ?? initialText
-        let length = (text as NSString).length
-        characterCount = length < 200_000 ? text.count : length
-        lineCount = TextStats.lineCount(text)
+        // The storage itself, never a copy: a bridged copy of megabytes was walked byte by byte on
+        // the main thread (review finding).
+        let text: NSString = textView?.textStorage?.mutableString ?? (initialText as NSString)
+        let length = text.length
+        characterCount = length < 200_000 ? (text as String).count : length
+        lineCount = Self.lineCount(of: text)
         // UTF-8 takes at most 3 bytes per UTF-16 unit: far from the limit there is nothing to count.
-        let bytes: Int? = length * 3 < maxBytes / 5 * 4 ? nil : text.utf8.count
+        let bytes: Int? = length * 3 < maxBytes / 5 * 4 ? nil : text.lengthOfBytes(using: String.Encoding.utf8.rawValue)
         if bytes != byteCount { byteCount = bytes }
         if card.displayType == .url {
-            let link = length < 10_000 ? text.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+            let link = length < 10_000 ? (text as String).trimmingCharacters(in: .whitespacesAndNewlines) : ""
             if link != linkText { linkText = link }
         }
+    }
+
+    /// `TextStats.lineCount` read in blocks of UTF-16 units: trailing line breaks start no line.
+    private static func lineCount(of text: NSString) -> Int {
+        var breaks = 0
+        var trailing = 0
+        var buffer = [unichar](repeating: 0, count: 4_096)
+        var location = 0
+        let length = text.length
+        while location < length {
+            let count = min(buffer.count, length - location)
+            text.getCharacters(&buffer, range: NSRange(location: location, length: count))
+            for offset in 0..<count {
+                let unit = buffer[offset]
+                if unit == 10 {
+                    breaks += 1
+                    trailing += 1
+                } else if unit != 13 {
+                    trailing = 0
+                }
+            }
+            location += count
+        }
+        return max(1, breaks - trailing + 1)
     }
 
     private func updateDirty() {
@@ -650,9 +676,10 @@ final class ItemState {
     /// Tokenizes off the main actor and colours the text in place; edits made meanwhile win.
     private func highlight() async {
         guard let textView, let storage = textView.textStorage else { return }
+        // The limit before the copy: copying megabytes only to skip them was a pause per edit.
+        guard storage.length <= Self.highlightLimit else { return }
         let text = textView.string
         let length = (text as NSString).length
-        guard length <= Self.highlightLimit else { return }
         let sourceBundleID = card.sourceAppBundleID
         let detected = await Task.detached(priority: .userInitiated) {
             CodeHighlighter.detect(text, sourceBundleID: sourceBundleID)

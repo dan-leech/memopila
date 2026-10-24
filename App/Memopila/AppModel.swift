@@ -760,20 +760,26 @@ final class AppModel {
             }
             sensitiveKind = kind
         }
+        // Hashing and the search text off the main thread: a large record took seconds (review finding).
+        let sourceAppName = original?.sourceAppName
+        let prepared = await Task.detached(priority: .userInitiated) {
+            (hash: MCS1.contentHash(of: items), size: MCS1.payloadSize(of: items), type: DisplayType.classify(items),
+             enrichment: IngestEnrichment.make(for: items, sourceAppName: sourceAppName))
+        }.value
         let snapshot = OwnedSnapshot(
             changeCount: 0,
             observedAt: Date(),
             identity: AppIdentity(bundleID: original?.sourceAppBundleID, source: .frontmost),
             settings: appSettings,
             items: items,
-            contentHash: MCS1.contentHash(of: items),
-            payloadSizeBytes: MCS1.payloadSize(of: items),
-            displayType: DisplayType.classify(items),
+            contentHash: prepared.hash,
+            payloadSizeBytes: prepared.size,
+            displayType: prepared.type,
             skippedTypes: [],
             sourceURL: original?.sourceURL,
             sensitiveKind: sensitiveKind
         )
-        let enrichment = IngestEnrichment.make(for: items, sourceAppName: original?.sourceAppName)
+        let enrichment = prepared.enrichment
         switch await store.ingest(snapshot, readerSeq: monitor.coordinator.opSeq, enrichment: enrichment, limits: settings.retentionLimits) {
         case .committed(let newID), .merged(let newID):
             // As for a capture: a pending delete of the same content is undone, retention and its

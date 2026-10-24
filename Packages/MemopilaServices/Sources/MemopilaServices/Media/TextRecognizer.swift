@@ -38,12 +38,18 @@ public enum TextRecognizer {
         return text.isEmpty ? nil : text
     }
 
-    /// Languages Vision can recognize on this macOS version, e.g. "en-US", "ru-RU".
+    /// Languages Vision can recognize on this macOS version, e.g. "en-US", "ru-RU". Asked once:
+    /// it builds a Vision request, and Settings and every recognized image asked again on the main
+    /// thread (review finding).
     public static func supportedLanguages() -> [String] {
+        supported
+    }
+
+    private static let supported: [String] = {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate
         return (try? request.supportedRecognitionLanguages()) ?? []
-    }
+    }()
 
     /// The user's preferred languages that Vision supports, matched by language code.
     public static func defaultLanguages(preferred: [String] = Locale.preferredLanguages) -> [String] {

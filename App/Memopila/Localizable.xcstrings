@@ -5465,6 +5465,16 @@
         }
       }
     },
+    "The volume with this file does not answer.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Том с этим файлом не отвечает."
+          }
+        }
+      }
+    },
     "This can't be undone.": {
       "localizations": {
         "ru": {

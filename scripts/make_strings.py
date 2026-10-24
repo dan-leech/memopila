@@ -223,6 +223,7 @@ T = {
 "More": "Ещё",
 "Copied": "Скопировано",
 "Cut": "Вырезать",
+"The volume with this file does not answer.": "Том с этим файлом не отвечает.",
 "Delete items older than %@?": "Удалить объекты старше: %@?",
 "Keep only %lld items?": "Хранить только %lld объектов?",
 "%lld items that are not favorites are deleted now. This can't be undone.": "Объекты не из избранного (%lld) будут удалены сейчас. Это нельзя отменить.",

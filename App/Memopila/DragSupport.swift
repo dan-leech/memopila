@@ -7,9 +7,11 @@ import UniformTypeIdentifiers
 /// target asks for a type; file cards drag as their file.
 enum DragSupport {
     static func provider(for card: HistoryCard, store: ClipboardStore) -> NSItemProvider {
-        if card.displayType == .file, let path = card.filePaths.first,
-           let provider = NSItemProvider(contentsOf: URL(fileURLWithPath: path)) {
-            return provider
+        if card.displayType == .file, let path = card.filePaths.first {
+            let url = URL(fileURLWithPath: path)
+            // A network file drags as its address: reading it could block the drag (review finding).
+            guard FileVolumes.isLocal(path) else { return NSItemProvider(object: url as NSURL) }
+            if let provider = NSItemProvider(contentsOf: url) { return provider }
         }
         let provider = NSItemProvider()
         let id = card.id
