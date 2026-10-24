@@ -5,7 +5,7 @@ import Foundation
 /// without WebKit, so the grid never starts a web process or loads anything from the network.
 /// The record window reads the full HTML with WebKit (§8.5).
 public enum HTMLPreview {
-    public struct Color: Equatable, Sendable {
+    public struct Color: Hashable, Sendable {
         public var red: Double
         public var green: Double
         public var blue: Double
@@ -45,6 +45,8 @@ public enum HTMLPreview {
         public var runs: [Run]
         /// The `<body>` or `<html>` background: the page the copy was made on.
         public var pageBackground: Color?
+        /// Lists, tables, images or quotes: structure a plain text loses.
+        public var hasStructure = false
 
         public var text: String { runs.map(\.text).joined() }
     }
@@ -52,7 +54,7 @@ public enum HTMLPreview {
     public static func preview(of html: String, maxCharacters: Int = 600) -> Preview {
         var parser = Parser(scalars: Array(html.unicodeScalars), limit: maxCharacters)
         parser.run()
-        return Preview(runs: parser.runs, pageBackground: parser.pageBackground)
+        return Preview(runs: parser.runs, pageBackground: parser.pageBackground, hasStructure: parser.hasStructure)
     }
 
     // MARK: - CSS colours
@@ -128,6 +130,7 @@ public enum HTMLPreview {
         var index = 0
         var runs: [Run] = []
         var pageBackground: Color?
+        var hasStructure = false
         private var count = 0
         private var stack: [(name: String, style: Style)] = []
         private var atLineStart = true
@@ -301,6 +304,7 @@ public enum HTMLPreview {
                 return
             }
             if Self.blocks.contains(tag) { newline() }
+            if ["li", "table", "img", "blockquote", "hr"].contains(tag) { hasStructure = true }
             if tag == "body" || tag == "html" {
                 pageBackground = pageBackground ?? background(in: attributes)
             }

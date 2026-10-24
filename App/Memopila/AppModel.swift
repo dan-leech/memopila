@@ -163,6 +163,7 @@ final class AppModel {
         monitor.start()
         runRetention()
         prunePreviewFiles(all: true)
+        reclassifyRichTextOnce()
         recognition.wake()
         let daily = Timer(timeInterval: 86_400, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.runRetention() }
@@ -398,6 +399,19 @@ final class AppModel {
         }
         closeRecord(returningToPanel: false)
         restore(state.id, paste: paste)
+    }
+
+    /// Once after the update that weighs formatting: rich text cards whose formatting says nothing
+    /// (one font in one colour) become text, as new copies are (owner feedback).
+    private func reclassifyRichTextOnce() {
+        let key = "reclassifiedRichText1"
+        guard !UserDefaults.standard.bool(forKey: key) else { return }
+        let store = store
+        Task {
+            guard let changed = try? await store.reclassifyRichText() else { return }
+            UserDefaults.standard.set(true, forKey: key)
+            if changed > 0 { history.storeDidChange() }
+        }
     }
 
     /// Images and PDFs handed to Preview. They go with their records, and all at launch (review

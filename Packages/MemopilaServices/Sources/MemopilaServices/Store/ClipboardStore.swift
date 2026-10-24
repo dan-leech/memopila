@@ -256,6 +256,35 @@ public actor ClipboardStore {
         return nil
     }
 
+    /// Records stored as rich text whose formatting says nothing (one font in one colour) become
+    /// text or links, as new copies are classified (owner feedback); run once after the update.
+    /// Only the text rows are read, a few records at a time. Returns how many changed.
+    @discardableResult
+    public func reclassifyRichText() throws -> Int {
+        let rich = DisplayType.richText.rawValue
+        var descriptor = FetchDescriptor<ClipboardRecord>(predicate: #Predicate { $0.displayTypeRaw == rich })
+        descriptor.propertiesToFetch = [\.id]
+        let ids = try makeContext().fetch(descriptor).map(\.id)
+        let textTypes = Set(PasteboardType.plainTextTypes.union(PasteboardType.richTextTypes).union([.url]).map(\.rawValue))
+        var changed = 0
+        for start in stride(from: 0, to: ids.count, by: 50) {
+            let batch = Array(ids[start..<min(start + 50, ids.count)])
+            let context = makeContext()
+            let records = try context.fetch(FetchDescriptor<ClipboardRecord>(predicate: #Predicate { batch.contains($0.id) }))
+            for record in records {
+                let rows = record.representations
+                    .filter { textTypes.contains($0.uti) }
+                    .sorted { ($0.itemIndex, $0.repIndex) < ($1.itemIndex, $1.repIndex) }
+                let type = DisplayType.classify(Self.items(from: rows))
+                guard type != .richText else { continue }
+                record.displayTypeRaw = type.rawValue
+                changed += 1
+            }
+            try context.save()
+        }
+        return changed
+    }
+
     /// How many pasteboard items the record holds (several bookmarks or notes in one copy).
     public func itemCount(_ id: UUID) throws -> Int {
         let context = makeContext()
@@ -458,8 +487,8 @@ public actor ClipboardStore {
             insertRepresentations(of: items, for: record, in: context)
             record.contentHash = hash
             record.payloadSizeBytes = size
-            record.displayTypeRaw = rich != nil ? DisplayType.richText.rawValue
-                : TextDecoding.isSingleWebURL(text) ? DisplayType.url.rawValue : DisplayType.text.rawValue
+            // As for a copy: formatting that says nothing makes it text (`FormattingSignificance`).
+            record.displayTypeRaw = DisplayType.classify(items).rawValue
             record.cardPreview = TextDecoding.prefix(text, maxScalars: IngestEnrichment.cardPreviewScalars)
             record.textIndex = TextDecoding.prefix(text, maxScalars: IngestEnrichment.searchScalars)
             record.textLength = text.count

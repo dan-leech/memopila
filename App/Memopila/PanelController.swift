@@ -440,5 +440,6 @@ struct KeyPress {
         kVK_ANSI_R: "r", kVK_ANSI_S: "s", kVK_ANSI_V: "v", kVK_ANSI_W: "w", kVK_ANSI_X: "x", kVK_ANSI_Y: "y",
         kVK_ANSI_Z: "z", kVK_ANSI_P: "p", kVK_ANSI_Comma: ",", kVK_ANSI_Period: ".",
         kVK_ANSI_Equal: "=", kVK_ANSI_Minus: "-", kVK_ANSI_Slash: "/", kVK_ANSI_I: "i", kVK_ANSI_0: "0",
+        kVK_ANSI_B: "b", kVK_ANSI_U: "u", kVK_ANSI_T: "t", kVK_ANSI_O: "o", kVK_ANSI_Backslash: "\\",
     ]
 }

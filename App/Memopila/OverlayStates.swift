@@ -128,6 +128,14 @@ final class ItemState {
     private(set) var isRich = false
     /// The record has formatted text that could be read.
     private(set) var hasRichSource = false
+    /// Formatting turned off on a formatted record: saving keeps only the text, so the record counts
+    /// as changed and Save is on (owner feedback: there was no quick way to save it plain).
+    private(set) var formattingDropped = false
+    /// The plain text differs from the stored text: the formatting can no longer come back (but
+    /// Revert brings back both).
+    private(set) var plainTextEdited = false
+    /// The page the formatted text is shown on: removing colours goes back to its text colour.
+    @ObservationIgnored private var richPage: RichPage = .adaptive
     @ObservationIgnored private var richSource: NSAttributedString?
     /// The background the copy's document names, if any (§8.5).
     @ObservationIgnored private var richBackground: NSColor?
@@ -284,6 +292,8 @@ final class ItemState {
             initialRich = nil
             hasRichSource = false
         }
+        formattingDropped = false
+        plainTextEdited = false
         updateDirty()
     }
 
@@ -328,6 +338,7 @@ final class ItemState {
         // Mode (owner feedback: black on a white page was not expected there). The cards follow
         // the same rule (`RichPage`).
         let page = RichPage.of(richSource, documentBackground: richBackground)
+        richPage = page
         // Adaptive mapping maps the background too: a white page reads dark in Dark Mode, as in
         // TextEdit.
         textView.usesAdaptiveColorMappingForDarkAppearance = page == .adaptive
@@ -345,12 +356,16 @@ final class ItemState {
         applyFont()
     }
 
-    /// *Show Formatting* in the View menu. Only without unsaved changes: the other view starts from
-    /// the stored text. Off, the text is plain — code features on — and saving keeps only the text.
+    /// *Formatting* in the toolbar (⇧⌘T, as TextEdit's *Make Plain Text*) and *View → Show
+    /// Formatting*. Off keeps the text as it is now, edits included, without its formatting: the
+    /// record counts as changed and Save stores only the text. On brings the stored formatting back
+    /// while the plain text is still the stored one (Revert brings back both).
     func setShowsFormatting(_ on: Bool) {
-        guard hasRichSource, on != isRich, !isDirty, let textView, let storage = textView.textStorage else { return }
-        isRich = on
+        guard hasRichSource, on != isRich, let textView, let storage = textView.textStorage else { return }
         if on {
+            guard !plainTextEdited else { return }
+            isRich = true
+            formattingDropped = false
             highlightTask?.cancel()
             if highlightedLanguage != nil {
                 highlightedLanguage = nil
@@ -358,6 +373,8 @@ final class ItemState {
             }
             showRich(in: textView)
         } else {
+            isRich = false
+            formattingDropped = true
             let text = storage.string
             textView.isRichText = false
             textView.usesAdaptiveColorMappingForDarkAppearance = false
@@ -371,10 +388,47 @@ final class ItemState {
             ]))
             textView.undoManager?.removeAllActions()
             initialRich = nil
-            initialText = text
             applyFont()
         }
         textDidChange()
+    }
+
+    /// ⌘\ and the eraser, as CKEditor's *Remove Format*: the selection (or all of it) in the text's
+    /// own font and the page's text colour — no bold, italic, underline, strike-through, colours,
+    /// background or links. Lists and paragraphs stay. One change ⌘Z undoes.
+    func removeFormatting() {
+        guard isRich, let textView, let storage = textView.textStorage, storage.length > 0 else { return }
+        var range = textView.selectedRange()
+        if range.length == 0 { range = NSRange(location: 0, length: storage.length) }
+        let font = Self.commonFont(of: storage)
+        guard textView.shouldChangeText(in: range, replacementString: nil) else { return }
+        storage.beginEditing()
+        let keys: [NSAttributedString.Key] = [
+            .foregroundColor, .backgroundColor, .underlineStyle, .underlineColor, .strikethroughStyle, .strikethroughColor,
+            .link, .superscript, .baselineOffset, .shadow, .strokeWidth, .strokeColor, .obliqueness, .expansion, .kern,
+        ]
+        for key in keys { storage.removeAttribute(key, range: range) }
+        storage.addAttribute(.font, value: font, range: range)
+        // On a page of its own the default black may not read: the page's text colour.
+        if richPage != .adaptive { storage.addAttribute(.foregroundColor, value: richPage.isDark ? NSColor.white : NSColor.black, range: range) }
+        storage.endEditing()
+        textView.didChangeText()
+        var typing = textView.typingAttributes
+        for key in keys { typing.removeValue(forKey: key) }
+        typing[.font] = font
+        if richPage != .adaptive { typing[.foregroundColor] = richPage.isDark ? NSColor.white : NSColor.black }
+        textView.typingAttributes = typing
+    }
+
+    /// The font most of the text has, without bold or italic.
+    private static func commonFont(of text: NSAttributedString) -> NSFont {
+        var counts: [NSFont: Int] = [:]
+        text.enumerateAttribute(.font, in: NSRange(location: 0, length: min(text.length, 100_000)), options: []) { value, range, _ in
+            if let font = value as? NSFont { counts[font, default: 0] += range.length }
+        }
+        let font = counts.max(by: { $0.value < $1.value })?.key ?? .systemFont(ofSize: NSFont.systemFontSize)
+        let manager = NSFontManager.shared
+        return manager.convert(manager.convert(font, toNotHaveTrait: .boldFontMask), toNotHaveTrait: .italicFontMask)
     }
 
     /// The zoom at which the size most of the text has reads as 14 pt; never below 1 (large text
@@ -581,7 +635,9 @@ final class ItemState {
             textChanged = storage.length != initialRich.length || !storage.isEqual(to: initialRich)
         } else if let storage = textView?.textStorage {
             // Lengths first; the text itself without copying it.
-            textChanged = storage.length != initialLength || !storage.mutableString.isEqual(to: initialText)
+            let edited = storage.length != initialLength || !storage.mutableString.isEqual(to: initialText)
+            if formattingDropped, edited != plainTextEdited { plainTextEdited = edited }
+            textChanged = edited || formattingDropped
         } else {
             textChanged = false
         }
@@ -594,6 +650,13 @@ final class ItemState {
     func revert() {
         title = originalTitle
         guard let textView else { return }
+        // Formatting turned off: the stored formatted text comes back as it was.
+        if formattingDropped {
+            plainTextEdited = false
+            setShowsFormatting(true)
+            textView.setSelectedRange(NSRange(location: 0, length: 0))
+            return
+        }
         let range = NSRange(location: 0, length: (textView.string as NSString).length)
         guard textView.shouldChangeText(in: range, replacementString: initialText) else { return }
         if isRich, let initialRich {

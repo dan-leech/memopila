@@ -105,7 +105,7 @@ struct RecordView: View {
             ChangesSheet(
                 original: state.initialText,
                 edited: state.currentText() ?? state.initialText,
-                formattingChanged: state.isRich && state.isDirty
+                formattingChanged: (state.isRich || state.formattingDropped) && state.isDirty
             ) { model.saveItem() }
         }
     }
@@ -121,10 +121,15 @@ struct RecordView: View {
                 ToolbarIcon(systemImage: "arrow.uturn.forward", help: String(localized: "Redo (⇧⌘Z)")) { state.redo() }
                 Divider().frame(height: 18).padding(.horizontal, 4)
                 transformMenu
+                if state.hasRichSource {
+                    Divider().frame(height: 18).padding(.horizontal, 4)
+                    formattingToggle
+                }
                 if state.isRich {
                     ToolbarIcon(systemImage: "bold", help: String(localized: "Bold (⌘B)")) { state.toggleTrait(.boldFontMask) }
                     ToolbarIcon(systemImage: "italic", help: String(localized: "Italic (⌘I)")) { state.toggleTrait(.italicFontMask) }
                     ToolbarIcon(systemImage: "underline", help: String(localized: "Underline (⌘U)")) { state.toggleUnderline() }
+                    ToolbarIcon(systemImage: "eraser", help: String(localized: "Remove Formatting from the selection, or from all the text") + " (⌘\\)") { state.removeFormatting() }
                 }
             }
             if isImage, details?.recognizedText != nil {
@@ -652,6 +657,29 @@ struct RecordView: View {
 
     // MARK: Status bar
 
+    /// Formatting on or off, as a button that shows its state (owner feedback: the View menu was
+    /// not where anyone looks). Off, Save keeps only the text.
+    private var formattingToggle: some View {
+        let on = state.isRich
+        let canTurnOn = !state.plainTextEdited
+        return Button { state.setShowsFormatting(!on) } label: {
+            Image(systemName: "textformat")
+                .foregroundStyle(on ? Color.accentColor : Color.secondary)
+                .frame(width: 26, height: 22)
+                .background(on ? Color.accentColor.opacity(0.15) : Color.clear, in: RoundedRectangle(cornerRadius: 5))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .disabled(!on && !canTurnOn)
+        .help(on
+            ? String(localized: "Formatting is on. Click to make plain text: Save then keeps only the text (⇧⌘T)")
+            : canTurnOn
+                ? String(localized: "Plain text. Click to bring the formatting back (⇧⌘T)")
+                : String(localized: "The plain text was edited: Revert brings back the formatted text"))
+        .accessibilityLabel(Text("Formatting"))
+        .accessibilityValue(Text(on ? String(localized: "On") : String(localized: "Off")))
+    }
+
     private var statusBar: some View {
         HStack(spacing: 10) {
             if state.isDirty {
@@ -729,9 +757,9 @@ struct RecordView: View {
             Toggle("Show Invisible Characters", isOn: $state.showsInvisibles)
             if state.hasRichSource {
                 Toggle("Show Formatting", isOn: Binding.main(get: { state.isRich }, set: { [state] on in state.setShowsFormatting(on) }))
-                    .disabled(state.isDirty)
-                    .help(state.isDirty
-                        ? String(localized: "Save or revert your changes first")
+                    .disabled(!state.isRich && state.plainTextEdited)
+                    .help(!state.isRich && state.plainTextEdited
+                        ? String(localized: "The plain text was edited: Revert brings back the formatted text")
                         : String(localized: "Off: edit as plain text; saving then keeps only the text"))
             }
             if !state.isRich {

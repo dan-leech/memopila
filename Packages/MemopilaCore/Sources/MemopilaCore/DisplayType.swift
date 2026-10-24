@@ -10,6 +10,7 @@ public enum DisplayType: String, Sendable, Equatable, Codable, CaseIterable {
     case mixed
 
     /// Dominant class per item (file > image > pdf > color > rich text > url > text); several different classes → mixed.
+    /// Rich text only when its formatting says something (`FormattingSignificance`).
     /// Plain text that is a single web URL counts as `url`.
     public static func classify(_ items: [CanonicalItem]) -> DisplayType {
         let classes = Set(items.compactMap(dominantClass))
@@ -26,7 +27,12 @@ public enum DisplayType: String, Sendable, Equatable, Codable, CaseIterable {
         if types.contains(where: \.isRasterImage) { return .image }
         if types.contains(.pdf) { return .pdf }
         if types.contains(.color) { return .color }
-        if !types.isDisjoint(with: PasteboardType.richTextTypes) { return .richText }
+        // With plain text beside it, formatting that says nothing (one font in one colour) is text:
+        // nearly every copy from a browser or Terminal carries RTF or HTML (owner feedback).
+        if !types.isDisjoint(with: PasteboardType.richTextTypes),
+           types.isDisjoint(with: PasteboardType.plainTextTypes) || FormattingSignificance.isSignificant(item) {
+            return .richText
+        }
         if types.contains(.url) { return .url }
         if !types.isDisjoint(with: PasteboardType.plainTextTypes) { return .text }
         return item.representations.isEmpty ? nil : .mixed

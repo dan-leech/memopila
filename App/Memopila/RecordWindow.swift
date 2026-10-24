@@ -94,6 +94,11 @@ enum RecordKeys {
             model.copyItem(paste: true)
             return true
         }
+        // ⇧⌘T, as TextEdit's Make Plain Text / Make Rich Text.
+        if flags == [.command, .shift], key.letter == "t", state.hasRichSource {
+            state.setShowsFormatting(!state.isRich)
+            return true
+        }
         if flags == .command {
             if key.isReturn {
                 model.copyItem()
@@ -108,6 +113,7 @@ enum RecordKeys {
             case "b" where state.isRich && responder === state.textView: state.toggleTrait(.boldFontMask)
             case "i" where state.isRich && responder === state.textView: state.toggleTrait(.italicFontMask)
             case "u" where state.isRich && responder === state.textView: state.toggleUnderline()
+            case "\\" where state.isRich && responder === state.textView: state.removeFormatting()
             case "o" where state.card.displayType == .url:
                 guard let url = URL(string: state.linkText), url.scheme != nil else { return true }
                 External.open(url)

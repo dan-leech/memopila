@@ -274,6 +274,22 @@ struct ClipboardStoreTests {
         #expect(try await store.card(id) == nil)
     }
 
+    @Test func plainFormattingIsReclassifiedAsText() async throws {
+        let store = try ClipboardStore(url: nil)
+        func record(_ rtf: String, _ text: String) -> OwnedSnapshot {
+            var copy = snapshot("", items: [CanonicalItem([.bytes(.rtf, Data(rtf.utf8)), .bytes(.utf8PlainText, Data(text.utf8))])])
+            // As stored before formatting was weighed.
+            copy.displayType = .richText
+            return copy
+        }
+        guard case .committed(let plain) = await ingest(store, record("{\\rtf1\\ansi{\\fonttbl\\f0 Helvetica;}\\f0\\fs24 plain words}", "plain words")),
+              case .committed(let bold) = await ingest(store, record("{\\rtf1\\ansi{\\fonttbl\\f0 Helvetica;}\\f0\\fs24 {\\b bold} words}", "bold words"))
+        else { Issue.record("not committed"); return }
+        #expect(try await store.reclassifyRichText() == 1)
+        #expect(try await store.card(plain)?.displayType == .text)
+        #expect(try await store.card(bold)?.displayType == .richText)
+    }
+
     @Test func recordsWithSeveralItemsAreNotEdited() async throws {
         let store = try ClipboardStore(url: nil)
         let items = [CanonicalItem([.bytes(.utf8PlainText, Data("one".utf8))]), CanonicalItem([.bytes(.utf8PlainText, Data("two".utf8))])]

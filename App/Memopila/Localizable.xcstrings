@@ -2525,6 +2525,26 @@
         }
       }
     },
+    "Formatting": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оформление"
+          }
+        }
+      }
+    },
+    "Formatting is on. Click to make plain text: Save then keeps only the text (⇧⌘T)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оформление включено. Нажмите, чтобы сделать обычный текст: при сохранении останется только текст (⇧⌘T)"
+          }
+        }
+      }
+    },
     "Formatting will be removed": {
       "localizations": {
         "ru": {
@@ -3645,6 +3665,16 @@
         }
       }
     },
+    "Off": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выкл."
+          }
+        }
+      }
+    },
     "Off for this app": {
       "localizations": {
         "ru": {
@@ -3661,6 +3691,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Выключено: редактирование как простого текста; при сохранении останется только текст"
+          }
+        }
+      }
+    },
+    "On": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вкл."
           }
         }
       }
@@ -3985,6 +4025,16 @@
         }
       }
     },
+    "Plain text. Click to bring the formatting back (⇧⌘T)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Обычный текст. Нажмите, чтобы вернуть оформление (⇧⌘T)"
+          }
+        }
+      }
+    },
     "Prefix": {
       "localizations": {
         "ru": {
@@ -4285,6 +4335,16 @@
         }
       }
     },
+    "Remove Formatting from the selection, or from all the text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать оформление из выделенного или из всего текста"
+          }
+        }
+      }
+    },
     "Remove Line Breaks": {
       "localizations": {
         "ru": {
@@ -4571,16 +4631,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Снова сохранять из «%@»"
-          }
-        }
-      }
-    },
-    "Save or revert your changes first": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Сначала сохраните или верните изменения"
           }
         }
       }
@@ -5371,6 +5421,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Следующее копирование будет пропущено"
+          }
+        }
+      }
+    },
+    "The plain text was edited: Revert brings back the formatted text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Обычный текст изменён: «Вернуть» восстановит текст с оформлением"
           }
         }
       }
