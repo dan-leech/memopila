@@ -13,6 +13,9 @@ final class StatusItemController: NSObject {
     init(model: AppModel) {
         self.model = model
         super.init()
+        // macOS remembers where the user ⌘-dragged the icon.
+        item.autosaveName = "MemopilaStatusItem"
+        item.isVisible = true
         guard let button = item.button else { return }
         button.target = self
         button.action = #selector(clicked)
@@ -24,6 +27,17 @@ final class StatusItemController: NSObject {
         capture.frame = NSRect(x: 0, y: 0, width: 1, height: 1)
         button.addSubview(capture)
         trackIcon()
+    }
+
+    /// For Diagnostics: a new icon lands left of the others and a full menu bar hides it under the notch.
+    var placementDescription: String {
+        guard let frame = item.button?.window?.frame else { return "not placed" }
+        let screen = item.button?.window?.screen
+        let hiddenByNotch = screen.map { screen in
+            guard let left = screen.auxiliaryTopLeftArea, let right = screen.auxiliaryTopRightArea else { return false }
+            return frame.minX < right.minX && frame.maxX > left.maxX
+        } ?? false
+        return "visible \(item.isVisible), x \(Int(frame.minX))" + (hiddenByNotch ? ", under the notch" : "")
     }
 
     @objc private func clicked() {

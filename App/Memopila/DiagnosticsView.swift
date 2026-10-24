@@ -28,6 +28,7 @@ struct DiagnosticsView: View {
                 row("Loaded cards", "\(model.history.cards.count)")
                 row("Accessibility", AccessibilityBridge.isTrusted ? "trusted" : "not trusted")
                 row("Store file", ClipboardStore.defaultURL.path)
+                row("Menu bar icon", model.statusItemDescription?() ?? "—")
             }
             .font(.system(.callout, design: .monospaced))
 
@@ -65,7 +66,7 @@ struct DiagnosticsView: View {
             }
         }
         .padding()
-        .background(FloatingWindow())
+        .background(FloatingWindow { model.secondaryWindowDidClose() })
         .task { recordCount = try? await model.store.count(HistoryQuery()) }
     }
 

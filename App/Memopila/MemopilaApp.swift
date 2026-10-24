@@ -1,3 +1,4 @@
+import Carbon
 import SwiftUI
 
 @main
@@ -9,12 +10,15 @@ struct MemopilaApp: App {
         Settings {
             SettingsView(model: appDelegate.model)
         }
+        // No window comes back by itself at launch; the panel is the only thing that opens then.
+        .restorationBehavior(.disabled)
 
         Window("Diagnostics", id: DiagnosticsView.windowID) {
             DiagnosticsView(model: appDelegate.model)
         }
         .defaultSize(width: 640, height: 520)
         .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
     }
 }
 
@@ -24,8 +28,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        statusItem = StatusItemController(model: model)
+        let statusItem = StatusItemController(model: model)
+        self.statusItem = statusItem
+        model.statusItemDescription = { [weak statusItem] in statusItem?.placementDescription ?? "—" }
         model.start()
+        // Opened by hand (Finder, Xcode): show the panel, so the app is visibly running even when the
+        // menu bar icon is hidden. Not at login.
+        if !Self.launchedAsLoginItem { model.panel.show() }
+    }
+
+    private static var launchedAsLoginItem: Bool {
+        guard let event = NSAppleEventManager.shared().currentAppleEvent,
+              event.eventID == AEEventID(kAEOpenApplication) else { return false }
+        return event.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == OSType(keyAELaunchedAsLogInItem)
     }
 
     /// Dock icon click or relaunch while running: open the panel.

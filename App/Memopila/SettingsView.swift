@@ -32,7 +32,7 @@ struct SettingsView: View {
                 .tag(SettingsTab.about)
         }
         .frame(width: 700, height: 540)
-        .background(FloatingWindow())
+        .background(FloatingWindow { model.secondaryWindowDidClose() })
     }
 }
 

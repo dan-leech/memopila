@@ -967,7 +967,7 @@ In-window overlay (not the system Quick Look panel), with metadata: source app, 
 
 ### 8.7 Settings
 
-The Settings window (and Diagnostics) floats above other apps until closed: Memopila has no Dock icon and no ⌘Tab entry, so a window that fell behind another app could not be found again. There is no Dock icon option (switching the activation policy hid open windows). Explanations sit in section footers.
+Opening Settings or Diagnostics hides the panel; closing them brings it back. No window is restored at launch; a manual launch (not at login) opens the panel, so the app is visibly running even when a crowded menu bar hides its icon under the notch (Diagnostics shows where the icon is). The Settings window (and Diagnostics) floats above other apps until closed: Memopila has no Dock icon and no ⌘Tab entry, so a window that fell behind another app could not be found again. There is no Dock icon option (switching the activation policy hid open windows). Explanations sit in section footers.
 
 - **General:** all three shortcuts (window, pause, skip), clipboard access status (§3.1), launch at login, Paste after restore with Accessibility status.
 - **History:** *Keep up to* and *Delete items older than* as pickers (presets plus any current value), usage (items, favorites, stored data of 512 MB, location), Clear History (`.nonFavorites`) and Clear Everything (`.all`), both confirmed.

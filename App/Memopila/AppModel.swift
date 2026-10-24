@@ -81,6 +81,10 @@ final class AppModel {
     @ObservationIgnored private var memoryPressure: DispatchSourceMemoryPressure?
     @ObservationIgnored var openSettingsAction: OpenSettingsAction?
     @ObservationIgnored var openWindowAction: OpenWindowAction?
+    /// Where the menu bar icon is, for Diagnostics (a crowded menu bar hides it under the notch).
+    @ObservationIgnored var statusItemDescription: (() -> String)?
+    /// Settings or Diagnostics hid the panel; it comes back when that window closes (as in Pasta).
+    @ObservationIgnored private var panelHiddenForWindow = false
 
     init() {
         let settings = SettingsStore()
@@ -703,19 +707,31 @@ final class AppModel {
 
     // MARK: Settings window
 
-    /// Other windows never open under the floating panel: it hides first, pinned or not, as Pasta does.
+    /// Other windows never open under the floating panel: it hides first, pinned or not, as Pasta does,
+    /// and returns when the window closes.
     func openSettings(_ tab: SettingsTab? = nil, app: String? = nil) {
         if let tab { settingsTab = tab }
         if let app { settingsApp = app }
-        panel.close()
+        hidePanelForWindow()
         NSApp.activate()
         if let openSettingsAction { openSettingsAction() }
     }
 
     func openDiagnostics() {
-        panel.close()
+        hidePanelForWindow()
         NSApp.activate()
         if let openWindowAction { openWindowAction(id: DiagnosticsView.windowID) }
+    }
+
+    private func hidePanelForWindow() {
+        if panel.isVisible { panelHiddenForWindow = true }
+        panel.close()
+    }
+
+    func secondaryWindowDidClose() {
+        guard panelHiddenForWindow else { return }
+        panelHiddenForWindow = false
+        panel.show()
     }
 
     func dismissStoreRecovery() {
