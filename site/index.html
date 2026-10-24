@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Memopila: clipboard manager for macOS</title>
+<meta name="description" content="Memopila is a native macOS clipboard manager. Everything you copy is searchable and editable, and it stays on your Mac.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f7f8fc" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0c14" media="(prefers-color-scheme: dark)">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Memopila: clipboard manager for macOS">
+<meta property="og:description" content="Everything you copy, searchable and editable, and kept on your Mac.">
+<meta property="og:url" content="https://dan-leech.github.io/memopila/">
+<meta property="og:image" content="https://dan-leech.github.io/memopila/screenshot.webp">
+<meta name="twitter:card" content="summary_large_image">
+<style>
+  :root {
+    --bg: #f7f8fc;
+    --bg-alt: #eef1f9;
+    --surface: #ffffff;
+    --text: #0f1222;
+    --muted: #586078;
+    --line: rgba(15, 18, 34, 0.09);
+    --line-strong: rgba(15, 18, 34, 0.16);
+    --brand: #3c4bde;
+    --brand-soft: rgba(71, 98, 234, 0.11);
+    --brand-glow: rgba(87, 130, 250, 0.35);
+    --btn-from: #4a63ec;
+    --btn-to: #3a47d6;
+    --ok: #18864b;
+    --warn: #b4232f;
+    --key-bg: #ffffff;
+    --shadow: 0 1px 2px rgba(15, 18, 34, 0.05), 0 8px 24px rgba(15, 18, 34, 0.06);
+    --shadow-lg: 0 30px 80px -20px rgba(30, 40, 110, 0.35), 0 12px 30px -12px rgba(15, 18, 34, 0.25);
+    --radius: 16px;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0a0c14;
+      --bg-alt: #0f121d;
+      --surface: #141826;
+      --text: #eef0f8;
+      --muted: #9ba3bb;
+      --line: rgba(255, 255, 255, 0.08);
+      --line-strong: rgba(255, 255, 255, 0.16);
+      --brand: #93a6ff;
+      --brand-soft: rgba(111, 136, 255, 0.14);
+      --brand-glow: rgba(87, 130, 250, 0.30);
+      --ok: #4fd18b;
+      --warn: #ff7a85;
+      --key-bg: #1b2032;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.25);
+      --shadow-lg: 0 30px 80px -20px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255, 255, 255, 0.06);
+    }
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; scroll-behavior: smooth; }
+  @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 var(--sans);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  img { max-width: 100%; height: auto; display: block; }
+  a { color: var(--brand); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; border-radius: 6px; }
+  code { font: 0.9em var(--mono); background: var(--brand-soft); padding: 0.1em 0.35em; border-radius: 5px; overflow-wrap: anywhere; }
+
+  .wrap { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 20px; }
+  .skip { position: absolute; left: -9999px; }
+  .skip:focus { left: 16px; top: 12px; z-index: 10; background: var(--surface); padding: 8px 12px; border-radius: 8px; }
+
+  /* Navigation */
+  .nav {
+    position: sticky; top: 0; z-index: 5;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    backdrop-filter: saturate(180%) blur(14px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav .wrap { display: flex; align-items: center; gap: 24px; height: 60px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 1.05rem; color: var(--text); }
+  .brand:hover { text-decoration: none; }
+  .brand img { width: 28px; height: 28px; }
+  .nav-links { display: flex; gap: 22px; margin-left: auto; align-items: center; }
+  .nav-links a { color: var(--muted); font-size: 0.94rem; font-weight: 500; }
+  .nav-links a:hover { color: var(--text); text-decoration: none; }
+  .nav-links .gh { display: inline-flex; align-items: center; gap: 6px; color: var(--text); }
+  .gh svg { width: 18px; height: 18px; fill: currentColor; }
+
+  /* Hero */
+  .hero { position: relative; text-align: center; padding: 84px 0 40px; }
+  .hero::before {
+    content: ""; position: absolute; inset: -120px 0 auto 0; height: 620px; z-index: -1;
+    background:
+      radial-gradient(40% 50% at 30% 30%, var(--brand-glow), transparent 70%),
+      radial-gradient(35% 45% at 72% 22%, rgba(140, 110, 255, 0.22), transparent 70%);
+    filter: blur(10px);
+    pointer-events: none;
+  }
+  .hero-icon { width: 112px; height: 112px; margin: 0 auto 22px; filter: drop-shadow(0 18px 30px rgba(40, 60, 200, 0.35)); }
+  .hero h1 {
+    font: 800 clamp(2.6rem, 7vw, 4.4rem)/1.04 var(--display);
+    letter-spacing: -0.035em;
+    margin: 0 0 14px;
+  }
+  .tagline {
+    font: 600 clamp(1.15rem, 2.6vw, 1.5rem)/1.35 var(--display);
+    letter-spacing: -0.01em;
+    margin: 0 auto 14px; max-width: 30ch;
+  }
+  .lede { color: var(--muted); margin: 0 auto 32px; max-width: 58ch; font-size: 1.06rem; }
+  .actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+    min-height: 48px; padding: 0 22px; border-radius: 12px;
+    font-weight: 600; font-size: 1rem; text-decoration: none;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
+  }
+  .btn:hover { text-decoration: none; transform: translateY(-1px); }
+  .btn svg { width: 19px; height: 19px; flex: none; }
+  .btn-primary {
+    color: #fff;
+    background: linear-gradient(180deg, var(--btn-from), var(--btn-to));
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.25) inset, 0 10px 24px -8px rgba(58, 71, 214, 0.65);
+  }
+  .btn-primary svg { stroke: #fff; }
+  .btn-secondary { color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); box-shadow: var(--shadow); }
+  .btn-secondary svg { fill: currentColor; }
+  .meta { margin: 18px 0 0; color: var(--muted); font-size: 0.9rem; }
+  .meta a { color: var(--muted); text-decoration: underline; text-underline-offset: 2px; }
+
+  /* Screenshot */
+  .shot { padding: 28px 0 24px; }
+  .shot figure { position: relative; margin: 0 auto; max-width: 1000px; }
+  .shot figure::before {
+    content: ""; position: absolute; inset: 8% 6% -4%; z-index: -1;
+    background: radial-gradient(50% 50% at 50% 50%, var(--brand-glow), transparent 75%);
+    filter: blur(40px);
+  }
+  /* The screenshot has a few pixels of desktop around the window: crop to the window edge (1700 × 982 of 1718 × 1002). */
+  .frame { aspect-ratio: 1700 / 982; overflow: hidden; border-radius: 2.4% / 4.1%; box-shadow: var(--shadow-lg); background: #2d2b2b; }
+  .frame img { width: 101.06%; max-width: none; margin: -0.53% 0 0 -0.41%; }
+  .shot figcaption { text-align: center; color: var(--muted); font-size: 0.9rem; margin-top: 16px; }
+
+  /* Sections */
+  section { scroll-margin-top: 72px; }
+  .section { padding: 88px 0; }
+  .section.alt { background: var(--bg-alt); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .eyebrow { color: var(--brand); font-weight: 700; font-size: 0.8rem; letter-spacing: 0.12em; text-transform: uppercase; margin: 0 0 10px; }
+  .section h2 { font: 750 clamp(1.8rem, 4vw, 2.5rem)/1.15 var(--display); letter-spacing: -0.025em; margin: 0 0 14px; }
+  .section-intro { color: var(--muted); max-width: 62ch; margin: 0 0 44px; font-size: 1.05rem; }
+
+  /* Feature grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 18px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 24px; box-shadow: var(--shadow);
+  }
+  .card h3 { font-size: 1.08rem; margin: 14px 0 6px; letter-spacing: -0.01em; }
+  .card p { margin: 0; color: var(--muted); font-size: 0.97rem; }
+  .ico {
+    width: 42px; height: 42px; border-radius: 11px; display: grid; place-items: center;
+    background: var(--brand-soft); color: var(--brand);
+  }
+  .ico svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .ico.red { background: color-mix(in srgb, var(--warn) 14%, transparent); color: var(--warn); }
+
+  /* Keyboard */
+  .split { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 56px; align-items: start; }
+  .keys { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+  .keys li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 20px; border-top: 1px solid var(--line); }
+  .keys li:first-child { border-top: 0; }
+  .keys span { color: var(--muted); font-size: 0.97rem; }
+  .combo { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; flex: none; max-width: 55%; }
+  kbd {
+    display: inline-block; min-width: 2em; text-align: center;
+    font: 600 0.85rem/1 var(--mono); color: var(--text);
+    padding: 0.42em 0.55em; border-radius: 7px;
+    background: var(--key-bg); border: 1px solid var(--line-strong); border-bottom-width: 2px;
+  }
+  .note { color: var(--muted); font-size: 0.95rem; margin-top: 18px; }
+  .combo .or { color: var(--muted); font-size: 0.85rem; align-self: center; padding: 0 2px; }
+  p kbd { font-size: 0.78em; padding: 0.3em 0.45em; min-width: 1.7em; vertical-align: 0.08em; }
+
+  /* Privacy */
+  .checks { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+  .checks li { display: grid; grid-template-columns: 26px 1fr; gap: 12px; align-items: start; }
+  .checks svg { width: 22px; height: 22px; margin-top: 2px; fill: none; stroke: var(--ok); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .checks strong { color: var(--text); }
+  .checks p { margin: 0; color: var(--muted); }
+  .aside {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 24px; box-shadow: var(--shadow);
+  }
+  .aside h3 { margin: 0 0 10px; font-size: 1.05rem; }
+  .aside p { margin: 0 0 12px; color: var(--muted); font-size: 0.95rem; }
+  .aside p:last-child { margin-bottom: 0; }
+
+  /* Requirements and install */
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 18px; }
+  .cols ul, .cols ol { margin: 0; padding-left: 1.2em; color: var(--muted); }
+  .cols li { margin: 0 0 10px; }
+  .cols li strong { color: var(--text); }
+  .cols h3 { margin: 0 0 14px; font-size: 1.08rem; }
+  .card p.mb { margin-bottom: 10px; }
+  .card p.mt { margin-top: 12px; }
+  .card p.small { font-size: 0.93rem; }
+  pre {
+    margin: 10px 0 0; padding: 12px 14px; border-radius: 10px;
+    white-space: pre-wrap; overflow-wrap: anywhere;
+    background: var(--bg-alt); border: 1px solid var(--line);
+    font: 0.82rem/1.5 var(--mono); color: var(--text);
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+
+  /* CTA and footer */
+  .cta { text-align: center; padding: 96px 0; }
+  .cta h2 { font: 750 clamp(1.8rem, 4vw, 2.4rem)/1.15 var(--display); letter-spacing: -0.025em; margin: 0 0 12px; }
+  .cta p { color: var(--muted); margin: 0 0 28px; }
+  footer { border-top: 1px solid var(--line); padding: 32px 0 40px; color: var(--muted); font-size: 0.9rem; }
+  footer .wrap { display: flex; flex-wrap: wrap; gap: 14px 28px; align-items: center; justify-content: space-between; }
+  footer nav { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+  footer a { color: var(--muted); }
+  footer a:hover { color: var(--text); }
+
+  @media (max-width: 860px) {
+    .split { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  }
+  @media (max-width: 640px) {
+    .nav-links a:not(.gh) { display: none; }
+    .hero { padding: 56px 0 28px; }
+    .hero-icon { width: 92px; height: 92px; }
+    .actions .btn { width: 100%; }
+    .section { padding: 64px 0; }
+    .section-intro { margin-bottom: 32px; }
+    .keys li { padding: 12px 16px; }
+    .combo { max-width: 60%; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="Memopila home">
+      <img src="icon.png" width="28" height="28" alt="">
+      Memopila
+    </a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#features">Features</a>
+      <a href="#keyboard">Keyboard</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#install">Install</a>
+      <a class="gh" href="https://github.com/dan-leech/memopila">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero" id="top">
+    <div class="wrap">
+      <img class="hero-icon" src="icon.png" width="112" height="112" alt="Memopila app icon">
+      <h1>Memopila</h1>
+      <p class="tagline">Everything you copy, searchable and editable, and kept on your Mac.</p>
+      <p class="lede">A native macOS clipboard manager in your menu bar. Press <kbd>⌥</kbd> <kbd>⌘</kbd> <kbd>V</kbd>, find what you copied, press <kbd>↩</kbd>, and you are back in your app with the record on the clipboard.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="https://github.com/dan-leech/memopila/releases/latest">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+          Download for Mac
+        </a>
+        <a class="btn btn-secondary" href="https://github.com/dan-leech/memopila">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+      <p class="meta">Free and open source (MIT) · macOS 15.4 or later · <a href="https://github.com/dan-leech/memopila/releases">All releases</a></p>
+    </div>
+  </section>
+
+  <section class="shot" aria-label="Screenshot">
+    <div class="wrap">
+      <figure>
+        <div class="frame"><img src="screenshot.webp" width="1718" height="1002" alt="The Memopila panel in dark mode: a sidebar with History, Favorites, Apps and Collections, a filter bar with All, Text, Links, Images and Files, and a grid of clipboard cards with a link, a file, an image and text snippets."></div>
+        <figcaption>The history panel: sidebar, filter bar and cards. The green line marks what is on the clipboard now.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="section" id="features">
+    <div class="wrap">
+      <p class="eyebrow">Features</p>
+      <h2>Your clipboard, with a memory.</h2>
+      <p class="section-intro">Memopila records text, rich text, links, images, PDFs, colours and files, and stores the history on disk so it stays light on memory. It then helps you find, fix and reuse what you copied.</p>
+      <div class="grid">
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></div>
+          <h3>Search everything</h3>
+          <p>Search covers text, titles, text inside images, app names, source pages and file names, with matches marked on the cards. Filter by kind, period, app or collection.</p>
+        </article>
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="m13.5 6.5 4 4"/></svg></div>
+          <h3>Edit any record</h3>
+          <p>Edit formatted text without losing its formatting. You also get syntax highlighting and line numbers for code, HEX / RGB / HSL for colours, Quick Look for files, and a <em>Changes…</em> view before you save.</p>
+        </article>
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M8 9h8M12 9v7"/></svg></div>
+          <h3>Text in images</h3>
+          <p>Screenshots become searchable: text is recognized on your Mac with Vision. Copy the selected text or all of it as a new card.</p>
+        </article>
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2"/><circle cx="8" cy="17" r="2"/></svg></div>
+          <h3>Rules per app</h3>
+          <p>Set <em>Don't save</em>, <em>Delete after</em>, a size limit, text recognition, source page or format rules for any app, two clicks away from any card.</p>
+        </article>
+        <article class="card">
+          <div class="ico red"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M12 8.5v4.5M12 16.2v.01"/></svg></div>
+          <h3>Never a silent miss</h3>
+          <p>A red <em>Current — not saved</em> card explains why a copy was too large, unsupported or failed, and offers <em>Save Anyway</em> or a quick fix.</p>
+        </article>
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/></svg></div>
+          <h3>Favorites and collections</h3>
+          <p>Keep what matters: favorites are never deleted automatically. Drop cards on a collection, give records titles, and drag cards into other apps.</p>
+        </article>
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h12l-3-3M20 16H8l3 3"/></svg></div>
+          <h3>Duplicate As</h3>
+          <p>Get plain text, trimmed, re-cased or sorted lines, formatted or minified JSON, and URL or Base64 encoded or decoded text. Each result becomes a new card.</p>
+        </article>
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M10 9v6M14 9v6"/></svg></div>
+          <h3>Pause and Skip</h3>
+          <p>Pause capture for 5 minutes, 15 minutes, an hour or until you resume, or skip just the next copy. Content copied meanwhile is never read.</p>
+        </article>
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M8 14h8"/></svg></div>
+          <h3>Keyboard first</h3>
+          <p>Use the full keyboard map, the <kbd>⌘</kbd> <kbd>K</kbd> actions panel and <kbd>⌘</kbd> <kbd>1</kbd>…<kbd>9</kbd>. Optionally, Memopila can paste into the app you were in. Available in English and Russian.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section alt" id="keyboard">
+    <div class="wrap split">
+      <div>
+        <p class="eyebrow">Keyboard</p>
+        <h2>Hands stay on the keys.</h2>
+        <p class="section-intro">The panel opens over any app, even in full screen, without taking focus from it. Start typing to search, move with the arrows, and press <kbd>↩</kbd>.</p>
+        <p class="note">Press <kbd>⌘</kbd> <kbd>/</kbd> in the panel for the full list. The panel shortcut can be changed in Settings; only one app can hold <kbd>⌥</kbd> <kbd>⌘</kbd> <kbd>V</kbd>.</p>
+      </div>
+      <ul class="keys">
+        <li><span>Open or close the panel</span><span class="combo"><kbd>⌥</kbd><kbd>⌘</kbd><kbd>V</kbd></span></li>
+        <li><span>Put on the clipboard, back to your app</span><span class="combo"><kbd>↩</kbd></span></li>
+        <li><span>The same, then paste</span><span class="combo"><kbd>⌥</kbd><kbd>↩</kbd></span></li>
+        <li><span>One of the first nine cards</span><span class="combo"><kbd>⌘</kbd><kbd>1…9</kbd></span></li>
+        <li><span>Edit Record</span><span class="combo"><kbd>Space</kbd><span class="or">or</span><kbd>⌘</kbd><kbd>E</kbd></span></li>
+        <li><span>All actions for the card</span><span class="combo"><kbd>⌘</kbd><kbd>K</kbd></span></li>
+        <li><span>Favorite</span><span class="combo"><kbd>⌘</kbd><kbd>D</kbd></span></li>
+        <li><span>Delete, with Undo</span><span class="combo"><kbd>⌘</kbd><kbd>⌫</kbd></span></li>
+        <li><span>Pin the panel</span><span class="combo"><kbd>⌘</kbd><kbd>P</kbd></span></li>
+        <li><span>Pause or resume capture</span><span class="combo"><kbd>⌘</kbd><kbd>.</kbd></span></li>
+        <li><span>Clear search, then close</span><span class="combo"><kbd>Esc</kbd></span></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="section" id="privacy">
+    <div class="wrap split">
+      <div>
+        <p class="eyebrow">Privacy</p>
+        <h2>Local only. No network.</h2>
+        <p class="section-intro">Your clipboard holds passwords, tokens and private notes, so Memopila keeps the history on your Mac and never goes online.</p>
+        <div class="aside">
+          <h3>Good to know</h3>
+          <p>History is stored locally but is not encrypted by the app. Use FileVault to protect the disk.</p>
+          <p>Per-app <em>Don't save</em> identifies the source app by a self-reported marker or the frontmost app. It is a convenience filter, not a security boundary. For one-off secrets use <em>Pause</em> or <em>Skip next copy</em>.</p>
+        </div>
+      </div>
+      <ul class="checks">
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>No account, sync or cloud.</strong> History stays in <code>~/Library/Application Support/Memopila</code>. There are no link previews and no analytics.</p></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>Text recognition on device.</strong> Text in images is read with Apple's Vision framework on your Mac.</p></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>Password managers respected.</strong> Copies marked as concealed, transient or auto-generated are never saved.</p></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>Secrets expire.</strong> Tokens, private keys, JWTs and card numbers are recognized on your Mac. By default they are masked on the card and deleted after 8 hours, or you can choose not to save them at all. Detection is pattern-based and cannot catch everything.</p></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>Pause and Skip mean it.</strong> What you copy while capture is paused or skipped is never read.</p></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>Minimal permissions.</strong> Clipboard access is needed to capture. Accessibility is optional, only to paste for you. You can ignore content from your other devices.</p></li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="section alt" id="install">
+    <div class="wrap">
+      <p class="eyebrow">Requirements and install</p>
+      <h2>Up and running in a minute.</h2>
+      <p class="section-intro">Download the latest release, move it to Applications and allow clipboard access. Builds without a Developer ID signature need one extra step on first launch.</p>
+      <div class="cols">
+        <div class="card">
+          <h3>Requirements</h3>
+          <ul>
+            <li><strong>macOS 15.4</strong> (Sequoia) or later.</li>
+            <li><strong>Clipboard access</strong> set to <em>Always Allow</em> when macOS asks.</li>
+            <li><strong>Accessibility</strong>, optional, for paste after copying.</li>
+            <li>To build from source: <strong>Xcode 26</strong> or later (macOS 15.6 or later).</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Install</h3>
+          <ol>
+            <li>Download the <strong>.zip</strong> or <strong>.dmg</strong> from the <a href="https://github.com/dan-leech/memopila/releases/latest">latest release</a>.</li>
+            <li>Move <strong>Memopila.app</strong> to <strong>Applications</strong>.</li>
+            <li>Open it and choose <strong>Enable Capture</strong>, then <strong>Always Allow</strong> when macOS asks about the clipboard.</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>First launch of an unsigned build</h3>
+          <p class="mb">Open the app once and click <em>Done</em> when macOS blocks it, then click <strong>Open Anyway</strong> in System Settings → Privacy &amp; Security. Or, before the first launch, run:</p>
+          <pre><code>xattr -dr com.apple.quarantine /Applications/Memopila.app</code></pre>
+          <p class="mt small">After an update you may need to allow clipboard access again.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta">
+    <div class="wrap">
+      <h2>Give your clipboard a memory.</h2>
+      <p>Free, open source and private by design.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="https://github.com/dan-leech/memopila/releases/latest">
+          <svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14"/></svg>
+          Download for Mac
+        </a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="icon.png" width="28" height="28" alt="">Memopila</a>
+    <nav aria-label="Project links">
+      <a href="https://github.com/dan-leech/memopila">Source</a>
+      <a href="https://github.com/dan-leech/memopila/releases">Releases</a>
+      <a href="https://github.com/dan-leech/memopila/issues">Issues</a>
+      <a href="https://github.com/dan-leech/memopila/blob/main/docs/PLAN.md">Design plan</a>
+      <a href="https://github.com/dan-leech/memopila/blob/main/LICENSE">MIT License</a>
+    </nav>
+    <span>© 2026 Daniil Kostin</span>
+  </div>
+</footer>
+</body>
+</html>

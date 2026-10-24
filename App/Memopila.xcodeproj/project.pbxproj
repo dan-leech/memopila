@@ -1,0 +1,283 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A6786B15801A4DDB9DDDC0D4 /* MemopilaCore in Frameworks */ = {isa = PBXBuildFile; productRef = 322AA7C2C3514A47A14CE933 /* MemopilaCore */; };
+		737BC242E86376C8BF1886EF /* MemopilaServices in Frameworks */ = {isa = PBXBuildFile; productRef = 6DDF44C8DEB5897CA235EE20 /* MemopilaServices */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		115924B444384E2096286721 /* Memopila.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Memopila.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		8C08B91427424B2F985C1107 /* Memopila */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = Memopila;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		6B99D38013604A88ABB06683 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A6786B15801A4DDB9DDDC0D4 /* MemopilaCore in Frameworks */,
+				737BC242E86376C8BF1886EF /* MemopilaServices in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		4C06BC45CC9943569B0474D7 = {
+			isa = PBXGroup;
+			children = (
+				8C08B91427424B2F985C1107 /* Memopila */,
+				D9F4E1565B03441D84ACF8B0 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		D9F4E1565B03441D84ACF8B0 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				115924B444384E2096286721 /* Memopila.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E31966C09D0F48CD84A81F17 /* Memopila */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1B447E5B05E24B458E0C20F2 /* Build configuration list for PBXNativeTarget "Memopila" */;
+			buildPhases = (
+				2C07F3AC14314A94A6B098DC /* Sources */,
+				6B99D38013604A88ABB06683 /* Frameworks */,
+				18AB83EDBB8240998B46AA01 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				8C08B91427424B2F985C1107 /* Memopila */,
+			);
+			name = Memopila;
+			packageProductDependencies = (
+				322AA7C2C3514A47A14CE933 /* MemopilaCore */,
+				6DDF44C8DEB5897CA235EE20 /* MemopilaServices */,
+			);
+			productName = Memopila;
+			productReference = 115924B444384E2096286721 /* Memopila.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BC662D1F02B8461782F8B533 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					E31966C09D0F48CD84A81F17 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+				};
+			};
+			buildConfigurationList = D994EBC14EDF4A32A84614B7 /* Build configuration list for PBXProject "Memopila" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+				ru,
+			);
+			mainGroup = 4C06BC45CC9943569B0474D7;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				21636BEF4DF54097ADC85854 /* XCLocalSwiftPackageReference "../Packages/MemopilaCore" */,
+				38E0734DD7B5409CB9CD9B83 /* XCLocalSwiftPackageReference "../Packages/MemopilaServices" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = D9F4E1565B03441D84ACF8B0 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E31966C09D0F48CD84A81F17 /* Memopila */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		18AB83EDBB8240998B46AA01 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2C07F3AC14314A94A6B098DC /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		3375583C43D6422EA533D07A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		AE3E275866734C029E14F121 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+			};
+			name = Release;
+		};
+		29FFAFF8F0B74D8E8FF4487E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Memopila;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "io.github.dan-leech.Memopila";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		7E2759B924C640A8BEF855EC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ENABLE_APP_SANDBOX = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Memopila;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
+				INFOPLIST_KEY_LSUIElement = YES;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "io.github.dan-leech.Memopila";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		1B447E5B05E24B458E0C20F2 /* Build configuration list for PBXNativeTarget "Memopila" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				29FFAFF8F0B74D8E8FF4487E /* Debug */,
+				7E2759B924C640A8BEF855EC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		D994EBC14EDF4A32A84614B7 /* Build configuration list for PBXProject "Memopila" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3375583C43D6422EA533D07A /* Debug */,
+				AE3E275866734C029E14F121 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		21636BEF4DF54097ADC85854 /* XCLocalSwiftPackageReference "../Packages/MemopilaCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/MemopilaCore;
+		};
+		38E0734DD7B5409CB9CD9B83 /* XCLocalSwiftPackageReference "../Packages/MemopilaServices" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../Packages/MemopilaServices;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		322AA7C2C3514A47A14CE933 /* MemopilaCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MemopilaCore;
+		};
+		6DDF44C8DEB5897CA235EE20 /* MemopilaServices */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = MemopilaServices;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = BC662D1F02B8461782F8B533 /* Project object */;
+}
