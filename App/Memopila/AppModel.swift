@@ -13,6 +13,8 @@ enum PanelOverlay: Equatable {
     case confirmDelete([UUID])
     case confirmDeleteCollection(UUID)
     case confirmClear
+    /// ⌘/ — every shortcut of the panel (§8.3).
+    case shortcuts
 }
 
 enum RestoreVariant: Equatable {
@@ -64,6 +66,8 @@ final class AppModel {
     var isPinned = false
     /// ⌘ is held in the panel: cards show their ⌘1…⌘9 shortcuts.
     var isCommandHeld = false
+    /// ⌥ is held in the panel: the gear menu also offers Diagnostics.
+    var isOptionHeld = false
     /// The card just copied while the window is pinned; it shows a checkmark for a moment.
     private(set) var copiedCardID: UUID?
     /// The badge on that card says Pasted rather than Copied.
@@ -253,12 +257,17 @@ final class AppModel {
         }
     }
 
-    /// *Put on Clipboard* in the record window (↩, ⌘↩): unsaved changes are saved first.
-    func copyItem() {
+    /// *Select* in the record window (↩, ⌘↩; ⌥↩ also pastes): unsaved changes are saved first.
+    func copyItem(paste: Bool? = nil) {
         guard let state = itemState else { return }
         if state.isDirty { return saveItem(thenCopy: true) }
+        if paste == true, !AccessibilityBridge.isTrusted {
+            AccessibilityBridge.requestTrust()
+            toasts.error(String(localized: "To paste, allow Memopila in System Settings → Privacy & Security → Accessibility, then try again."))
+            return
+        }
         closeRecord(returningToPanel: false)
-        restore(state.id)
+        restore(state.id, paste: paste)
     }
 
     // MARK: Panel lifecycle (§8.1, §7.3)
@@ -362,11 +371,11 @@ final class AppModel {
     // MARK: Restore (§3.4)
 
     /// ↩, ⌘C: waits for a pending search so the restored card is the one the results show. Nothing
-    /// selected (the clipboard holds something not in history) → nothing to do.
+    /// selected (the clipboard holds something not in history) → nothing to do; several → an error.
     func restoreSelected(paste: Bool? = nil) {
         Task {
             await history.settle()
-            guard let id = history.selectedID else { return }
+            guard let id = singleSelection() else { return }
             await performRestore(id, paste: paste)
         }
     }
@@ -384,11 +393,27 @@ final class AppModel {
         Task { await performRestore(id, paste: paste) }
     }
 
+    /// *Select* from a card's menu: several selected cards cannot all go to the clipboard.
+    func select(_ id: UUID, paste: Bool? = nil) {
+        if history.selection.count > 1, history.isSelected(id) {
+            _ = singleSelection()
+            return
+        }
+        restore(id, paste: paste)
+    }
+
     /// Puts the item on the clipboard, moves it to the top and gives the focus back to the app the
     /// user came from, as in Pasta. *Paste after copying* (off by default) also presses ⌘V there;
     /// `paste` overrides that setting. `true` when the clipboard now holds the item.
     @discardableResult
     private func performRestore(_ id: UUID, paste: Bool? = nil) async -> Bool {
+        // ⌥↩ asks for one paste: without Accessibility the item would only be copied, which is
+        // not what was asked, so say what is missing and change nothing.
+        if paste == true, !AccessibilityBridge.isTrusted {
+            AccessibilityBridge.requestTrust()
+            toasts.error(String(localized: "To paste, allow Memopila in System Settings → Privacy & Security → Accessibility, then try again."))
+            return false
+        }
         guard let content = await variantContent(id, variant: .original) else { return false }
         switch monitor.write(content.items, sourceBundleID: content.sourceBundleID, recordID: id) {
         case .failed(let message):
@@ -581,7 +606,9 @@ final class AppModel {
         }
     }
 
-    /// ⌘⌫: favorites ask first (§8.3).
+    /// ⌘⌫: favorites ask first (§8.3). The cards leave the grid at once; the store deletes them
+    /// after a few seconds, so the toast's Undo can bring them back (first-run feedback: one
+    /// keystroke lost a record for good).
     func delete(_ ids: [UUID], confirmed: Bool = false) {
         guard !ids.isEmpty else { return }
         let favorites = history.cards.filter { ids.contains($0.id) && $0.isFavorite }
@@ -590,18 +617,99 @@ final class AppModel {
             return
         }
         if case .confirmDelete? = overlay { present(nil) }
-        Task {
-            let store = store
-            switch await monitor.destructive({ opSeq in try await store.delete(ids, opSeq: opSeq) }) {
+        commitPendingDeletion()
+        let set = Set(ids)
+        history.hide(set)
+        let task = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(6))
+            guard !Task.isCancelled else { return }
+            await self?.performDeletion(set)
+        }
+        pendingDeletion = (set, task)
+        let message = ids.count == 1 ? String(localized: "Deleted") : String(localized: "Deleted \(ids.count) items")
+        toasts.show(message, actions: [.init(title: String(localized: "Undo")) { [weak self] in self?.undoDeletion() }])
+    }
+
+    @ObservationIgnored private var pendingDeletion: (ids: Set<UUID>, task: Task<Void, Never>)?
+
+    func undoDeletion() {
+        guard let pending = pendingDeletion else { return }
+        pending.task.cancel()
+        pendingDeletion = nil
+        history.unhide(pending.ids)
+    }
+
+    /// A second deletion does not wait for the first.
+    private func commitPendingDeletion() {
+        guard let pending = pendingDeletion else { return }
+        pending.task.cancel()
+        pendingDeletion = nil
+        Task { await performDeletion(pending.ids) }
+    }
+
+    private func performDeletion(_ ids: Set<UUID>) async {
+        if pendingDeletion?.ids == ids { pendingDeletion = nil }
+        let store = store
+        let list = Array(ids)
+        for attempt in 1...3 {
+            switch await monitor.destructive({ opSeq in try await store.delete(list, opSeq: opSeq) }) {
             case .success:
                 for id in ids { thumbnails.invalidate(id) }
-                history.removeLocally(Set(ids))
+                history.forgetHidden(ids)
                 history.storeDidChange()
+                return
+            case .failure(.busy) where attempt < 3:
+                // Another delete, clear or edit is running; this one follows it.
+                try? await Task.sleep(for: .milliseconds(500))
             case .failure(let error):
+                history.unhide(ids)
                 report(error)
+                return
             }
         }
     }
+
+    // MARK: Several selected cards
+
+    /// ↩ and Select with several cards selected: the clipboard holds one record.
+    private func singleSelection() -> UUID? {
+        let selection = history.selection
+        guard selection.count <= 1 else {
+            toasts.error(String(localized: "Only one record can be on the clipboard. Select a single card."))
+            return nil
+        }
+        return selection.first
+    }
+
+    /// ⌘D on several cards: all become favorites, or all stop being favorites when they all are.
+    func toggleFavorites(_ ids: [UUID]) {
+        let cards = history.cards.filter { ids.contains($0.id) }
+        guard !cards.isEmpty else { return }
+        let makeFavorite = !cards.allSatisfy(\.isFavorite)
+        let limits = settings.retentionLimits
+        Task {
+            for card in cards where card.isFavorite != makeFavorite {
+                try? await store.setFavorite(card.id, makeFavorite, limits: limits, now: Date())
+            }
+            history.storeDidChange()
+        }
+    }
+
+    /// Collections ▸ with several cards: adds them all, or takes them all out when they all are in.
+    func setMembership(_ ids: [UUID], collection: UUID, isMember: Bool) {
+        for id in ids { history.setMembershipLocally(record: id, collection: collection, isMember: isMember) }
+        Task {
+            for id in ids { try? await store.setMembership(record: id, collection: collection, isMember: isMember) }
+            history.refreshCollections()
+            history.storeDidChange()
+        }
+    }
+
+    /// Deletes what is selected: one card or several.
+    func deleteSelection() {
+        delete(history.selection)
+    }
+
 
     func rename(_ id: UUID, title: String) {
         present(nil)

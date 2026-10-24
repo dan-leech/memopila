@@ -132,6 +132,8 @@ private struct PanelMenu: View {
         Button("Clear History…") { model.present(.confirmClear) }
             .disabled(monitor.isBusy)
         Divider()
+        Button("Keyboard Shortcuts") { model.present(.shortcuts) }
+            .keyboardShortcut("/")
         if model.isPinned {
             Button("Unpin Window") { model.isPinned = false }
                 .keyboardShortcut("p")
@@ -150,7 +152,10 @@ private struct PanelMenu: View {
         Button("Settings…") { model.openSettings() }
             .keyboardShortcut(",")
         Button("About Memopila") { model.openSettings(.about) }
-        Button("Diagnostics…") { model.openDiagnostics() }
+        // A tool for reporting problems: with ⌥ held, as in many Mac apps.
+        if model.isOptionHeld {
+            Button("Diagnostics…") { model.openDiagnostics() }
+        }
         Button("Quit Memopila") { NSApp.terminate(nil) }
             .keyboardShortcut("q")
     }
@@ -484,13 +489,14 @@ private struct HistoryGrid: View {
                             CardView(
                                 card: card,
                                 index: index,
-                                hasCursor: card.id == model.history.selectedID,
+                                hasCursor: model.history.isSelected(card.id),
                                 model: model
                             )
                             .frame(height: cardHeight)
                             .id(card.id)
-                            .onTapGesture(count: 2) { model.restore(card.id) }
-                            .simultaneousGesture(TapGesture().onEnded { model.history.selectedID = card.id })
+                            // ⌥-double-click also pastes, once.
+                            .onTapGesture(count: 2) { model.restore(card.id, paste: NSEvent.modifierFlags.contains(.option) ? true : nil) }
+                            .simultaneousGesture(TapGesture().onEnded { model.history.click(card.id, modifiers: NSEvent.modifierFlags) })
                             .contextMenu { CardContextMenu(card: card, model: model) }
                             .onDrag {
                                 model.cardDragStarted(card.id)
@@ -614,6 +620,8 @@ private struct OverlayHost: View {
             } cancel: {
                 model.present(nil)
             }
+        case .shortcuts:
+            ShortcutsOverlay { model.present(nil) }
         case .confirmClear:
             ConfirmClearOverlay {
                 model.present(nil)
@@ -701,6 +709,79 @@ private struct ConfirmClearOverlay: View {
         }
         .padding(18)
         .frame(width: 360)
+    }
+}
+
+/// ⌘/ — every shortcut of the panel in one place (§8.3).
+private struct ShortcutsOverlay: View {
+    let close: () -> Void
+
+    private struct Row: Hashable {
+        let keys: String
+        let action: String
+    }
+
+    private struct Group: Identifiable {
+        let title: String
+        let rows: [Row]
+        var id: String { title }
+    }
+
+    private let groups: [Group] = [
+        Group(title: String(localized: "Choose"), rows: [
+            Row(keys: "↩ / " + String(localized: "double-click"), action: String(localized: "Select: put the record on the clipboard and go back")),
+            Row(keys: "⌥↩ / ⌥ " + String(localized: "double-click"), action: String(localized: "Select and paste into the app you were in")),
+            Row(keys: "⌘1 … ⌘9", action: String(localized: "Select the first nine cards")),
+            Row(keys: "⌘C", action: String(localized: "Select, never pasting")),
+        ]),
+        Group(title: String(localized: "Move and select"), rows: [
+            Row(keys: "↑ ↓ ← →", action: String(localized: "Move between cards")),
+            Row(keys: "⇧ ↑ ↓ ← →, ⌘-" + String(localized: "click") + ", ⇧-" + String(localized: "click"), action: String(localized: "Select several cards")),
+            Row(keys: "⌘F", action: String(localized: "Search")),
+            Row(keys: "Esc", action: String(localized: "Clear the search, then close")),
+        ]),
+        Group(title: String(localized: "Records"), rows: [
+            Row(keys: String(localized: "Space") + " / ⌘E", action: String(localized: "Edit Record")),
+            Row(keys: "⌘R", action: String(localized: "Rename…")),
+            Row(keys: "⌘D", action: String(localized: "Add to or remove from Favorites")),
+            Row(keys: "⌘⌫", action: String(localized: "Delete (Undo in the message that follows)")),
+            Row(keys: "⌘K", action: String(localized: "All actions for the card")),
+        ]),
+        Group(title: String(localized: "Window"), rows: [
+            Row(keys: "⌘P", action: String(localized: "Pin the window")),
+            Row(keys: "⌥⌘S", action: String(localized: "Show or hide the sidebar")),
+            Row(keys: "⌘+ / ⌘−", action: String(localized: "Bigger or smaller cards")),
+            Row(keys: "⌘.", action: String(localized: "Pause or resume capture")),
+            Row(keys: "⌘,", action: String(localized: "Settings")),
+        ]),
+    ]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text("Keyboard Shortcuts").font(.headline)
+                Spacer()
+                Button("Done", action: close).keyboardShortcut(.defaultAction)
+            }
+            ScrollView {
+                Grid(alignment: .leading, horizontalSpacing: 16, verticalSpacing: 6) {
+                    ForEach(groups) { group in
+                        GridRow {
+                            Text(group.title).font(.subheadline.bold()).gridCellColumns(2).padding(.top, 6)
+                        }
+                        ForEach(group.rows, id: \.self) { row in
+                            GridRow {
+                                Text(row.keys).font(.system(.callout, design: .monospaced)).foregroundStyle(.secondary)
+                                Text(row.action).font(.callout)
+                            }
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(18)
+        .frame(width: 540, height: 460)
     }
 }
 

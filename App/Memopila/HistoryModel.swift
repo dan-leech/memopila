@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MemopilaCore
 import MemopilaServices
@@ -31,6 +32,9 @@ final class HistoryModel {
             followsClipboard = false
         }
     }
+    /// More selected cards besides `selectedID` (⌘-click, ⇧-click, ⇧-arrows): bulk delete,
+    /// favorites and collections. Empty = only `selectedID` is selected.
+    private(set) var markedIDs: Set<UUID> = []
     private(set) var apps: [AppSummary] = []
     private(set) var types: [DisplayType] = []
     private(set) var collections: [CollectionSummary] = []
@@ -53,6 +57,8 @@ final class HistoryModel {
     /// The record the clipboard holds (§8.2): the selection shows it until the user moves it.
     @ObservationIgnored var clipboardRecordID: () -> UUID? = { nil }
     @ObservationIgnored private var followsClipboard = false
+    /// Deleted cards waiting for Undo (§8.3): out of the grid, still in the store.
+    @ObservationIgnored private var hiddenIDs: Set<UUID> = []
     @ObservationIgnored private var isLoadingMore = false
     @ObservationIgnored private var isActive = false
     @ObservationIgnored private var isStale = true
@@ -183,9 +189,11 @@ final class HistoryModel {
                 let (loaded, total) = try await (page, count)
                 let memberships = try await store.memberships(of: loaded.map(\.id))
                 guard generation == self.generation else { return }
-                withAnimation(animated ? .spring(response: 0.35, dampingFraction: 0.82) : nil) { cards = loaded }
+                let visible = loaded.filter { !hiddenIDs.contains($0.id) }
+                withAnimation(animated ? .spring(response: 0.35, dampingFraction: 0.82) : nil) { cards = visible }
                 self.memberships = memberships
-                totalCount = total
+                totalCount = max(0, total - (loaded.count - visible.count))
+                markedIDs.formIntersection(visible.map(\.id))
                 loadError = nil
                 isStale = false
                 let userMoved = revision != selectionRevision
@@ -235,7 +243,7 @@ final class HistoryModel {
             guard let page = try? await store.page(query, offset: offset, limit: Self.pageSize),
                   generation == self.generation else { return }
             let known = Set(cards.map(\.id))
-            let added = page.filter { !known.contains($0.id) }
+            let added = page.filter { !known.contains($0.id) && !hiddenIDs.contains($0.id) }
             let memberships = (try? await store.memberships(of: added.map(\.id))) ?? [:]
             guard generation == self.generation else { return }
             cards += added
@@ -281,6 +289,74 @@ final class HistoryModel {
         }
     }
 
+    // MARK: Several selected cards
+
+    /// The selected cards in grid order: the marked ones and the cursor.
+    var selection: [UUID] {
+        guard !markedIDs.isEmpty else { return selectedID.map { [$0] } ?? [] }
+        let chosen = markedIDs.union(selectedID.map { [$0] } ?? [])
+        return cards.map(\.id).filter { chosen.contains($0) }
+    }
+
+    func isSelected(_ id: UUID) -> Bool {
+        id == selectedID || markedIDs.contains(id)
+    }
+
+    /// A click: alone selects one card, ⌘ adds or removes one, ⇧ selects the range from the cursor.
+    func click(_ id: UUID, modifiers: NSEvent.ModifierFlags) {
+        if modifiers.contains(.command) {
+            var marked = markedIDs
+            if marked.isEmpty, let current = selectedID { marked.insert(current) }
+            if marked.contains(id), marked.count > 1 {
+                marked.remove(id)
+                selectedID = cards.first { marked.contains($0.id) }?.id
+            } else {
+                marked.insert(id)
+                selectedID = id
+            }
+            markedIDs = marked.count > 1 ? marked : []
+        } else if modifiers.contains(.shift), let anchor = selectedIndex, let target = cards.firstIndex(where: { $0.id == id }) {
+            let range = min(anchor, target)...max(anchor, target)
+            markedIDs = Set(cards[range].map(\.id))
+            selectedID = id
+        } else {
+            markedIDs = []
+            selectedID = id
+        }
+    }
+
+    /// ⇧-arrows: the selection grows with the cursor.
+    func extendSelection(by offset: Int) {
+        guard let current = selectedID else { return moveSelection(by: offset) }
+        var marked = markedIDs
+        marked.insert(current)
+        moveSelection(by: offset, keepingMarks: true)
+        if let next = selectedID { marked.insert(next) }
+        markedIDs = marked
+    }
+
+    func clearMarks() {
+        if !markedIDs.isEmpty { markedIDs = [] }
+    }
+
+    // MARK: Deletion with Undo (§8.3)
+
+    func hide(_ ids: Set<UUID>) {
+        hiddenIDs.formUnion(ids)
+        removeLocally(ids)
+    }
+
+    /// Undo: the cards come back.
+    func unhide(_ ids: Set<UUID>) {
+        hiddenIDs.subtract(ids)
+        storeDidChange()
+    }
+
+    /// The store deleted them: nothing to hide any more.
+    func forgetHidden(_ ids: Set<UUID>) {
+        hiddenIDs.subtract(ids)
+    }
+
     // MARK: Local updates after a command
 
     /// Removes deleted cards right away; the selection moves to the next card (§8.3 ⌘⌫).
@@ -294,6 +370,7 @@ final class HistoryModel {
             let next = remaining.first { $0.offset > selected } ?? remaining.last
             selectedID = next?.element.id
         }
+        markedIDs.subtract(ids)
     }
 
     func replaceLocally(_ card: HistoryCard) {
@@ -302,8 +379,9 @@ final class HistoryModel {
 
     // MARK: Selection (§8.3)
 
-    func moveSelection(by offset: Int) {
+    func moveSelection(by offset: Int, keepingMarks: Bool = false) {
         guard !cards.isEmpty else { return }
+        if !keepingMarks { clearMarks() }
         // Nothing selected (the clipboard holds something else): the first move lands on the first card.
         guard let current = selectedIndex else {
             selectedID = cards.first?.id

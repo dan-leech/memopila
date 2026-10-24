@@ -130,8 +130,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
         panel.onModifiersChanged = { [weak self] flags in
             let commandOnly = flags.intersection([.command, .option, .control, .shift]) == .command
+            let option = flags.contains(.option)
             MainActor.assumeIsolated {
                 if self?.model.isCommandHeld != commandOnly { self?.model.isCommandHeld = commandOnly }
+                if self?.model.isOptionHeld != option { self?.model.isOptionHeld = option }
             }
         }
         panel.contentView = NSHostingView(rootView: HistoryView(model: model))
@@ -211,25 +213,49 @@ final class PanelController: NSObject, NSWindowDelegate {
         case .rename, .newCollection, .renameCollection:
             if key.code == kVK_Escape { model.present(nil); return true }
             return false
+        case .shortcuts:
+            if key.code == kVK_Escape || (flags == .command && key.letter == "/") {
+                model.present(nil)
+                return true
+            }
+            return false
         }
     }
 
     private func handleGridKey(_ key: KeyPress, flags: NSEvent.ModifierFlags) -> Bool {
         let history = model.history
         let searchIsEmpty = history.search.isEmpty
-        if flags.isEmpty || flags == .shift {
+        if flags == .shift {
+            // ⇧-arrows grow the selection (bulk delete, favorites, collections).
+            switch key.code {
+            case kVK_UpArrow: history.extendSelection(by: -history.columns); return true
+            case kVK_DownArrow: history.extendSelection(by: history.columns); return true
+            case kVK_LeftArrow where searchIsEmpty: history.extendSelection(by: -1); return true
+            case kVK_RightArrow where searchIsEmpty: history.extendSelection(by: 1); return true
+            default: return false
+            }
+        }
+        if flags.isEmpty {
             switch key.code {
             case kVK_UpArrow: history.moveSelectionVertically(-1); return true
             case kVK_DownArrow: history.moveSelectionVertically(1); return true
             case kVK_LeftArrow where searchIsEmpty: history.moveSelection(by: -1); return true
             case kVK_RightArrow where searchIsEmpty: history.moveSelection(by: 1); return true
-            case kVK_Escape: cancel(); return true
-            case kVK_Space where searchIsEmpty && flags.isEmpty: openSelected(); return true
-            case _ where key.isReturn && flags.isEmpty:
+            case kVK_Escape:
+                // Several cards selected: the first Esc goes back to one.
+                if history.selection.count > 1 { history.clearMarks() } else { cancel() }
+                return true
+            case kVK_Space where searchIsEmpty: openSelected(); return true
+            case _ where key.isReturn:
                 model.restoreSelected()
                 return true
             default: return false
             }
+        }
+        // ⌥↩: select and paste this once, whatever *Also paste* says.
+        if flags == .option, key.isReturn {
+            model.restoreSelected(paste: true)
+            return true
         }
         // ⌥⌘S as in Pasta; ⌃⌘S from the plan keeps working.
         if flags == [.option, .command] || flags == [.control, .command], key.code == kVK_ANSI_S {
@@ -242,7 +268,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             return true
         }
         if key.code == kVK_Delete || key.code == kVK_ForwardDelete {
-            if let id = history.selectedID { model.delete([id]) }
+            model.deleteSelection()
             return true
         }
         switch key.letter {
@@ -250,7 +276,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         case "y": openSelected()
         case "e": openSelected(focusText: true)
         case "r": if let id = history.selectedID { model.present(.rename(id)) }
-        case "d": if let id = history.selectedID { model.toggleFavorite(id) }
+        case "d": model.toggleFavorites(history.selection)
+        case "/": model.present(model.overlay == .shortcuts ? nil : .shortcuts)
         case "f": model.focusSearch()
         case ",": model.openSettings()
         case "w": close()
@@ -333,6 +360,6 @@ struct KeyPress {
         kVK_ANSI_A: "a", kVK_ANSI_C: "c", kVK_ANSI_D: "d", kVK_ANSI_E: "e", kVK_ANSI_F: "f", kVK_ANSI_K: "k",
         kVK_ANSI_R: "r", kVK_ANSI_S: "s", kVK_ANSI_V: "v", kVK_ANSI_W: "w", kVK_ANSI_X: "x", kVK_ANSI_Y: "y",
         kVK_ANSI_Z: "z", kVK_ANSI_P: "p", kVK_ANSI_Comma: ",", kVK_ANSI_Period: ".",
-        kVK_ANSI_Equal: "=", kVK_ANSI_Minus: "-",
+        kVK_ANSI_Equal: "=", kVK_ANSI_Minus: "-", kVK_ANSI_Slash: "/", kVK_ANSI_I: "i", kVK_ANSI_0: "0",
     ]
 }

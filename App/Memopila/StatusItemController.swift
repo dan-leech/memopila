@@ -20,6 +20,7 @@ final class StatusItemController: NSObject {
         button.action = #selector(clicked)
         _ = button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.setAccessibilityLabel(String(localized: "Memopila"))
+        button.toolTip = String(localized: "Memopila: click to open, right-click for the menu")
         trackIcon()
     }
 
@@ -86,7 +87,10 @@ final class StatusItemController: NSObject {
         })
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem(String(localized: "Settings…")) { [model] in model.openSettings() })
-        menu.addItem(ClosureMenuItem(String(localized: "Diagnostics…")) { [model] in model.openDiagnostics() })
+        // A tool for reporting problems: with ⌥ held, as in many Mac apps.
+        if NSEvent.modifierFlags.contains(.option) {
+            menu.addItem(ClosureMenuItem(String(localized: "Diagnostics…")) { [model] in model.openDiagnostics() })
+        }
         menu.addItem(.separator())
         menu.addItem(ClosureMenuItem(String(localized: "Quit Memopila")) { NSApp.terminate(nil) })
         if let button = item.button {

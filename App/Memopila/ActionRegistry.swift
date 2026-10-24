@@ -50,6 +50,10 @@ enum ActionRegistry {
             ActionItem(id: "select", title: String(localized: "Select"), systemImage: "checkmark.circle", shortcut: "↩") {
                 model.restore(id)
             },
+            // Once, without turning on *Also paste* in Settings.
+            ActionItem(id: "select.paste", title: String(localized: "Select and Paste"), systemImage: "doc.on.clipboard", shortcut: "⌥↩") {
+                model.restore(id, paste: true)
+            },
             ActionItem(
                 id: "favorite",
                 title: card.isFavorite ? String(localized: "Remove from Favorites") : String(localized: "Add to Favorites"),
@@ -115,6 +119,50 @@ enum ActionRegistry {
         items.append(ActionItem(id: "delete", title: String(localized: "Delete"), systemImage: "trash", shortcut: "⌘⌫", isDestructive: true) {
             model.delete([id])
         })
+        return items
+    }
+
+    /// Several selected cards: favorites, collections and delete for all of them. *Select* stays so
+    /// that it can say why it does not apply: the clipboard holds one record.
+    static func selectionActions(_ ids: [UUID], model: AppModel) -> [ActionItem] {
+        let cards = model.history.cards.filter { ids.contains($0.id) }
+        let count = ids.count
+        let allFavorites = !cards.isEmpty && cards.allSatisfy(\.isFavorite)
+        let collections = model.history.collections.map { collection in
+            let allIn = ids.allSatisfy { model.history.memberships[$0]?.contains(collection.id) == true }
+            return ActionItem(
+                id: "selection.collection." + collection.id.uuidString,
+                title: collection.name,
+                systemImage: allIn ? "checkmark" : nil
+            ) { model.setMembership(ids, collection: collection.id, isMember: !allIn) }
+        }
+        var items: [ActionItem] = [
+            ActionItem(id: "selection.select", title: String(localized: "Select"), systemImage: "checkmark.circle", shortcut: "↩") {
+                model.restoreSelected()
+            },
+            ActionItem(
+                id: "selection.favorites",
+                title: allFavorites ? String(localized: "Remove \(count) from Favorites") : String(localized: "Add \(count) to Favorites"),
+                systemImage: allFavorites ? "heart.slash" : "heart",
+                shortcut: "⌘D"
+            ) { model.toggleFavorites(ids) },
+        ]
+        if !collections.isEmpty {
+            items.append(ActionItem(
+                id: "selection.collections",
+                title: String(localized: "Add \(count) to Collection"),
+                systemImage: "folder.badge.plus",
+                children: collections
+            ))
+        }
+        items.append(.divider("selection.delete"))
+        items.append(ActionItem(
+            id: "selection.delete",
+            title: String(localized: "Delete \(count) Items"),
+            systemImage: "trash",
+            shortcut: "⌘⌫",
+            isDestructive: true
+        ) { model.delete(ids) })
         return items
     }
 
@@ -419,7 +467,12 @@ struct CardContextMenu: View {
     let model: AppModel
 
     var body: some View {
-        ActionMenuItems(items: ActionRegistry.cardActions(card, model: model))
+        let selection = model.history.selection
+        if selection.count > 1, model.history.isSelected(card.id) {
+            ActionMenuItems(items: ActionRegistry.selectionActions(selection, model: model))
+        } else {
+            ActionMenuItems(items: ActionRegistry.cardActions(card, model: model))
+        }
     }
 }
 

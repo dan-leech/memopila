@@ -601,6 +601,26 @@
         }
       }
     },
+    "Add %lld to Collection": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить в коллекцию: %lld"
+          }
+        }
+      }
+    },
+    "Add %lld to Favorites": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить в избранное: %lld"
+          }
+        }
+      }
+    },
     "Add Keep Rule": {
       "localizations": {
         "ru": {
@@ -661,6 +681,16 @@
         }
       }
     },
+    "Add to or remove from Favorites": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить в избранное или убрать из него"
+          }
+        }
+      }
+    },
     "Added to “%@”": {
       "localizations": {
         "ru": {
@@ -687,6 +717,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Все"
+          }
+        }
+      }
+    },
+    "All actions for the card": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Все действия с карточкой"
           }
         }
       }
@@ -953,6 +993,16 @@
         }
       }
     },
+    "Bigger or smaller cards": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Крупнее или мельче карточки"
+          }
+        }
+      }
+    },
     "Break long lines at the window edge instead of scrolling sideways": {
       "localizations": {
         "ru": {
@@ -1083,6 +1133,16 @@
         }
       }
     },
+    "Choose": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбор"
+          }
+        }
+      }
+    },
     "Clear": {
       "localizations": {
         "ru": {
@@ -1149,6 +1209,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Очистить поиск (Esc)"
+          }
+        }
+      }
+    },
+    "Clear the search, then close": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очистить поиск, затем закрыть"
           }
         }
       }
@@ -1443,6 +1513,16 @@
         }
       }
     },
+    "Delete %lld Items": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить записей: %lld"
+          }
+        }
+      }
+    },
     "Delete %lld items, including favorites?": {
       "localizations": {
         "en": {
@@ -1491,6 +1571,16 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "Delete (Undo in the message that follows)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить («Отменить» — в появившемся сообщении)"
           }
         }
       }
@@ -1615,12 +1705,32 @@
         }
       }
     },
+    "Deleted": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалено"
+          }
+        }
+      }
+    },
     "Deleted %@": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Будет удалено %@"
+          }
+        }
+      }
+    },
+    "Deleted %lld items": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалено записей: %lld"
           }
         }
       }
@@ -1731,6 +1841,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Не сохранять"
+          }
+        }
+      }
+    },
+    "Done": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Готово"
           }
         }
       }
@@ -1981,6 +2101,56 @@
           "stringUnit": {
             "state": "translated",
             "value": "Форматирование будет удалено"
+          }
+        }
+      }
+    },
+    "Found further in the text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найдено дальше в тексте"
+          }
+        }
+      }
+    },
+    "Found in the app name": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найдено в названии приложения"
+          }
+        }
+      }
+    },
+    "Found in the file name": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найдено в имени файла"
+          }
+        }
+      }
+    },
+    "Found in the page address": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найдено в адресе страницы"
+          }
+        }
+      }
+    },
+    "Found in the text in the image": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найдено в тексте на картинке"
           }
         }
       }
@@ -2375,6 +2545,16 @@
         }
       }
     },
+    "Keyboard Shortcuts": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сочетания клавиш"
+          }
+        }
+      }
+    },
     "Language": {
       "localizations": {
         "ru": {
@@ -2545,6 +2725,16 @@
         }
       }
     },
+    "Memopila: click to open, right-click for the menu": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memopila: щелчок — открыть, правый щелчок — меню"
+          }
+        }
+      }
+    },
     "Menu": {
       "localizations": {
         "ru": {
@@ -2601,6 +2791,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ещё"
+          }
+        }
+      }
+    },
+    "Move and select": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перемещение и выделение"
+          }
+        }
+      }
+    },
+    "Move between cards": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переходить между карточками"
           }
         }
       }
@@ -2855,6 +3065,16 @@
         }
       }
     },
+    "Only one record can be on the clipboard. Select a single card.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В буфере обмена может быть только одна запись. Выделите одну карточку."
+          }
+        }
+      }
+    },
     "Open": {
       "localizations": {
         "ru": {
@@ -3036,6 +3256,16 @@
       }
     },
     "Pin Window": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Закрепить окно"
+          }
+        }
+      }
+    },
+    "Pin the window": {
       "localizations": {
         "ru": {
           "stringUnit": {
@@ -3235,6 +3465,16 @@
         }
       }
     },
+    "Records": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Записи"
+          }
+        }
+      }
+    },
     "Redo": {
       "localizations": {
         "ru": {
@@ -3251,6 +3491,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Повторить (⇧⌘Z)"
+          }
+        }
+      }
+    },
+    "Remove %lld from Favorites": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из избранного: %lld"
           }
         }
       }
@@ -3705,6 +3955,66 @@
         }
       }
     },
+    "Select and Paste": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать и вставить"
+          }
+        }
+      }
+    },
+    "Select and paste into the app you were in": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать и вставить в приложение, в котором вы были"
+          }
+        }
+      }
+    },
+    "Select several cards": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выделить несколько карточек"
+          }
+        }
+      }
+    },
+    "Select the first nine cards": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать одну из первых девяти карточек"
+          }
+        }
+      }
+    },
+    "Select, never pasting": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать, никогда не вставляя"
+          }
+        }
+      }
+    },
+    "Select: put the record on the clipboard and go back": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать: положить запись в буфер и вернуться"
+          }
+        }
+      }
+    },
     "Settings": {
       "localizations": {
         "ru": {
@@ -3771,6 +4081,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Показать в Finder"
+          }
+        }
+      }
+    },
+    "Show or hide the sidebar": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать или скрыть боковую панель"
           }
         }
       }
@@ -3931,6 +4251,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Исходный код на GitHub"
+          }
+        }
+      }
+    },
+    "Space": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пробел"
           }
         }
       }
@@ -4265,6 +4595,16 @@
         }
       }
     },
+    "To paste, allow Memopila in System Settings → Privacy & Security → Accessibility, then try again.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Чтобы вставлять, разрешите Memopila в Системных настройках → Конфиденциальность и безопасность → Универсальный доступ и повторите."
+          }
+        }
+      }
+    },
     "Today": {
       "localizations": {
         "ru": {
@@ -4551,6 +4891,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "все форматы"
+          }
+        }
+      }
+    },
+    "click": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "щелчок"
+          }
+        }
+      }
+    },
+    "double-click": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "двойной щелчок"
           }
         }
       }

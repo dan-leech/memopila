@@ -87,7 +87,7 @@ struct CardView: View {
     private func titleStrip(_ title: String) -> some View {
         HStack(spacing: 5) {
             Image(systemName: "tag.fill").font(.system(size: 9, weight: .semibold))
-            Text(title).font(.system(size: 11.5, weight: .semibold)).lineLimit(1)
+            Text(highlighted(title)).font(.system(size: 11.5, weight: .semibold)).lineLimit(1)
         }
         .foregroundStyle(Color.accentColor)
         .padding(.horizontal, 10)
@@ -96,7 +96,7 @@ struct CardView: View {
         .background(Color.accentColor.opacity(0.12))
     }
 
-    /// ⌘1…⌘9 while ⌘ is held; otherwise favorite, preview and menu on hover.
+    /// ⌘1…⌘9 while ⌘ is held. (The hover actions sit in the footer, so they never cover the content.)
     @ViewBuilder
     private var cornerControls: some View {
         if model.isCommandHeld, index < 9 {
@@ -107,36 +107,35 @@ struct CardView: View {
                 .background(.thickMaterial, in: Capsule())
                 .padding(6)
                 .accessibilityHidden(true)
-        } else if isHovered {
-            HStack(spacing: 0) {
-                CardIconButton(
-                    systemImage: card.isFavorite ? "heart.fill" : "heart",
-                    tint: card.isFavorite ? .pink : .secondary,
-                    help: card.isFavorite ? String(localized: "Remove from Favorites (⌘D)") : String(localized: "Add to Favorites (⌘D)")
-                ) { model.toggleFavorite(card.id) }
-                .symbolEffect(.bounce, value: card.isFavorite)
-                CardIconButton(systemImage: "pencil", help: String(localized: "Edit Record (Space or ⌘E)")) {
-                    model.openRecord(card.id)
-                }
-                Menu {
-                    CardContextMenu(card: card, model: model)
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 22, height: 20)
-                }
-                .menuStyle(.button)
-                .menuIndicator(.hidden)
-                .buttonStyle(.borderless)
-                .fixedSize()
-                .help(String(localized: "More"))
-            }
-            .padding(2)
-            .background(.regularMaterial, in: Capsule())
-            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1)))
-            .padding(6)
-            .transition(.opacity)
         }
+    }
+
+    /// Favorite, Edit Record and the menu, in the footer while the pointer is over the card.
+    private var hoverActions: some View {
+        HStack(spacing: 0) {
+            CardIconButton(
+                systemImage: card.isFavorite ? "heart.fill" : "heart",
+                tint: card.isFavorite ? .pink : .secondary,
+                help: card.isFavorite ? String(localized: "Remove from Favorites (⌘D)") : String(localized: "Add to Favorites (⌘D)")
+            ) { model.toggleFavorite(card.id) }
+            .symbolEffect(.bounce, value: card.isFavorite)
+            CardIconButton(systemImage: "pencil", help: String(localized: "Edit Record (Space or ⌘E)")) {
+                model.openRecord(card.id)
+            }
+            Menu {
+                CardContextMenu(card: card, model: model)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 22, height: 16)
+            }
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
+            .buttonStyle(.borderless)
+            .fixedSize()
+            .help(String(localized: "More"))
+        }
+        .transition(.opacity)
     }
 
     /// A credential (§3.10): the card shows its kind and first characters only.
@@ -198,7 +197,7 @@ struct CardView: View {
                 }
             }
         case .url:
-            Text(card.preview)
+            Text(highlighted(card.preview))
                 .font(.system(size: 11.5, design: .monospaced))
                 .foregroundStyle(Color(nsColor: .linkColor))
                 .lineLimit(6)
@@ -206,7 +205,7 @@ struct CardView: View {
             if card.preview.isEmpty {
                 placeholder(card.displayType.systemImage)
             } else {
-                Text(card.preview)
+                Text(highlighted(card.preview))
                     .font(.system(size: 11.5, design: .monospaced))
                     .lineLimit(8)
             }
@@ -220,6 +219,8 @@ struct CardView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// Source app, size or where a search matched, badges, time. Narrow cards drop the size first,
+    /// then the collection name; on hover the actions take the right side.
     private var footer: some View {
         HStack(spacing: 5) {
             if let icon = AppInfo.icon(for: card.sourceAppBundleID) {
@@ -227,15 +228,78 @@ struct CardView: View {
             } else {
                 Image(systemName: card.displayType.systemImage).frame(width: 14, height: 14)
             }
-            Text(metric).lineLimit(1)
-            Spacer(minLength: 2)
-            badges
-            TimelineView(.periodic(from: .now, by: 60)) { context in
-                Text(RelativeTime.short(card.lastCopiedAt, now: context.date))
+            if isHovered, !model.isCommandHeld {
+                info
+                Spacer(minLength: 2)
+                hoverActions
+            } else {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 5) { info; Spacer(minLength: 2); badges(namingCollections: true); time }
+                    HStack(spacing: 5) { Spacer(minLength: 2); badges(namingCollections: true); time }
+                    HStack(spacing: 5) { Spacer(minLength: 2); badges(namingCollections: false); time }
+                }
             }
         }
+        .frame(height: 16)
         .font(.system(size: 10.5))
         .foregroundStyle(.secondary)
+    }
+
+    /// The size, or where a search matched when the card does not show it.
+    @ViewBuilder
+    private var info: some View {
+        if let matchNote {
+            Label(matchNote, systemImage: "magnifyingglass")
+                .labelStyle(.titleAndIcon)
+                .foregroundStyle(Color.accentColor)
+                .lineLimit(1)
+        } else {
+            Text(metric).lineLimit(1)
+        }
+    }
+
+    private var time: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            Text(RelativeTime.short(card.lastCopiedAt, now: context.date))
+        }
+    }
+
+    private var searchWords: [String] {
+        model.history.search.split(whereSeparator: \.isWhitespace).map(String.init)
+    }
+
+    /// The search matched this card outside what it shows: in the app name, the page, a file name,
+    /// the text found in an image or further down the text (first-run feedback).
+    private var matchNote: String? {
+        let words = searchWords
+        guard !words.isEmpty else { return nil }
+        let shown = card.preview + " " + (card.customTitle ?? "")
+        let hidden = words.filter { !shown.localizedStandardContains($0) }
+        guard !hidden.isEmpty else { return nil }
+        func matches(_ text: String?) -> Bool {
+            guard let text else { return false }
+            return hidden.allSatisfy { text.localizedStandardContains($0) }
+        }
+        if matches(card.sourceAppName) { return String(localized: "Found in the app name") }
+        if matches(card.sourceURL) { return String(localized: "Found in the page address") }
+        if matches(card.filePaths.joined(separator: " ")) { return String(localized: "Found in the file name") }
+        if card.hasRecognizedText { return String(localized: "Found in the text in the image") }
+        return String(localized: "Found further in the text")
+    }
+
+    /// The search words marked in the text the card shows.
+    private func highlighted(_ text: String) -> AttributedString {
+        var result = AttributedString(text)
+        for word in searchWords {
+            var searchRange = text.startIndex..<text.endIndex
+            while let range = text.range(of: word, options: [.caseInsensitive, .diacriticInsensitive], range: searchRange) {
+                if let marked = Range(range, in: result) {
+                    result[marked].backgroundColor = Color.yellow.opacity(0.45)
+                }
+                searchRange = range.upperBound..<text.endIndex
+            }
+        }
+        return result
     }
 
     /// The collections this card is in, by name (first-run feedback: membership was visible only
@@ -243,22 +307,26 @@ struct CardView: View {
     private var collectionNames: [String] { model.history.collectionNames(of: card.id) }
 
     @ViewBuilder
-    private var collectionsBadge: some View {
+    private func collectionsBadge(naming: Bool) -> some View {
         let names = collectionNames
         if let first = names.first {
             HStack(spacing: 2) {
                 Image(systemName: "folder.fill")
-                Text(names.count > 1 ? "\(first) +\(names.count - 1)" : first).lineLimit(1)
+                if naming {
+                    Text(names.count > 1 ? "\(first) +\(names.count - 1)" : first).lineLimit(1)
+                } else if names.count > 1 {
+                    Text("\(names.count)")
+                }
             }
             .frame(maxWidth: 90, alignment: .leading)
-            .fixedSize(horizontal: false, vertical: true)
+            .fixedSize()
             .help(String(localized: "In collections: \(names.joined(separator: ", "))"))
         }
     }
 
     @ViewBuilder
-    private var badges: some View {
-        collectionsBadge
+    private func badges(namingCollections: Bool) -> some View {
+        collectionsBadge(naming: namingCollections)
         if card.isFavorite {
             Image(systemName: "heart.fill").foregroundStyle(.pink).help(String(localized: "Favorite"))
         }
