@@ -345,29 +345,36 @@ struct ActionMenuItems: View {
 
 /// Readable names for common pasteboard types; others show the raw identifier.
 enum FormatNames {
+    /// The readable name and the identifier, for format rules.
     static func name(_ type: String) -> String {
-        let known: [String: String] = [
-            PasteboardType.utf8PlainText.rawValue: "Plain text",
-            PasteboardType.plainText.rawValue: "Plain text",
-            PasteboardType.utf16PlainText.rawValue: "Plain text (UTF-16)",
-            PasteboardType.rtf.rawValue: "Rich text (RTF)",
-            PasteboardType.flatRTFD.rawValue: "Rich text with attachments (RTFD)",
-            PasteboardType.html.rawValue: "HTML",
-            PasteboardType.webArchive.rawValue: "Web archive",
-            PasteboardType.url.rawValue: "Link",
-            PasteboardType.fileURL.rawValue: "File",
-            PasteboardType.filenames.rawValue: "File names",
-            PasteboardType.png.rawValue: "PNG image",
-            PasteboardType.tiff.rawValue: "TIFF image",
-            PasteboardType.jpeg.rawValue: "JPEG image",
-            PasteboardType.heic.rawValue: "HEIC image",
-            PasteboardType.gif.rawValue: "GIF image",
-            PasteboardType.pdf.rawValue: "PDF",
-            PasteboardType.color.rawValue: "Color",
-        ]
         guard let name = known[type] else { return type }
         return "\(name) — \(type)"
     }
+
+    /// The readable name alone (record details); unknown types keep their identifier.
+    static func short(_ type: String) -> String {
+        known[type] ?? type
+    }
+
+    private static let known: [String: String] = [
+        PasteboardType.utf8PlainText.rawValue: "Plain text",
+        PasteboardType.plainText.rawValue: "Plain text",
+        PasteboardType.utf16PlainText.rawValue: "Plain text (UTF-16)",
+        PasteboardType.rtf.rawValue: "Rich text (RTF)",
+        PasteboardType.flatRTFD.rawValue: "Rich text with attachments (RTFD)",
+        PasteboardType.html.rawValue: "HTML",
+        PasteboardType.webArchive.rawValue: "Web archive",
+        PasteboardType.url.rawValue: "Link",
+        PasteboardType.fileURL.rawValue: "File",
+        PasteboardType.filenames.rawValue: "File names",
+        PasteboardType.png.rawValue: "PNG image",
+        PasteboardType.tiff.rawValue: "TIFF image",
+        PasteboardType.jpeg.rawValue: "JPEG image",
+        PasteboardType.heic.rawValue: "HEIC image",
+        PasteboardType.gif.rawValue: "GIF image",
+        PasteboardType.pdf.rawValue: "PDF",
+        PasteboardType.color.rawValue: "Color",
+    ]
 }
 
 @MainActor

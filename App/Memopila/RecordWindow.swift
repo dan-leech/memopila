@@ -36,8 +36,8 @@ struct RecordWindowContent: View {
     }
 }
 
-/// Keys of the record window (§8.5). While a text view or the title has the focus, keys edit it;
-/// otherwise ↑ ↓ ← → move to other records, Space closes and ↩ puts the record on the clipboard.
+/// Keys of the record window (§8.5). While a text view or the title has the focus, keys edit it and
+/// Esc stops editing; otherwise ↑ ↓ ← → move to other records, Space or Esc closes and ↩ selects.
 @MainActor
 enum RecordKeys {
     static func handle(_ event: NSEvent, in window: NSWindow, model: AppModel) -> Bool {
@@ -53,7 +53,17 @@ enum RecordKeys {
                let scrollView = textView.enclosingScrollView, responder.isDescendant(of: scrollView) {
                 return false
             }
-            model.dismissRecord()
+            if state.isDirty || !(responder is NSTextView) {
+                model.dismissRecord()
+            } else {
+                // Editing without changes: the first Esc only leaves the text.
+                window.makeFirstResponder(nil)
+            }
+            return true
+        }
+        if flags == [.option, .command], key.letter == "i" {
+            let key = RecordView.inspectorKey
+            UserDefaults.standard.set(!(UserDefaults.standard.object(forKey: key) as? Bool ?? true), forKey: key)
             return true
         }
         if flags == .command {
@@ -71,20 +81,14 @@ enum RecordKeys {
             return true
         }
         guard !(responder is NSTextView), flags.isEmpty else { return false }
-        let history = model.history
+        // Arrows do nothing with unsaved changes: they stay on screen until saved or discarded.
         switch key.code {
         case kVK_Space: model.dismissRecord()
         case _ where key.isReturn: model.copyItem()
-        case kVK_UpArrow, kVK_DownArrow, kVK_LeftArrow, kVK_RightArrow:
-            // Unsaved changes stay on screen until they are saved or discarded.
-            guard !state.isDirty else { return true }
-            switch key.code {
-            case kVK_UpArrow: history.moveSelectionVertically(-1)
-            case kVK_DownArrow: history.moveSelectionVertically(1)
-            case kVK_LeftArrow: history.moveSelection(by: -1)
-            default: history.moveSelection(by: 1)
-            }
-            if let id = history.selectedID { model.openRecord(id) }
+        case kVK_UpArrow: model.openAdjacentRecord(-1, vertically: true)
+        case kVK_DownArrow: model.openAdjacentRecord(1, vertically: true)
+        case kVK_LeftArrow: model.openAdjacentRecord(-1)
+        case kVK_RightArrow: model.openAdjacentRecord(1)
         default: return false
         }
         return true

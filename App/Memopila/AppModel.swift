@@ -182,6 +182,17 @@ final class AppModel {
         }
     }
 
+    /// ‹ › and ← → in the record window: the previous or next record of the panel's list.
+    func openAdjacentRecord(_ offset: Int, vertically: Bool = false) {
+        guard let state = itemState, !state.isDirty else { return }
+        if vertically {
+            history.moveSelectionVertically(offset)
+        } else {
+            history.moveSelection(by: offset)
+        }
+        if let id = history.selectedID, id != state.id { openRecord(id) }
+    }
+
     /// Esc, the close button or ⌘W: unsaved changes ask first. `false` while the window stays open to ask.
     @discardableResult
     func dismissRecord() -> Bool {

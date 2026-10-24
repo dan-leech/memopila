@@ -31,6 +31,16 @@
         }
       }
     },
+    "%@: applies to the selected text, or to all of it": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: к выделенному тексту или ко всему тексту"
+          }
+        }
+      }
+    },
     "%@: delete after %@": {
       "localizations": {
         "ru": {
@@ -361,6 +371,16 @@
         }
       }
     },
+    "%lld of %lld": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld из %2$lld"
+          }
+        }
+      }
+    },
     "%lldd": {
       "localizations": {
         "ru": {
@@ -597,16 +617,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Добавить правило «Пропускать»"
-          }
-        }
-      }
-    },
-    "Add a title": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Добавить заголовок"
           }
         }
       }
@@ -1023,7 +1033,7 @@
         }
       }
     },
-    "Change Case": {
+    "Case": {
       "localizations": {
         "ru": {
           "stringUnit": {
@@ -1093,12 +1103,12 @@
         }
       }
     },
-    "Click in the text to edit it": {
+    "Click the text to edit · ← → other records · ↩ selects · Esc closes": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Щёлкните по тексту, чтобы изменить его"
+            "value": "Щёлкните текст, чтобы изменить · ← → другие записи · ↩ выбрать · Esc закрыть"
           }
         }
       }
@@ -1189,16 +1199,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Скопировано с %@"
-          }
-        }
-      }
-    },
-    "Copied from “%@”": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Скопировано из «%@»"
           }
         }
       }
@@ -1565,16 +1565,6 @@
         }
       }
     },
-    "Details: when it was copied, size, formats": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Подробности: когда скопировано, размер, форматы"
-          }
-        }
-      }
-    },
     "Diagnostics": {
       "localizations": {
         "ru": {
@@ -1715,6 +1705,16 @@
         }
       }
     },
+    "Editing · Esc stops editing": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Правка · Esc — выйти из текста"
+          }
+        }
+      }
+    },
     "Enable Capture": {
       "localizations": {
         "ru": {
@@ -1725,7 +1725,7 @@
         }
       }
     },
-    "Encode and Decode": {
+    "Encode": {
       "localizations": {
         "ru": {
           "stringUnit": {
@@ -1781,6 +1781,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Файлы"
+          }
+        }
+      }
+    },
+    "Find": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найти"
           }
         }
       }
@@ -1965,6 +1975,26 @@
         }
       }
     },
+    "Hide the title, source and details (⌥⌘I)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скрыть заголовок, источник и подробности (⌥⌘I)"
+          }
+        }
+      }
+    },
+    "Highlighting": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подсветка"
+          }
+        }
+      }
+    },
     "History": {
       "localizations": {
         "ru": {
@@ -2101,6 +2131,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Проверить текущий буфер обмена"
+          }
+        }
+      }
+    },
+    "Inspector": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Инспектор"
           }
         }
       }
@@ -2295,12 +2335,12 @@
         }
       }
     },
-    "Lines and Spaces": {
+    "Lines": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Строки и пробелы"
+            "value": "Строки"
           }
         }
       }
@@ -2451,6 +2491,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Новая коллекция…"
+          }
+        }
+      }
+    },
+    "Next record (→)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Следующая запись (→)"
           }
         }
       }
@@ -2855,6 +2905,16 @@
         }
       }
     },
+    "Previous record (←)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Предыдущая запись (←)"
+          }
+        }
+      }
+    },
     "Privacy": {
       "localizations": {
         "ru": {
@@ -3225,6 +3285,16 @@
         }
       }
     },
+    "Save and Select": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить и выбрать"
+          }
+        }
+      }
+    },
     "Save as usual": {
       "localizations": {
         "ru": {
@@ -3251,6 +3321,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Снова сохранять из «%@»"
+          }
+        }
+      }
+    },
+    "Save or revert your changes first": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сначала сохраните или отмените изменения"
           }
         }
       }
@@ -3475,6 +3555,26 @@
         }
       }
     },
+    "Show the title, source and details (⌥⌘I)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать заголовок, источник и подробности (⌥⌘I)"
+          }
+        }
+      }
+    },
+    "Shown on the card": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывается на карточке"
+          }
+        }
+      }
+    },
     "Sidebar": {
       "localizations": {
         "ru": {
@@ -3571,6 +3671,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Сортировать строки А→Я"
+          }
+        }
+      }
+    },
+    "Source": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Источник"
           }
         }
       }
@@ -3895,6 +4005,16 @@
         }
       }
     },
+    "Title": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Заголовок"
+          }
+        }
+      }
+    },
     "Title (empty removes it)": {
       "localizations": {
         "ru": {
@@ -4135,6 +4255,16 @@
         }
       }
     },
+    "Window: “%@”": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Окно: «%@»"
+          }
+        }
+      }
+    },
     "Won't save from %@": {
       "localizations": {
         "ru": {
@@ -4171,16 +4301,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "все форматы"
-          }
-        }
-      }
-    },
-    "applies to the selection, or to all text": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "к выделению или ко всему тексту"
           }
         }
       }
@@ -4241,6 +4361,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "простой текст"
+          }
+        }
+      }
+    },
+    "← → other records · ↩ selects · Esc closes": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "← → другие записи · ↩ выбрать · Esc закрыть"
+          }
+        }
+      }
+    },
+    "⌘S saves · ⌘↩ saves and selects · Esc discards": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌘S сохранить · ⌘↩ сохранить и выбрать · Esc отменить"
           }
         }
       }

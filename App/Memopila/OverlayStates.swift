@@ -67,6 +67,8 @@ final class ItemState {
         didSet { scheduleHighlight(after: .zero) }
     }
     private(set) var detectedLanguage: CodeLanguage?
+    /// The text view has the keyboard focus: keys edit the text instead of moving between records.
+    var isEditingText = false
     /// The text view takes the focus once loaded (⌘E, Edit) instead of leaving the arrows to the grid.
     @ObservationIgnored var focusOnLoad: Bool
     @ObservationIgnored weak var textView: NSTextView?

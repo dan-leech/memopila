@@ -28,80 +28,268 @@ enum LanguageChoice: Hashable {
     }
 }
 
-/// One view to look at a record and to edit it, in its own window (first-run feedback: preview and
-/// editor were two screens for nearly the same thing, and an overlay could not be moved). Text, rich text and links are edited in place, with code
-/// highlighted as you type; images show the text found in them; files and colours show what they
-/// are. The title, the source and the details are part of the same view.
+/// The record window's content (PLAN §8.5): one place to look at a record and to edit it.
+/// First-run feedback: icon-only controls and a hidden details popover left too much to guess, so
+/// every control has a label or a tooltip, the details sit in an inspector, and the status bar
+/// says what the keys do right now.
+///
+/// - Toolbar: ‹ › and the position, Undo / Redo and labelled text-action menus, Find, the inspector
+///   toggle and **Select**.
+/// - Content: the text (edited in place, code highlighted as you type), the image, the file or the
+///   colour.
+/// - Inspector: title, source, highlighting language, text found in an image, details.
+/// - Status bar: what to do next, counts, Wrap lines, Revert / Save.
 struct RecordView: View {
     let model: AppModel
     @Bindable var state: ItemState
     @State private var details: RecordDetails?
     @State private var image: NSImage?
-    @State private var showsDetails = false
     @State private var recognizedText = TextSelection()
+    @AppStorage(RecordView.inspectorKey) private var showsInspector = true
+
+    static let inspectorKey = "recordInspectorShown"
 
     private var card: HistoryCard { details?.card ?? state.card }
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            if state.hasText, state.isEditable { toolbar }
+            toolbar
             Divider()
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            if showsDetails, let details {
-                Divider()
-                metadata(details)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 0) {
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                if showsInspector {
+                    Divider()
+                    inspector
+                        .frame(width: 260)
+                        .transition(.move(edge: .trailing))
+                }
             }
             Divider()
-            footer
+            statusBar
         }
-        .frame(minWidth: 520, maxWidth: .infinity, minHeight: 340, maxHeight: .infinity)
+        .frame(minWidth: 640, maxWidth: .infinity, minHeight: 380, maxHeight: .infinity)
+        .animation(.easeOut(duration: 0.15), value: showsInspector)
         .task(id: state.id) { await load() }
     }
 
-    // MARK: Header
+    // MARK: Toolbar
 
-    private var header: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Group {
-                if let icon = AppInfo.icon(for: card.sourceAppBundleID) {
-                    Image(nsImage: icon).resizable()
-                } else {
-                    Image(systemName: card.displayType.systemImage).foregroundStyle(.secondary)
-                }
+    private var toolbar: some View {
+        HStack(spacing: 4) {
+            navigation
+            if state.isEditable {
+                Divider().frame(height: 18).padding(.horizontal, 4)
+                ToolbarIcon(systemImage: "arrow.uturn.backward", help: String(localized: "Undo (⌘Z)")) { state.undo() }
+                ToolbarIcon(systemImage: "arrow.uturn.forward", help: String(localized: "Redo (⇧⌘Z)")) { state.redo() }
+                Divider().frame(height: 18).padding(.horizontal, 4)
+                actionMenu(String(localized: "Case"), systemImage: "textformat.size", actions: [.uppercase, .lowercase, .titleCase])
+                actionMenu(
+                    String(localized: "Lines"),
+                    systemImage: "line.3.horizontal.decrease",
+                    actions: [.trimWhitespace, .removeLineBreaks, .sortLines, .removeDuplicateLines]
+                )
+                actionMenu("JSON", systemImage: "curlybraces", actions: [.formatJSON, .minifyJSON])
+                actionMenu(
+                    String(localized: "Encode"),
+                    systemImage: "percent",
+                    actions: [.urlEncode, .urlDecode, .base64Encode, .base64Decode]
+                )
             }
-            .frame(width: 22, height: 22)
-            VStack(alignment: .leading, spacing: 2) {
-                TextField("Add a title", text: $state.title)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 15, weight: .semibold))
-                    .help(String(localized: "A title is shown on the card and found by search"))
-                sourceLine
+            if state.hasText {
+                Button { state.showFind() } label: { Label("Find", systemImage: "magnifyingglass") }
+                    .help(String(localized: "Find in the text (⌘F)"))
             }
             Spacer(minLength: 8)
-            if state.hasText, card.displayType != .url { languagePicker }
             Button {
-                withAnimation(.easeOut(duration: 0.15)) { showsDetails.toggle() }
+                showsInspector.toggle()
             } label: {
-                Image(systemName: showsDetails ? "info.circle.fill" : "info.circle")
+                Image(systemName: "sidebar.right")
             }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Details: when it was copied, size, formats"))
-            .accessibilityLabel(Text("Details"))
+            .help(showsInspector
+                ? String(localized: "Hide the title, source and details (⌥⌘I)")
+                : String(localized: "Show the title, source and details (⌥⌘I)"))
+            .accessibilityLabel(Text("Inspector"))
             // ↩ and ⌘↩ come through the window's key handler: ↩ must stay a new line while typing.
-            Button("Select") { model.copyItem() }
-                .buttonStyle(.borderedProminent)
-                .help(state.isDirty
-                    ? String(localized: "Save the changes, make this record the clipboard content and go back to the app you were in (⌘↩)")
-                    : String(localized: "Make this record the clipboard content and go back to the app you were in (↩)"))
+            Button { model.copyItem() } label: {
+                ShortcutLabel(
+                    title: state.isDirty ? String(localized: "Save and Select") : String(localized: "Select"),
+                    shortcut: state.isDirty || state.isEditingText ? "⌘↩" : "↩"
+                )
+            }
+            .buttonStyle(.borderedProminent)
+            .help(state.isDirty
+                ? String(localized: "Save the changes, make this record the clipboard content and go back to the app you were in (⌘↩)")
+                : String(localized: "Make this record the clipboard content and go back to the app you were in (↩)"))
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 12)
-        .padding(.bottom, 8)
+        .buttonStyle(.borderless)
+        .labelStyle(.titleAndIcon)
+        .controlSize(.small)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+    }
+
+    /// ‹ › and *3 of 120*: the records of the panel's current list.
+    private var navigation: some View {
+        let history = model.history
+        let index = history.selectedIndex
+        let blocked = state.isDirty
+        return HStack(spacing: 2) {
+            ToolbarIcon(
+                systemImage: "chevron.left",
+                help: blocked ? String(localized: "Save or revert your changes first") : String(localized: "Previous record (←)")
+            ) { model.openAdjacentRecord(-1) }
+            .disabled(blocked || (index ?? 0) == 0)
+            ToolbarIcon(
+                systemImage: "chevron.right",
+                help: blocked ? String(localized: "Save or revert your changes first") : String(localized: "Next record (→)")
+            ) { model.openAdjacentRecord(1) }
+            .disabled(blocked || index.map { $0 >= history.cards.count - 1 } ?? true)
+            if let index {
+                Text(String(localized: "\(index + 1) of \(history.totalCount)"))
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 4)
+            }
+        }
+    }
+
+    /// Text actions on the selection, or on all text when nothing is selected (§3.9).
+    private func actionMenu(_ title: String, systemImage: String, actions: [TextAction]) -> some View {
+        Menu {
+            ForEach(actions, id: \.self) { action in
+                Button(action.title) { state.apply(action) }
+            }
+        } label: {
+            Label(title, systemImage: systemImage)
+        }
+        .menuStyle(.button)
+        .fixedSize()
+        .help(String(localized: "\(title): applies to the selected text, or to all of it"))
+    }
+
+    // MARK: Content
+
+    @ViewBuilder
+    private var content: some View {
+        if state.hasText {
+            TextPane(isEditable: state.isEditable, font: .monospacedSystemFont(ofSize: 12.5, weight: .regular)) { textView in
+                state.attach(textView)
+            } onTextChange: {
+                state.textDidChange()
+            } onFocusChange: { focused in
+                state.isEditingText = focused
+            }
+            .overlay {
+                if !state.isLoaded, state.error == nil { ProgressView().controlSize(.small) }
+            }
+        } else {
+            Group {
+                switch card.displayType {
+                case .image, .pdf:
+                    Group {
+                        if let image {
+                            Image(nsImage: image).resizable().scaledToFit()
+                        } else {
+                            Image(systemName: card.displayType.systemImage).font(.largeTitle).foregroundStyle(.tertiary)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Checkerboard().opacity(0.15))
+                case .color:
+                    VStack(spacing: 12) {
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(card.colorHex.flatMap(Color.init(hex:)) ?? .clear)
+                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
+                            .frame(width: 160, height: 160)
+                        Text(card.colorHex ?? "").font(.title.monospaced()).textSelection(.enabled)
+                    }
+                case .file:
+                    FilePreview(card: card, thumbnails: model.thumbnails)
+                case .text, .richText, .url, .mixed:
+                    EmptyView()
+                }
+            }
+            .padding(16)
+        }
+    }
+
+    // MARK: Inspector
+
+    private var inspector: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                inspectorSection(String(localized: "Title")) {
+                    TextField("Title", text: $state.title, prompt: Text("Shown on the card"))
+                        .textFieldStyle(.roundedBorder)
+                        .labelsHidden()
+                        .help(String(localized: "A title is shown on the card and found by search"))
+                }
+                inspectorSection(String(localized: "Source")) { source }
+                if state.hasText, card.displayType != .url {
+                    inspectorSection(String(localized: "Highlighting")) { languagePicker }
+                }
+                if let text = details?.recognizedText {
+                    inspectorSection(String(localized: "Text in Image")) {
+                        TextPane(isEditable: false, font: .systemFont(ofSize: 12)) { textView in
+                            recognizedText.attach(textView, text: text)
+                        } onSelectionChange: {
+                            recognizedText.update()
+                        }
+                        .frame(height: 160)
+                        .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
+                        Button(recognizedText.hasSelection ? String(localized: "Copy Selected Text") : String(localized: "Copy All Text")) {
+                            model.copyNewText(recognizedText.selectedOrAll ?? text, from: state.id)
+                        }
+                        .controlSize(.small)
+                        .help(String(localized: "The text goes to the clipboard and appears in history as a new item"))
+                    }
+                }
+                if let details {
+                    inspectorSection(String(localized: "Details")) { metadata(details) }
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(Color.primary.opacity(0.025))
+    }
+
+    private func inspectorSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            content()
+        }
+    }
+
+    @ViewBuilder
+    private var source: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                if let icon = AppInfo.icon(for: card.sourceAppBundleID) {
+                    Image(nsImage: icon).resizable().frame(width: 16, height: 16)
+                }
+                Text(card.sourceAppName ?? String(localized: "App unknown")).lineLimit(1)
+            }
+            if let url = card.sourceURL, let link = URL(string: url) {
+                Button {
+                    if NSEvent.modifierFlags.contains(.option) {
+                        model.copyNewText(url, from: state.id)
+                    } else {
+                        NSWorkspace.shared.open(link)
+                    }
+                } label: {
+                    Label(link.host() ?? url, systemImage: "arrow.up.right.square").lineLimit(1)
+                }
+                .buttonStyle(.link)
+                .help(String(localized: "Click to open, Option-click to copy the link"))
+            }
+            if let title = details?.sourceWindowTitle {
+                Text(String(localized: "Window: “\(title)”")).foregroundStyle(.secondary).lineLimit(2)
+            }
+        }
+        .font(.callout)
     }
 
     private var languagePicker: some View {
@@ -114,221 +302,101 @@ struct RecordView: View {
             }
         }
         .labelsHidden()
-        .fixedSize()
         .help(String(localized: "Language for syntax highlighting"))
         .onChange(of: state.language) { _, value in model.setCodeLanguage(state.id, value.stored) }
     }
 
-    @ViewBuilder
-    private var sourceLine: some View {
-        if let url = card.sourceURL, let link = URL(string: url) {
-            Button {
-                if NSEvent.modifierFlags.contains(.option) {
-                    model.copyNewText(url, from: state.id)
-                } else {
-                    NSWorkspace.shared.open(link)
-                }
-            } label: {
-                Text(String(localized: "Copied from \(link.host() ?? url)"))
-                    .font(.caption)
-                    .underline()
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Color.accentColor)
-            .help(String(localized: "Click to open, Option-click to copy the link"))
-        } else if let title = details?.sourceWindowTitle {
-            Text(String(localized: "Copied from “\(title)”")).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-        } else if let name = card.sourceAppName {
-            Text(name).font(.caption).foregroundStyle(.secondary)
-        }
-    }
-
-    // MARK: Toolbar (editable text)
-
-    private var toolbar: some View {
-        HStack(spacing: 2) {
-            ToolbarIcon(systemImage: "arrow.uturn.backward", help: String(localized: "Undo (⌘Z)")) { state.undo() }
-            ToolbarIcon(systemImage: "arrow.uturn.forward", help: String(localized: "Redo (⇧⌘Z)")) { state.redo() }
-            Divider().frame(height: 16).padding(.horizontal, 4)
-            actionMenu(systemImage: "textformat.size", help: String(localized: "Change Case"), actions: [.uppercase, .lowercase, .titleCase])
-            actionMenu(
-                systemImage: "line.3.horizontal.decrease",
-                help: String(localized: "Lines and Spaces"),
-                actions: [.trimWhitespace, .removeLineBreaks, .sortLines, .removeDuplicateLines]
-            )
-            actionMenu(systemImage: "curlybraces", help: String(localized: "JSON"), actions: [.formatJSON, .minifyJSON])
-            actionMenu(
-                systemImage: "chevron.left.forwardslash.chevron.right",
-                help: String(localized: "Encode and Decode"),
-                actions: [.urlEncode, .urlDecode, .base64Encode, .base64Decode]
-            )
-            Spacer()
-            ToolbarIcon(systemImage: "magnifyingglass", help: String(localized: "Find in the text (⌘F)")) { state.showFind() }
-        }
-        .padding(.horizontal, 10)
-        .padding(.bottom, 6)
-    }
-
-    /// Text actions on the selection, or on all text when nothing is selected (§3.9).
-    private func actionMenu(systemImage: String, help: String, actions: [TextAction]) -> some View {
-        Menu {
-            ForEach(actions, id: \.self) { action in
-                Button(action.title) { state.apply(action) }
-            }
-        } label: {
-            Image(systemName: systemImage).frame(width: 26, height: 22)
-        }
-        .menuStyle(.button)
-        .menuIndicator(.hidden)
-        .buttonStyle(.borderless)
-        .fixedSize()
-        .help(help + " — " + String(localized: "applies to the selection, or to all text"))
-    }
-
-    // MARK: Content
-
-    @ViewBuilder
-    private var content: some View {
-        if state.hasText {
-            TextPane(isEditable: state.isEditable, font: .monospacedSystemFont(ofSize: 12.5, weight: .regular)) { textView in
-                state.attach(textView)
-            } onTextChange: {
-                state.textDidChange()
-            }
-            .overlay {
-                if !state.isLoaded, state.error == nil { ProgressView().controlSize(.small) }
-            }
-        } else {
-            Group {
-                switch card.displayType {
-                case .image, .pdf: imageContent
-                case .color: colorContent
-                case .file: FilePreview(card: card, thumbnails: model.thumbnails)
-                case .text, .richText, .url, .mixed: EmptyView()
-                }
-            }
-            .padding(16)
-        }
-    }
-
-    private var imageContent: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Group {
-                if let image {
-                    Image(nsImage: image).resizable().scaledToFit()
-                } else {
-                    Image(systemName: card.displayType.systemImage).font(.largeTitle).foregroundStyle(.tertiary)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Checkerboard().opacity(0.15))
-            if let text = details?.recognizedText {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Text in Image").font(.subheadline.bold())
-                    TextPane(isEditable: false, font: .systemFont(ofSize: 12)) { textView in
-                        recognizedText.attach(textView, text: text)
-                    } onSelectionChange: {
-                        recognizedText.update()
-                    }
-                    .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 6))
-                    Button(recognizedText.hasSelection ? String(localized: "Copy Selected Text") : String(localized: "Copy All Text")) {
-                        model.copyNewText(recognizedText.selectedOrAll ?? text, from: state.id)
-                    }
-                    .help(String(localized: "The text goes to the clipboard and appears in history as a new item"))
-                }
-                .frame(width: 240)
-            }
-        }
-    }
-
-    private var colorContent: some View {
-        HStack(spacing: 16) {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(card.colorHex.flatMap(Color.init(hex:)) ?? .clear)
-                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
-                .frame(width: 140, height: 140)
-            Text(card.colorHex ?? "").font(.title.monospaced()).textSelection(.enabled)
-        }
-    }
-
     private func metadata(_ details: RecordDetails) -> some View {
         let card = details.card
-        return Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 3) {
-            GridRow {
-                Text("First copied").foregroundStyle(.secondary)
-                Text(card.firstCopiedAt.formatted(date: .abbreviated, time: .shortened))
-                Text("Copies").foregroundStyle(.secondary)
-                Text("\(card.copyCount)")
-            }
-            GridRow {
-                Text("Last copied").foregroundStyle(.secondary)
-                Text(card.lastCopiedAt.formatted(date: .abbreviated, time: .shortened))
-                Text("Size").foregroundStyle(.secondary)
-                Text(ByteCount.string(card.payloadSizeBytes))
-            }
-            GridRow {
-                Text("Formats").foregroundStyle(.secondary)
-                Text(details.storedTypes.joined(separator: ", ")).lineLimit(2).gridCellColumns(3)
-            }
+        return Grid(alignment: .leading, horizontalSpacing: 8, verticalSpacing: 4) {
+            row(String(localized: "First copied"), card.firstCopiedAt.formatted(date: .abbreviated, time: .shortened))
+            row(String(localized: "Last copied"), card.lastCopiedAt.formatted(date: .abbreviated, time: .shortened))
+            row(String(localized: "Copies"), "\(card.copyCount)")
+            row(String(localized: "Size"), ByteCount.string(card.payloadSizeBytes))
+            row(String(localized: "Formats"), Self.formatList(details.storedTypes))
             if !card.skippedTypes.isEmpty {
-                GridRow {
-                    Text("Skipped").foregroundStyle(.secondary)
-                    Text(card.skippedTypes.joined(separator: ", ")).lineLimit(2).gridCellColumns(3)
-                }
+                row(String(localized: "Skipped"), Self.formatList(card.skippedTypes))
             }
         }
         .font(.caption)
         .textSelection(.enabled)
     }
 
-    // MARK: Footer
+    /// Readable, without repeats (UTF-8 and legacy plain text both read *Plain text*).
+    private static func formatList(_ types: [String]) -> String {
+        var seen = Set<String>()
+        return types.map(FormatNames.short).filter { seen.insert($0).inserted }.joined(separator: ", ")
+    }
 
-    private var footer: some View {
+    private func row(_ title: String, _ value: String) -> some View {
+        GridRow(alignment: .firstTextBaseline) {
+            Text(title).foregroundStyle(.secondary).gridColumnAlignment(.trailing)
+            Text(value).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: Status bar
+
+    private var statusBar: some View {
         HStack(spacing: 10) {
-            if state.hasText {
-                Text(stats)
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                Toggle("Wrap lines", isOn: $state.wrapsLines)
-                    .toggleStyle(.checkbox)
-                    .controlSize(.small)
-                    .help(String(localized: "Break long lines at the window edge instead of scrolling sideways"))
-            }
-            if state.isDirty {
-                Label("Edited", systemImage: "circle.fill")
-                    .labelStyle(.titleAndIcon)
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .imageScale(.small)
-            }
-            if state.hasFormatting, state.isTextDirty {
-                Label("Formatting will be removed", systemImage: "exclamationmark.triangle")
-                    .font(.caption)
-                    .foregroundStyle(.orange)
-                    .help(String(localized: "This item has rich text; saving keeps the plain text only."))
-            }
-            if let error = state.error {
-                Text(error).font(.caption).foregroundStyle(.red).lineLimit(1)
-            }
-            Spacer()
             if state.isConfirmingDiscard {
                 Text("Discard your changes?").font(.callout)
+                Spacer()
                 Button("Keep Editing") { state.isConfirmingDiscard = false }
                 Button("Discard", role: .destructive) { model.closeRecord() }
-            } else if state.isDirty {
-                Button("Revert") { state.revert() }
-                    .help(String(localized: "Go back to the saved text and title"))
-                Button { model.saveItem() } label: { ShortcutLabel(title: String(localized: "Save"), shortcut: "⌘S") }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(state.isSaving || (state.hasText && !state.isLoaded))
-                    .help(String(localized: "Save the changes"))
-            } else if state.isEditable {
-                Text("Click in the text to edit it").font(.caption).foregroundStyle(.tertiary)
+            } else {
+                if state.isDirty {
+                    Label("Edited", systemImage: "circle.fill")
+                        .labelStyle(.titleAndIcon)
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .imageScale(.small)
+                }
+                Text(hint).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                if state.hasFormatting, state.isTextDirty {
+                    Label("Formatting will be removed", systemImage: "exclamationmark.triangle")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .help(String(localized: "This item has rich text; saving keeps the plain text only."))
+                }
+                if let error = state.error {
+                    Text(error).font(.caption).foregroundStyle(.red).lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if state.hasText {
+                    Text(stats).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                    Toggle("Wrap lines", isOn: $state.wrapsLines)
+                        .toggleStyle(.checkbox)
+                        .controlSize(.small)
+                        .help(String(localized: "Break long lines at the window edge instead of scrolling sideways"))
+                }
+                if state.isDirty {
+                    Button("Revert") { state.revert() }
+                        .help(String(localized: "Go back to the saved text and title"))
+                    Button { model.saveItem() } label: { ShortcutLabel(title: String(localized: "Save"), shortcut: "⌘S") }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(state.isSaving || (state.hasText && !state.isLoaded))
+                        .help(String(localized: "Save the changes"))
+                }
             }
         }
+        .controlSize(.small)
         .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .padding(.vertical, 8)
+    }
+
+    /// What the keys do right now.
+    private var hint: String {
+        if state.isDirty {
+            return String(localized: "⌘S saves · ⌘↩ saves and selects · Esc discards")
+        }
+        if state.isEditingText {
+            return String(localized: "Editing · Esc stops editing")
+        }
+        if state.isEditable {
+            return String(localized: "Click the text to edit · ← → other records · ↩ selects · Esc closes")
+        }
+        return String(localized: "← → other records · ↩ selects · Esc closes")
     }
 
     private var stats: String {
@@ -340,7 +408,7 @@ struct RecordView: View {
     private func load() async {
         // The text comes through `ItemState`; this is the source, the details and the image.
         let loaded = await model.details(state.id, maxTextScalars: 0)
-        // `.task(id:)` cancels a load for an item the user already moved past; never let it overwrite.
+        // `.task(id:)` cancels a load for a record the user already moved past; never let it overwrite.
         guard !Task.isCancelled else { return }
         details = loaded
         guard [.image, .pdf].contains(state.card.displayType) else { return }
@@ -451,21 +519,31 @@ private struct ShortcutLabel: View {
     }
 }
 
-/// `NSTextView` for the item view: editable plain text with its own undo stack and the system find
-/// bar, or read-only selectable text (the text found in an image).
+/// `NSTextView` for the record window: editable plain text with its own undo stack and the system
+/// find bar, or read-only selectable text (the text found in an image). Reports when it takes or
+/// loses the keyboard focus, so the window can say whether the text is being edited.
 struct TextPane: NSViewRepresentable {
     let isEditable: Bool
     let font: NSFont
     let onAttach: @MainActor (NSTextView) -> Void
     var onTextChange: @MainActor () -> Void = {}
     var onSelectionChange: @MainActor () -> Void = {}
+    var onFocusChange: @MainActor (Bool) -> Void = { _ in }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
-        guard let textView = scrollView.documentView as? NSTextView else { return scrollView }
+        let textView = FocusReportingTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        textView.minSize = .zero
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
         textView.isRichText = false
         textView.importsGraphics = false
         textView.allowsUndo = true
@@ -483,8 +561,12 @@ struct TextPane: NSViewRepresentable {
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineSpacing = 2
         textView.defaultParagraphStyle = paragraph
+        scrollView.documentView = textView
         context.coordinator.pane = self
         textView.delegate = context.coordinator
+        textView.onFocusChange = { [weak coordinator = context.coordinator] focused in
+            coordinator?.pane?.onFocusChange(focused)
+        }
         onAttach(textView)
         return scrollView
     }
@@ -504,6 +586,23 @@ struct TextPane: NSViewRepresentable {
         func textViewDidChangeSelection(_ notification: Notification) {
             pane?.onSelectionChange()
         }
+    }
+}
+
+/// Tells when it becomes or stops being the first responder.
+final class FocusReportingTextView: NSTextView {
+    var onFocusChange: ((Bool) -> Void)?
+
+    override func becomeFirstResponder() -> Bool {
+        let accepted = super.becomeFirstResponder()
+        if accepted { onFocusChange?(true) }
+        return accepted
+    }
+
+    override func resignFirstResponder() -> Bool {
+        let accepted = super.resignFirstResponder()
+        if accepted { onFocusChange?(false) }
+        return accepted
     }
 }
 

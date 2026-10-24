@@ -36,6 +36,11 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
     func showRecord(focusText: Bool) {
         let window = record ?? makeRecord()
         record = window
+        if let card = model.itemState?.card {
+            // The record's name and where it came from, so the window says what it shows.
+            window.title = card.customTitle ?? card.displayType.title
+            window.subtitle = card.sourceAppName ?? ""
+        }
         present(window)
         guard !focusText else { return }
         window.makeFirstResponder(nil)
@@ -64,7 +69,7 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
         // an invisible window that still counted as open (first-run bug).
         window.setContentSize(Self.recordSize)
         window.title = String(localized: "Edit Record")
-        window.minSize = NSSize(width: 520, height: 360)
+        window.minSize = NSSize(width: 640, height: 400)
         window.keyHandler = { [weak self, weak window] event in
             MainActor.assumeIsolated {
                 guard let self, let window else { return false }
@@ -75,7 +80,7 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
         return window
     }
 
-    private static let recordSize = NSSize(width: 760, height: 540)
+    private static let recordSize = NSSize(width: 860, height: 560)
 
     // MARK: Settings and Diagnostics (§8.7)
 
