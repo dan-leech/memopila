@@ -1,0 +1,110 @@
+import Foundation
+
+/// Kinds of credentials recognized in copied text (PLAN §3.10). Prefix-based patterns only, so
+/// ordinary developer text (git SHAs, UUIDs, hashes) is never flagged.
+public enum SecretKind: String, Sendable, Equatable, Codable, CaseIterable {
+    case privateKey
+    case jwt
+    case githubToken
+    case gitlabToken
+    case awsAccessKey
+    case slackToken
+    case stripeKey
+    case googleAPIKey
+    case openAIKey
+    case anthropicKey
+    case npmToken
+    case creditCard
+
+    public var displayName: String {
+        switch self {
+        case .privateKey: "Private key"
+        case .jwt: "JWT"
+        case .githubToken: "GitHub token"
+        case .gitlabToken: "GitLab token"
+        case .awsAccessKey: "AWS access key"
+        case .slackToken: "Slack token"
+        case .stripeKey: "Stripe key"
+        case .googleAPIKey: "Google API key"
+        case .openAIKey: "OpenAI key"
+        case .anthropicKey: "Anthropic key"
+        case .npmToken: "npm token"
+        case .creditCard: "Card number"
+        }
+    }
+}
+
+/// What to do with a change whose text contains a secret (PLAN §3.10).
+public enum SecretPolicy: Sendable, Hashable, Codable {
+    /// Save as usual.
+    case off
+    /// Mark handled without saving; no Current card.
+    case dontSave
+    /// Save, mask on cards, delete after the given minutes (favorites keep it).
+    case deleteAfter(minutes: Int)
+
+    public static let `default` = SecretPolicy.deleteAfter(minutes: 8 * 60)
+}
+
+public enum SecretDetector {
+    /// Secrets are short; larger text is not scanned (keeps capture cheap).
+    public static let maxScannedBytes = 256 * 1_024
+    /// A card number counts only when it is (nearly) all the text, so IDs in logs are not flagged.
+    static let maxCardTextLength = 64
+
+    private static let patterns: [(SecretKind, String)] = [
+        (.privateKey, #"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----"#),
+        (.jwt, #"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"#),
+        (.githubToken, #"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})"#),
+        (.gitlabToken, #"\bglpat-[A-Za-z0-9_-]{20,}"#),
+        (.awsAccessKey, #"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"#),
+        (.slackToken, #"\bxox[abposr]-[A-Za-z0-9-]{10,}|https://hooks\.slack\.com/services/[A-Za-z0-9/]{20,}"#),
+        (.stripeKey, #"\b(?:sk|rk)_(?:live|test)_[A-Za-z0-9]{20,}"#),
+        (.googleAPIKey, #"\bAIza[0-9A-Za-z_-]{35}\b"#),
+        (.anthropicKey, #"\bsk-ant-[A-Za-z0-9_-]{20,}"#),
+        (.openAIKey, #"\bsk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{32,}"#),
+        (.npmToken, #"\bnpm_[A-Za-z0-9]{36}\b"#),
+    ]
+
+    /// The first enabled secret kind found in `text`, or `nil`.
+    public static func detect(_ text: String, kinds: Set<SecretKind> = Set(SecretKind.allCases)) -> SecretKind? {
+        guard !kinds.isEmpty, text.utf8.count <= maxScannedBytes else { return nil }
+        for (kind, pattern) in patterns where kinds.contains(kind) && text.range(of: pattern, options: .regularExpression) != nil {
+            return kind
+        }
+        return kinds.contains(.creditCard) && isCardNumber(text) ? .creditCard : nil
+    }
+
+    /// 13–19 digits (spaces or dashes allowed) with a known network prefix and a valid Luhn sum.
+    static func isCardNumber(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count <= maxCardTextLength else { return false }
+        // ASCII digits only: `wholeNumberValue` is a numeral's value, and 京 is 10¹⁶ (review
+        // finding: the prefix arithmetic overflowed and the app crashed on every capture of it).
+        guard trimmed.allSatisfy({ ($0.isASCII && $0.isNumber) || $0 == " " || $0 == "-" }) else { return false }
+        let digits = trimmed.compactMap { $0.isNumber ? $0.asciiValue.map { Int($0) - 48 } : nil }
+        guard (13...19).contains(digits.count) else { return false }
+        let prefix2 = digits[0] * 10 + digits[1]
+        let prefix4 = prefix2 * 100 + digits[2] * 10 + digits[3]
+        let knownNetwork = digits[0] == 4 || (51...55).contains(prefix2) || (2221...2720).contains(prefix4)
+            || prefix2 == 34 || prefix2 == 37 || prefix4 == 6011 || prefix2 == 65
+        guard knownNetwork else { return false }
+        var sum = 0
+        for (offset, digit) in digits.reversed().enumerated() {
+            if offset.isMultiple(of: 2) {
+                sum += digit
+            } else {
+                let doubled = digit * 2
+                sum += doubled > 9 ? doubled - 9 : doubled
+            }
+        }
+        return sum.isMultiple(of: 10)
+    }
+
+    /// Card text for a masked secret: the first characters and dots, never the whole value.
+    public static func maskedPreview(of text: String, visible: Int = 10) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let head = trimmed.prefix(visible).split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
+        return head + "••••••••"
+    }
+}

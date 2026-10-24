@@ -1,0 +1,6152 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "%@ Settings…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Настройки «%@»…"
+          }
+        }
+      }
+    },
+    "%@ is already used for %@.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ уже используется для действия «%@»."
+          }
+        }
+      }
+    },
+    "%@ is in use by another app (for example Pasta). Choose another shortcut or quit that app.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ занято другим приложением (например, Pasta). Выберите другое сочетание или закройте то приложение."
+          }
+        }
+      }
+    },
+    "%@ of %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ из %2$@"
+          }
+        }
+      }
+    },
+    "%@: applies to %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@: применяется к %2$@"
+          }
+        }
+      }
+    },
+    "%@: applies to the selected text, or to all of it": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: к выделенному тексту или ко всему тексту"
+          }
+        }
+      }
+    },
+    "%@: delete after %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: удалять через %@"
+          }
+        }
+      }
+    },
+    "%@: items up to %lld MB": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: элементы до %lld МБ"
+          }
+        }
+      }
+    },
+    "%@: not recognizing text in images": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: текст на изображениях не распознаётся"
+          }
+        }
+      }
+    },
+    "%@: nothing here applies to %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@: ничего не применимо к %2$@"
+          }
+        }
+      }
+    },
+    "%@: recognizing text in images": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: текст на изображениях распознаётся"
+          }
+        }
+      }
+    },
+    "%@: will keep %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: сохранять %@"
+          }
+        }
+      }
+    },
+    "%@: won't save %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@: не сохранять %@"
+          }
+        }
+      }
+    },
+    "%lld characters": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld character"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld characters"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld символ"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld символа"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld символов"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld символа"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld days": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld day"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld days"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld день"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld дня"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld дней"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld дня"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld files": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld file"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld files"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld файл"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld файла"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld файлов"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld файла"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld found": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найдено: %lld"
+          }
+        }
+      }
+    },
+    "%lld items": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld item"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld items"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld элемент"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld элемента"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld элементов"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld элемента"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld items from %@ are already in history.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Элементов из «%2$@» уже в истории: %1$lld"
+          }
+        }
+      }
+    },
+    "%lld items that are not favorites are deleted now. This can't be undone.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Объекты не из избранного (%lld) будут удалены сейчас. Это нельзя отменить."
+          }
+        }
+      }
+    },
+    "%lld lines": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld line"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld lines"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld строка"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld строки"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld строк"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld строки"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld of %lld": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld из %2$lld"
+          }
+        }
+      }
+    },
+    "%lld of %lld characters selected": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выделено символов: %1$lld из %2$lld"
+          }
+        }
+      }
+    },
+    "%lld of them are older than History keeps (%lld days) and are deleted. This can't be undone.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld из них старше срока хранения истории (%lld дн.) и будут удалены. Это нельзя отменить."
+          }
+        }
+      }
+    },
+    "%lld selected": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрано: %lld"
+          }
+        }
+      }
+    },
+    "%lldd": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld д"
+          }
+        }
+      }
+    },
+    "%lldh": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ч"
+          }
+        }
+      }
+    },
+    "%lldm": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld мин"
+          }
+        }
+      }
+    },
+    "1 Hour": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 час"
+          }
+        }
+      }
+    },
+    "1 day": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 день"
+          }
+        }
+      }
+    },
+    "1 file": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 файл"
+          }
+        }
+      }
+    },
+    "1 week": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 неделя"
+          }
+        }
+      }
+    },
+    "1 year": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 год"
+          }
+        }
+      }
+    },
+    "15 Minutes": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "15 минут"
+          }
+        }
+      }
+    },
+    "2 weeks": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2 недели"
+          }
+        }
+      }
+    },
+    "3 months": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3 месяца"
+          }
+        }
+      }
+    },
+    "5 Minutes": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "5 минут"
+          }
+        }
+      }
+    },
+    "6 months": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "6 месяцев"
+          }
+        }
+      }
+    },
+    "A double-click, ↩ or ⌘1…⌘9 put an item on the clipboard and take you back to the app you were in. With this option Memopila also presses ⌘V there for you, which needs Accessibility. When allowed, Memopila also remembers the title of the window you copied from.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Двойной щелчок, ↩ или ⌘1…⌘9 кладут запись в буфер обмена и возвращают вас в приложение, в котором вы были. С этим параметром Memopila ещё и нажимает там за вас ⌘V — для этого нужен Универсальный доступ. С ним Memopila также запоминает заголовок окна, из которого вы копировали."
+          }
+        }
+      }
+    },
+    "A record can’t be empty: type some text, or Revert": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запись не может быть пустой: введите текст или нажмите «Вернуть»"
+          }
+        }
+      }
+    },
+    "A rule for an app and a type wins over a rule for the app, which wins over a rule for a type. Prefix matches every type that starts with the text.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Правило для приложения и типа важнее правила для приложения, а оно важнее правила для типа. «Префикс» подходит ко всем типам, которые начинаются с этого текста."
+          }
+        }
+      }
+    },
+    "A shortcut needs ⌘ or ⌃. Only one app can hold ⌥⌘V: quit Pasta or choose another shortcut.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сочетание должно включать ⌘ или ⌃. ⌥⌘V может занимать только одно приложение: закройте Pasta или выберите другое сочетание."
+          }
+        }
+      }
+    },
+    "AWS access key": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключ доступа AWS"
+          }
+        }
+      }
+    },
+    "AWS access keys": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключи доступа AWS"
+          }
+        }
+      }
+    },
+    "About": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "О программе"
+          }
+        }
+      }
+    },
+    "About Memopila": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "О Memopila"
+          }
+        }
+      }
+    },
+    "Accessibility": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Универсальный доступ"
+          }
+        }
+      }
+    },
+    "Actual Size": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Реальный размер"
+          }
+        }
+      }
+    },
+    "Add %lld to Collection": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить в коллекцию: %lld"
+          }
+        }
+      }
+    },
+    "Add %lld to Favorites": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить в избранное: %lld"
+          }
+        }
+      }
+    },
+    "Add Keep Rule": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить правило «Сохранять»"
+          }
+        }
+      }
+    },
+    "Add Skip Rule": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить правило «Пропускать»"
+          }
+        }
+      }
+    },
+    "Add an app": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить приложение"
+          }
+        }
+      }
+    },
+    "Add to Collection": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить в коллекцию"
+          }
+        }
+      }
+    },
+    "Add to Favorites": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить в избранное"
+          }
+        }
+      }
+    },
+    "Add to Favorites (⌘D)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить в избранное (⌘D)"
+          }
+        }
+      }
+    },
+    "Add to or remove from Favorites": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить в избранное или убрать из него"
+          }
+        }
+      }
+    },
+    "Added to “%@”": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавлено в «%@»"
+          }
+        }
+      }
+    },
+    "After Copying": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "После копирования"
+          }
+        }
+      }
+    },
+    "All": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Все"
+          }
+        }
+      }
+    },
+    "All Apps": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Все приложения"
+          }
+        }
+      }
+    },
+    "All actions for the card": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Все действия с карточкой"
+          }
+        }
+      }
+    },
+    "Allow Memopila in System Settings → General → Login Items.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешите Memopila в Системных настройках → Основные → Объекты входа."
+          }
+        }
+      }
+    },
+    "Allow in System Settings…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешить в Системных настройках…"
+          }
+        }
+      }
+    },
+    "Allowed": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешено"
+          }
+        }
+      }
+    },
+    "Already set": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Уже включено"
+          }
+        }
+      }
+    },
+    "Also Delete %lld Existing": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Also Delete %lld Existing"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Also Delete %lld Existing"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалить и %lld существующий"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалить и %lld существующих"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалить и %lld существующих"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалить и %lld существующих"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Also Delete Them": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить и их"
+          }
+        }
+      }
+    },
+    "Also paste into the app you were in": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сразу вставлять в приложение, в котором вы были"
+          }
+        }
+      }
+    },
+    "Always": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Всегда"
+          }
+        }
+      }
+    },
+    "Another app changed the clipboard. Try again.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Другое приложение изменило буфер обмена. Повторите попытку."
+          }
+        }
+      }
+    },
+    "Another change is in progress. Try again.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выполняется другое изменение. Повторите попытку."
+          }
+        }
+      }
+    },
+    "Anthropic key": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключ Anthropic"
+          }
+        }
+      }
+    },
+    "Anthropic keys": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключи Anthropic"
+          }
+        }
+      }
+    },
+    "Any Time": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "За всё время"
+          }
+        }
+      }
+    },
+    "Any app": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Любое приложение"
+          }
+        }
+      }
+    },
+    "App": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приложение"
+          }
+        }
+      }
+    },
+    "App unknown": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приложение неизвестно"
+          }
+        }
+      }
+    },
+    "Applies to %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Применяется к %@"
+          }
+        }
+      }
+    },
+    "Apps": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приложения"
+          }
+        }
+      }
+    },
+    "As if copied from": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Как будто скопировано из"
+          }
+        }
+      }
+    },
+    "Asks every time": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Спрашивает каждый раз"
+          }
+        }
+      }
+    },
+    "At least %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не меньше %@"
+          }
+        }
+      }
+    },
+    "Automatic (%@)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Автоматически (%@)"
+          }
+        }
+      }
+    },
+    "Automatic (for Code)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Автоматически (для кода)"
+          }
+        }
+      }
+    },
+    "Base64 Decode": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Декодировать из Base64"
+          }
+        }
+      }
+    },
+    "Base64 Encode": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Кодировать в Base64"
+          }
+        }
+      }
+    },
+    "Bigger or smaller cards": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Крупнее или мельче карточки"
+          }
+        }
+      }
+    },
+    "Bold (⌘B)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Жирный (⌘B)"
+          }
+        }
+      }
+    },
+    "Cancel": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить"
+          }
+        }
+      }
+    },
+    "Cancel Skip": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить пропуск"
+          }
+        }
+      }
+    },
+    "Capture": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Захват"
+          }
+        }
+      }
+    },
+    "Capture is paused": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Захват приостановлен"
+          }
+        }
+      }
+    },
+    "Capture is paused: new copies are not added to history": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запись приостановлена: новые копии не попадают в историю"
+          }
+        }
+      }
+    },
+    "Capture paused until %@.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Захват приостановлен до %@."
+          }
+        }
+      }
+    },
+    "Capture paused.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Захват приостановлен."
+          }
+        }
+      }
+    },
+    "Capture paused: allow Memopila to read the clipboard in System Settings → Privacy & Security, then choose Always Allow.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Захват приостановлен: разрешите Memopila читать буфер обмена в Системных настройках → Конфиденциальность и безопасность и выберите «Всегда разрешать»."
+          }
+        }
+      }
+    },
+    "Capture paused: storage error (%@).": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Захват приостановлен: ошибка хранилища (%@)."
+          }
+        }
+      }
+    },
+    "Capturing: every copy is added to history": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запись идёт: каждая копия попадает в историю"
+          }
+        }
+      }
+    },
+    "Card number": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Номер карты"
+          }
+        }
+      }
+    },
+    "Card numbers": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Номера карт"
+          }
+        }
+      }
+    },
+    "Case": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Регистр"
+          }
+        }
+      }
+    },
+    "Change Shortcut…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменить сочетание…"
+          }
+        }
+      }
+    },
+    "Change case, lines, JSON or encoding; applies to %@; ⌘Z undoes it": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Регистр, строки, JSON или кодирование; применяется к %@; ⌘Z отменяет"
+          }
+        }
+      }
+    },
+    "Changes": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменения"
+          }
+        }
+      }
+    },
+    "Changes…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменения…"
+          }
+        }
+      }
+    },
+    "Check Again": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проверить снова"
+          }
+        }
+      }
+    },
+    "Choose": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбор"
+          }
+        }
+      }
+    },
+    "Clear": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очистить"
+          }
+        }
+      }
+    },
+    "Clear Everything…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очистить всё…"
+          }
+        }
+      }
+    },
+    "Clear History": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очистить историю"
+          }
+        }
+      }
+    },
+    "Clear History keeps favorites. Clear Everything removes them too.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«Очистить историю» сохраняет избранное. «Очистить всё» удаляет и его."
+          }
+        }
+      }
+    },
+    "Clear History…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очистить историю…"
+          }
+        }
+      }
+    },
+    "Clear the search": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очистить поиск"
+          }
+        }
+      }
+    },
+    "Clear the search (Esc)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очистить поиск (Esc)"
+          }
+        }
+      }
+    },
+    "Clear the search, then close": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очистить поиск, затем закрыть"
+          }
+        }
+      }
+    },
+    "Click the text to edit · ← → other records · ↩ selects · Esc closes": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Щёлкните текст, чтобы изменить · ← → другие записи · ↩ выбрать · Esc закрыть"
+          }
+        }
+      }
+    },
+    "Click to open, Option-click to copy the link": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нажмите, чтобы открыть; с Option — чтобы скопировать ссылку"
+          }
+        }
+      }
+    },
+    "Clipboard Access": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Доступ к буферу обмена"
+          }
+        }
+      }
+    },
+    "Clipboard history that stays on your Mac.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "История буфера обмена, которая остаётся на вашем Mac."
+          }
+        }
+      }
+    },
+    "Close": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Закрыть"
+          }
+        }
+      }
+    },
+    "Collection": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Коллекция"
+          }
+        }
+      }
+    },
+    "Collections": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Коллекции"
+          }
+        }
+      }
+    },
+    "Collections: %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Коллекции: %@"
+          }
+        }
+      }
+    },
+    "Color": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Цвет"
+          }
+        }
+      }
+    },
+    "Colors": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Цвета"
+          }
+        }
+      }
+    },
+    "Compare the edited text with the saved text, line by line": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сравнить изменённый текст с сохранённым, построчно"
+          }
+        }
+      }
+    },
+    "Copied": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировано"
+          }
+        }
+      }
+    },
+    "Copied from %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировано с %@"
+          }
+        }
+      }
+    },
+    "Copied to the clipboard and added to history": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировано в буфер обмена и добавлено в историю"
+          }
+        }
+      }
+    },
+    "Copied. Not added to history: it contains a secret.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировано. В историю не добавлено: это секрет."
+          }
+        }
+      }
+    },
+    "Copies": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Копирований"
+          }
+        }
+      }
+    },
+    "Copies from this app": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Копирования из этого приложения"
+          }
+        }
+      }
+    },
+    "Copies that apps mark as concealed, such as passwords from a password manager, are always skipped.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Копирования, которые приложения помечают как скрытые (например, пароли из менеджера паролей), всегда пропускаются."
+          }
+        }
+      }
+    },
+    "Copy": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать"
+          }
+        }
+      }
+    },
+    "Copy %@: it goes to the clipboard and into history": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать %@: значение попадёт в буфер и в историю"
+          }
+        }
+      }
+    },
+    "Copy All Text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать весь текст"
+          }
+        }
+      }
+    },
+    "Copy Path": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать путь"
+          }
+        }
+      }
+    },
+    "Copy Paths": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать пути"
+          }
+        }
+      }
+    },
+    "Copy Selected Text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать выделенное"
+          }
+        }
+      }
+    },
+    "Copy something to start your history.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопируйте что-нибудь, чтобы начать историю."
+          }
+        }
+      }
+    },
+    "Copy the full path to the clipboard": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать полный путь"
+          }
+        }
+      }
+    },
+    "Copy the full paths, one per line, to the clipboard": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать полные пути, по одному в строке"
+          }
+        }
+      }
+    },
+    "Copy this path": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать этот путь"
+          }
+        }
+      }
+    },
+    "Could not be recognized": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось распознать"
+          }
+        }
+      }
+    },
+    "Could not register %@ (error %lld).": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось зарегистрировать %@ (ошибка %lld)."
+          }
+        }
+      }
+    },
+    "Could not write to the clipboard.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось записать в буфер обмена."
+          }
+        }
+      }
+    },
+    "Create": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Создать"
+          }
+        }
+      }
+    },
+    "Current clipboard, not saved: %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текущий буфер обмена, не сохранено: %@"
+          }
+        }
+      }
+    },
+    "Current — not saved": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текущее — не сохранено"
+          }
+        }
+      }
+    },
+    "Custom size limit": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Свой лимит размера"
+          }
+        }
+      }
+    },
+    "Cut": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вырезать"
+          }
+        }
+      }
+    },
+    "Default Text Size (⌘0)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Обычный размер текста (⌘0)"
+          }
+        }
+      }
+    },
+    "Defaults for apps without their own settings. Copies are always saved unless an app is set to Don't Save.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Значения по умолчанию для приложений без своих настроек. Копирования сохраняются всегда, если приложению не задано «Не сохранять»."
+          }
+        }
+      }
+    },
+    "Delete": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить"
+          }
+        }
+      }
+    },
+    "Delete %lld Items": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить записей: %lld"
+          }
+        }
+      }
+    },
+    "Delete %lld Shown…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить показанные (%lld)…"
+          }
+        }
+      }
+    },
+    "Delete %lld items, including favorites?": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Delete %lld item, including favorites?"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Delete %lld items, including favorites?"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалить %lld элемент, включая избранное?"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалить %lld элемента, включая избранное?"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалить %lld элементов, включая избранное?"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалить %lld элемента, включая избранное?"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Delete (Undo in the message that follows)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить («Отменить» — в появившемся сообщении)"
+          }
+        }
+      }
+    },
+    "Delete All Items in It…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить все элементы в ней…"
+          }
+        }
+      }
+    },
+    "Delete All from %@…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить все из «%@»…"
+          }
+        }
+      }
+    },
+    "Delete Collection": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить коллекцию"
+          }
+        }
+      }
+    },
+    "Delete Collection…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить коллекцию…"
+          }
+        }
+      }
+    },
+    "Delete Everything": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить всё"
+          }
+        }
+      }
+    },
+    "Delete Favorites Too": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить и избранное"
+          }
+        }
+      }
+    },
+    "Delete Them": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить их"
+          }
+        }
+      }
+    },
+    "Delete This and Stop Saving from %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить и больше не сохранять из «%@»"
+          }
+        }
+      }
+    },
+    "Delete after": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалять через"
+          }
+        }
+      }
+    },
+    "Delete after %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалять через %@"
+          }
+        }
+      }
+    },
+    "Delete all %lld items from %@?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить все элементы из «%2$@» (%1$lld)?"
+          }
+        }
+      }
+    },
+    "Delete all %lld items in “%@”?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить все элементы в «%2$@» (%1$lld)?"
+          }
+        }
+      }
+    },
+    "Delete all items except favorites?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить все элементы, кроме избранного?"
+          }
+        }
+      }
+    },
+    "Delete all items, including favorites?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить все элементы, включая избранное?"
+          }
+        }
+      }
+    },
+    "Delete from %@ After": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалять из «%@» через"
+          }
+        }
+      }
+    },
+    "Delete items older than": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалять элементы старше"
+          }
+        }
+      }
+    },
+    "Delete items older than %@?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить объекты старше: %@?"
+          }
+        }
+      }
+    },
+    "Delete the %lld items shown?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить показанные элементы (%lld)?"
+          }
+        }
+      }
+    },
+    "Delete the collection “%@”?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить коллекцию «%@»?"
+          }
+        }
+      }
+    },
+    "Delete this favorite?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить этот элемент из избранного?"
+          }
+        }
+      }
+    },
+    "Deleted": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалено"
+          }
+        }
+      }
+    },
+    "Deleted %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Будет удалено %@"
+          }
+        }
+      }
+    },
+    "Deleted %lld items": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалено записей: %lld"
+          }
+        }
+      }
+    },
+    "Deleted %lld items from %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалено элементов из «%2$@»: %1$lld"
+          }
+        }
+      }
+    },
+    "Denied": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запрещено"
+          }
+        }
+      }
+    },
+    "Details": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подробности"
+          }
+        }
+      }
+    },
+    "Diagnostics": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Диагностика"
+          }
+        }
+      }
+    },
+    "Diagnostics…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Диагностика…"
+          }
+        }
+      }
+    },
+    "Dismiss": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скрыть"
+          }
+        }
+      }
+    },
+    "Do you want to save the changes to this record?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить изменения в этой записи?"
+          }
+        }
+      }
+    },
+    "Don't Save Format": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не сохранять формат"
+          }
+        }
+      }
+    },
+    "Don't Save from %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не сохранять из «%@»"
+          }
+        }
+      }
+    },
+    "Don't save": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не сохранять"
+          }
+        }
+      }
+    },
+    "Done": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Готово"
+          }
+        }
+      }
+    },
+    "Don’t Save": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не сохранять"
+          }
+        }
+      }
+    },
+    "Drop a card here to add it": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перетащите сюда карточку, чтобы добавить её"
+          }
+        }
+      }
+    },
+    "Duplicate As": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дублировать как"
+          }
+        }
+      }
+    },
+    "Duplicated as %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Создан дубликат: %@"
+          }
+        }
+      }
+    },
+    "Edit": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Правка"
+          }
+        }
+      }
+    },
+    "Edit Record": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Редактировать запись"
+          }
+        }
+      }
+    },
+    "Edit Record (Space or ⌘E)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Редактировать запись (пробел или ⌘E)"
+          }
+        }
+      }
+    },
+    "Edited": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменено"
+          }
+        }
+      }
+    },
+    "Editing · Esc stops editing": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Правка · Esc — выйти из текста"
+          }
+        }
+      }
+    },
+    "Enable Capture": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Включить захват"
+          }
+        }
+      }
+    },
+    "Encode": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Кодирование"
+          }
+        }
+      }
+    },
+    "Every kind of item": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Все виды записей"
+          }
+        }
+      }
+    },
+    "Favorite": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В избранное"
+          }
+        }
+      }
+    },
+    "Favorites": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Избранное"
+          }
+        }
+      }
+    },
+    "Favorites among them: %lld. They are kept unless you delete them too.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Среди них избранных: %lld. Они сохранятся, если не удалить и их."
+          }
+        }
+      }
+    },
+    "Favorites are never deleted automatically. When all items together reach the storage limit, the oldest make room; lowering it does that at once.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Избранное никогда не удаляется автоматически. Когда все элементы вместе достигают лимита хранилища, самые старые освобождают место; при уменьшении лимита это происходит сразу."
+          }
+        }
+      }
+    },
+    "Favorites are never removed automatically. This can't be undone.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Избранное никогда не удаляется автоматически. Это действие нельзя отменить."
+          }
+        }
+      }
+    },
+    "Files": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Файлы"
+          }
+        }
+      }
+    },
+    "Find": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найти"
+          }
+        }
+      }
+    },
+    "Find in the text (⌘F)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найти в тексте (⌘F)"
+          }
+        }
+      }
+    },
+    "Find in the text (⌘F); Find and Replace (⌥⌘F)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найти в тексте (⌘F); найти и заменить (⌥⌘F)"
+          }
+        }
+      }
+    },
+    "Find in the text recognized in the image (⌘F)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найти в тексте, распознанном на изображении (⌘F)"
+          }
+        }
+      }
+    },
+    "First copied": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Впервые скопировано"
+          }
+        }
+      }
+    },
+    "Fit": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вписать"
+          }
+        }
+      }
+    },
+    "Fit the image in the window (⌘0)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вписать изображение в окно (⌘0)"
+          }
+        }
+      }
+    },
+    "For anything else, use Pause, Skip Next Copy, or set the app to Don't Save.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Для всего остального используйте паузу, «Пропустить следующее копирование» или задайте приложению «Не сохранять»."
+          }
+        }
+      }
+    },
+    "Format JSON": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Форматировать JSON"
+          }
+        }
+      }
+    },
+    "Format Rules for All Apps": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Правила форматов для всех приложений"
+          }
+        }
+      }
+    },
+    "Format Rules for This App": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Правила форматов для этого приложения"
+          }
+        }
+      }
+    },
+    "Formats": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Форматы"
+          }
+        }
+      }
+    },
+    "Formatting will be removed": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Форматирование будет удалено"
+          }
+        }
+      }
+    },
+    "Found further in the text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найдено дальше в тексте"
+          }
+        }
+      }
+    },
+    "Found in the app name": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найдено в названии приложения"
+          }
+        }
+      }
+    },
+    "Found in the file name": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найдено в имени файла"
+          }
+        }
+      }
+    },
+    "Found in the page address": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найдено в адресе страницы"
+          }
+        }
+      }
+    },
+    "Found in the text in the image": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найдено в тексте на картинке"
+          }
+        }
+      }
+    },
+    "General": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Основные"
+          }
+        }
+      }
+    },
+    "GitHub token": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токен GitHub"
+          }
+        }
+      }
+    },
+    "GitHub tokens": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токены GitHub"
+          }
+        }
+      }
+    },
+    "GitLab token": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токен GitLab"
+          }
+        }
+      }
+    },
+    "GitLab tokens": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токены GitLab"
+          }
+        }
+      }
+    },
+    "Go back to the saved text (⌘Z undoes this)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вернуть сохранённый текст (⌘Z отменит возврат)"
+          }
+        }
+      }
+    },
+    "Google API key": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключ Google API"
+          }
+        }
+      }
+    },
+    "Google API keys": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключи Google API"
+          }
+        }
+      }
+    },
+    "Grid": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сетка"
+          }
+        }
+      }
+    },
+    "Hide Sidebar": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скрыть боковую панель"
+          }
+        }
+      }
+    },
+    "Hide the text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скрыть текст"
+          }
+        }
+      }
+    },
+    "Hide the title, source and details (⌥⌘I)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скрыть заголовок, источник и подробности (⌥⌘I)"
+          }
+        }
+      }
+    },
+    "Highlighting": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подсветка"
+          }
+        }
+      }
+    },
+    "History": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "История"
+          }
+        }
+      }
+    },
+    "History cleared": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "История очищена"
+          }
+        }
+      }
+    },
+    "History cleared except favorites": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "История очищена, избранное сохранено"
+          }
+        }
+      }
+    },
+    "History could not be loaded: %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось загрузить историю: %@"
+          }
+        }
+      }
+    },
+    "History could not be opened (%@). Items are kept in memory until Memopila quits.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось открыть историю (%@). Элементы хранятся в памяти до выхода из Memopila."
+          }
+        }
+      }
+    },
+    "History is larger than the new limit. The oldest items that are not favorites are deleted until it fits; favorites stay. This can't be undone.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "История больше нового лимита. Самые старые элементы, кроме избранного, будут удалены, пока она не поместится; избранное останется. Это нельзя отменить."
+          }
+        }
+      }
+    },
+    "History stays on this Mac and is never sent anywhere.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "История хранится только на этом Mac и никуда не отправляется."
+          }
+        }
+      }
+    },
+    "How many cards fit across and down; cards resize with the window. ⌘+ and ⌘− in the window change it too.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сколько карточек помещается по горизонтали и вертикали; карточки подстраиваются под размер окна. ⌘+ и ⌘− в окне тоже меняют сетку."
+          }
+        }
+      }
+    },
+    "Identify the source app": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Определять исходное приложение"
+          }
+        }
+      }
+    },
+    "Ignore content from other devices (Universal Clipboard)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Игнорировать содержимое с других устройств (универсальный буфер обмена)"
+          }
+        }
+      }
+    },
+    "Images": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изображения"
+          }
+        }
+      }
+    },
+    "In Clipboard": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В буфере"
+          }
+        }
+      }
+    },
+    "In collections: %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В коллекциях: %@"
+          }
+        }
+      }
+    },
+    "In no collection": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ни в одной коллекции"
+          }
+        }
+      }
+    },
+    "In use": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Используются"
+          }
+        }
+      }
+    },
+    "Inspect": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проверить"
+          }
+        }
+      }
+    },
+    "Inspect Current Clipboard": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проверить текущий буфер обмена"
+          }
+        }
+      }
+    },
+    "Inspector": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Инспектор"
+          }
+        }
+      }
+    },
+    "It is not encrypted on disk.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "На диске она не шифруется."
+          }
+        }
+      }
+    },
+    "It is older than History keeps (%lld days), so it is deleted. This can't be undone.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Он старше срока хранения истории (%lld дн.), поэтому будет удалён. Это нельзя отменить."
+          }
+        }
+      }
+    },
+    "Italic (⌘I)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Курсив (⌘I)"
+          }
+        }
+      }
+    },
+    "Items": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Элементы"
+          }
+        }
+      }
+    },
+    "Its items stay in history and in other collections.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Её записи останутся в истории и в других коллекциях."
+          }
+        }
+      }
+    },
+    "JSON": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JSON"
+          }
+        }
+      }
+    },
+    "JWT": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JWT"
+          }
+        }
+      }
+    },
+    "JWTs": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JWT"
+          }
+        }
+      }
+    },
+    "Keep": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранять"
+          }
+        }
+      }
+    },
+    "Keep Formats from %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранять форматы из «%@»"
+          }
+        }
+      }
+    },
+    "Keep Skipped Formats": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранять пропущенные форматы"
+          }
+        }
+      }
+    },
+    "Keep only %lld items?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Хранить только %lld объектов?"
+          }
+        }
+      }
+    },
+    "Keep up to": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Хранить не более"
+          }
+        }
+      }
+    },
+    "Keyboard Shortcuts": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сочетания клавиш"
+          }
+        }
+      }
+    },
+    "Language": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Язык"
+          }
+        }
+      }
+    },
+    "Language for syntax highlighting": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Язык для подсветки синтаксиса"
+          }
+        }
+      }
+    },
+    "Language for syntax highlighting; Automatic detects code": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Язык подсветки синтаксиса; «Автоматически» распознаёт код"
+          }
+        }
+      }
+    },
+    "Languages": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Языки"
+          }
+        }
+      }
+    },
+    "Larger Text (⌘+)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Крупнее (⌘+)"
+          }
+        }
+      }
+    },
+    "Larger copies show a red “Current — not saved” card with Save Anyway. Apps can have their own limit.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Для более крупных копий показывается красная карточка «Текущее — не сохранено» с кнопкой «Всё равно сохранить». У приложений может быть свой лимит."
+          }
+        }
+      }
+    },
+    "Larger than %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Больше %@"
+          }
+        }
+      }
+    },
+    "Larger than the “Largest item” limit (%@, Settings → Apps → All Apps)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Больше лимита «Наибольший элемент» (%@, Настройки → Приложения → Все приложения)"
+          }
+        }
+      }
+    },
+    "Largest item": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Наибольший элемент"
+          }
+        }
+      }
+    },
+    "Last 30 Days": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "За 30 дней"
+          }
+        }
+      }
+    },
+    "Last 7 Days": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "За 7 дней"
+          }
+        }
+      }
+    },
+    "Last copied": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Последний раз"
+          }
+        }
+      }
+    },
+    "Launch at login": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запускать при входе в систему"
+          }
+        }
+      }
+    },
+    "Limits and Extras": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Лимиты и дополнительно"
+          }
+        }
+      }
+    },
+    "Line Numbers": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Номера строк"
+          }
+        }
+      }
+    },
+    "Lines": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Строки"
+          }
+        }
+      }
+    },
+    "Lines added and removed": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Строк добавлено и удалено"
+          }
+        }
+      }
+    },
+    "Links": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ссылки"
+          }
+        }
+      }
+    },
+    "Location": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Расположение"
+          }
+        }
+      }
+    },
+    "Lower and Delete the Oldest Items": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Уменьшить и удалить самые старые"
+          }
+        }
+      }
+    },
+    "Lower the storage limit?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Уменьшить лимит хранилища?"
+          }
+        }
+      }
+    },
+    "Make this record the clipboard content and go back to the app you were in (↩)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Положить эту запись в буфер обмена и вернуться в приложение, в котором вы были (↩)"
+          }
+        }
+      }
+    },
+    "Memopila": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memopila"
+          }
+        }
+      }
+    },
+    "Memopila may not read this folder.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "У Memopila нет доступа к этой папке."
+          }
+        }
+      }
+    },
+    "Memopila needs to read the clipboard in the background to build your history.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Чтобы вести историю, Memopila нужно читать буфер обмена в фоне."
+          }
+        }
+      }
+    },
+    "Memopila: click to open, right-click for the menu": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Memopila: щелчок — открыть, правый щелчок — меню"
+          }
+        }
+      }
+    },
+    "Menu": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Меню"
+          }
+        }
+      }
+    },
+    "Merged with an existing record": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Объединено с существующей записью"
+          }
+        }
+      }
+    },
+    "Metadata": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Метаданные"
+          }
+        }
+      }
+    },
+    "Minify JSON": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сжать JSON"
+          }
+        }
+      }
+    },
+    "Mixed": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Смешанное"
+          }
+        }
+      }
+    },
+    "Monospaced Font": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Моноширинный шрифт"
+          }
+        }
+      }
+    },
+    "More": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ещё"
+          }
+        }
+      }
+    },
+    "Move and select": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перемещение и выделение"
+          }
+        }
+      }
+    },
+    "Move between cards": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переходить между карточками"
+          }
+        }
+      }
+    },
+    "Name": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Имя"
+          }
+        }
+      }
+    },
+    "Name of the new collection": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Название новой коллекции"
+          }
+        }
+      }
+    },
+    "Needs text with several lines.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нужен текст из нескольких строк."
+          }
+        }
+      }
+    },
+    "Never": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Никогда"
+          }
+        }
+      }
+    },
+    "New Collection": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Новая коллекция"
+          }
+        }
+      }
+    },
+    "New Collection…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Новая коллекция…"
+          }
+        }
+      }
+    },
+    "Next record (→)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Следующая запись (→)"
+          }
+        }
+      }
+    },
+    "No favorites yet. Press ⌘D on a card to add one.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В избранном пока пусто. Нажмите ⌘D на карточке, чтобы добавить."
+          }
+        }
+      }
+    },
+    "No formats were skipped": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Форматы не пропускались"
+          }
+        }
+      }
+    },
+    "No matches with these filters.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "С этими фильтрами ничего не найдено."
+          }
+        }
+      }
+    },
+    "No matches.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ничего не найдено."
+          }
+        }
+      }
+    },
+    "No rules. Formats on the default list are saved; others are skipped.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Правил нет. Форматы из стандартного списка сохраняются, остальные пропускаются."
+          }
+        }
+      }
+    },
+    "No stored formats": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет сохранённых форматов"
+          }
+        }
+      }
+    },
+    "No supported formats": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет поддерживаемых форматов"
+          }
+        }
+      }
+    },
+    "No text found": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст не найден"
+          }
+        }
+      }
+    },
+    "No text was found in this image.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "На изображении не найден текст."
+          }
+        }
+      }
+    },
+    "Not above the current limit": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не больше текущего лимита"
+          }
+        }
+      }
+    },
+    "Not available for this text.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недоступно для этого текста."
+          }
+        }
+      }
+    },
+    "Not duplicated: the text contains a secret and secrets are not saved.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дубликат не создан: в тексте есть секрет, а секреты не сохраняются."
+          }
+        }
+      }
+    },
+    "Not enabled yet": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ещё не включено"
+          }
+        }
+      }
+    },
+    "Not needed (redundant)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не нужен (дублирует другой)"
+          }
+        }
+      }
+    },
+    "Not saved: %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не сохранено: %@"
+          }
+        }
+      }
+    },
+    "Nothing here.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Здесь пусто."
+          }
+        }
+      }
+    },
+    "Nothing matches the filters.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Под фильтры ничего не подходит."
+          }
+        }
+      }
+    },
+    "Nothing to delete": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нечего удалять"
+          }
+        }
+      }
+    },
+    "Now": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сейчас"
+          }
+        }
+      }
+    },
+    "Off for this app": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выключено для этого приложения"
+          }
+        }
+      }
+    },
+    "Off: edit as plain text; saving then keeps only the text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выключено: редактирование как простого текста; при сохранении останется только текст"
+          }
+        }
+      }
+    },
+    "One image pixel per screen pixel": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Один пиксель изображения на пиксель экрана"
+          }
+        }
+      }
+    },
+    "Only %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Только %@"
+          }
+        }
+      }
+    },
+    "Only items copied in this period": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Только записи, скопированные за этот период"
+          }
+        }
+      }
+    },
+    "Only one record can be on the clipboard. Select a single card.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В буфере обмена может быть только одна запись. Выделите одну карточку."
+          }
+        }
+      }
+    },
+    "Only the first changes are shown.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показаны только первые изменения."
+          }
+        }
+      }
+    },
+    "Only the formatting changed.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменилось только оформление."
+          }
+        }
+      }
+    },
+    "Open": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть"
+          }
+        }
+      }
+    },
+    "Open Memopila": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть Memopila"
+          }
+        }
+      }
+    },
+    "Open Memopila (%@)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть Memopila (%@)"
+          }
+        }
+      }
+    },
+    "Open Settings": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть настройки"
+          }
+        }
+      }
+    },
+    "Open Source Page": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть исходную страницу"
+          }
+        }
+      }
+    },
+    "Open System Settings": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть Системные настройки"
+          }
+        }
+      }
+    },
+    "Open in Preview": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть в Просмотре"
+          }
+        }
+      }
+    },
+    "Open the image in Preview to mark it up, crop or export it": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть изображение в Просмотре, чтобы разметить, обрезать или экспортировать"
+          }
+        }
+      }
+    },
+    "Open the link in your browser (⌘O)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть ссылку в браузере (⌘O)"
+          }
+        }
+      }
+    },
+    "OpenAI key": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключ OpenAI"
+          }
+        }
+      }
+    },
+    "OpenAI keys": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключи OpenAI"
+          }
+        }
+      }
+    },
+    "Original": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оригинал"
+          }
+        }
+      }
+    },
+    "PDF": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "PDF"
+          }
+        }
+      }
+    },
+    "Paste": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вставить"
+          }
+        }
+      }
+    },
+    "Pasted": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вставлено"
+          }
+        }
+      }
+    },
+    "Pause": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пауза"
+          }
+        }
+      }
+    },
+    "Pause Capture": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приостановить захват"
+          }
+        }
+      }
+    },
+    "Pause or Resume Capture": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пауза или возобновление захвата"
+          }
+        }
+      }
+    },
+    "Pause or resume capture": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пауза или возобновление захвата"
+          }
+        }
+      }
+    },
+    "Pause, Clear History, Settings and more": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пауза, очистка истории, настройки и другое"
+          }
+        }
+      }
+    },
+    "Pin (⌘P): keep the window open after choosing an item and when you switch apps": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Закрепить (⌘P): окно остаётся открытым после выбора записи и при переходе в другое приложение"
+          }
+        }
+      }
+    },
+    "Pin Window": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Закрепить окно"
+          }
+        }
+      }
+    },
+    "Pin the window": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Закрепить окно"
+          }
+        }
+      }
+    },
+    "Pin window": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Закрепить окно"
+          }
+        }
+      }
+    },
+    "Plain Text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Простой текст"
+          }
+        }
+      }
+    },
+    "Plain Text, No Formatting": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Простой текст без форматирования"
+          }
+        }
+      }
+    },
+    "Prefix": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Префикс"
+          }
+        }
+      }
+    },
+    "Press Return: the collection is created with this record in it; Esc cancels": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нажмите Return — коллекция будет создана с этой записью; Esc — отмена"
+          }
+        }
+      }
+    },
+    "Press a shortcut…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нажмите сочетание…"
+          }
+        }
+      }
+    },
+    "Preview": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Просмотр"
+          }
+        }
+      }
+    },
+    "Previous record (←)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Предыдущая запись (←)"
+          }
+        }
+      }
+    },
+    "Privacy": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Конфиденциальность"
+          }
+        }
+      }
+    },
+    "Privacy & Security → Files and Folders: let Memopila read this folder, then open the record again": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Конфиденциальность и безопасность → Файлы и папки: разрешите Memopila читать эту папку и откройте запись снова"
+          }
+        }
+      }
+    },
+    "Private key": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приватный ключ"
+          }
+        }
+      }
+    },
+    "Private keys": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Приватные ключи"
+          }
+        }
+      }
+    },
+    "Put this record into a collection, or into a new one": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить запись в коллекцию или в новую"
+          }
+        }
+      }
+    },
+    "Quit Memopila": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Завершить Memopila"
+          }
+        }
+      }
+    },
+    "Raise Size Limit for %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Увеличить лимит размера для «%@»"
+          }
+        }
+      }
+    },
+    "Read failed": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ошибка чтения"
+          }
+        }
+      }
+    },
+    "Recognition Languages": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Языки распознавания"
+          }
+        }
+      }
+    },
+    "Recognize Text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Распознать текст"
+          }
+        }
+      }
+    },
+    "Recognize Text in Images from %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Распознавать текст на изображениях из «%@»"
+          }
+        }
+      }
+    },
+    "Recognize text in images": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Распознавать текст на изображениях"
+          }
+        }
+      }
+    },
+    "Recognize text in images and scanned PDFs": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Распознавать текст на изображениях и в отсканированных PDF"
+          }
+        }
+      }
+    },
+    "Recognize text in images from %@, on this Mac": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Распознавать текст на изображениях из «%@» на этом Mac"
+          }
+        }
+      }
+    },
+    "Recognized types": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Распознаваемые типы"
+          }
+        }
+      }
+    },
+    "Recognizing…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Распознаётся…"
+          }
+        }
+      }
+    },
+    "Record Shortcut": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Записать сочетание"
+          }
+        }
+      }
+    },
+    "Record source page and window title": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запоминать исходную страницу и заголовок окна"
+          }
+        }
+      }
+    },
+    "Records": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Записи"
+          }
+        }
+      }
+    },
+    "Redo": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Повторить"
+          }
+        }
+      }
+    },
+    "Redo (⇧⌘Z)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Повторить (⇧⌘Z)"
+          }
+        }
+      }
+    },
+    "Remove": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать"
+          }
+        }
+      }
+    },
+    "Remove %lld from Favorites": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из избранного: %lld"
+          }
+        }
+      }
+    },
+    "Remove %lld items from Favorites?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из избранного объекты (%lld)?"
+          }
+        }
+      }
+    },
+    "Remove Duplicate Lines": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать повторяющиеся строки"
+          }
+        }
+      }
+    },
+    "Remove Line Breaks": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать переносы строк"
+          }
+        }
+      }
+    },
+    "Remove Settings for %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить настройки «%@»"
+          }
+        }
+      }
+    },
+    "Remove and Delete": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать и удалить"
+          }
+        }
+      }
+    },
+    "Remove from Favorites": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из избранного"
+          }
+        }
+      }
+    },
+    "Remove from Favorites (⌘D)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из избранного (⌘D)"
+          }
+        }
+      }
+    },
+    "Remove from Favorites and delete?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из избранного и удалить?"
+          }
+        }
+      }
+    },
+    "Remove from “%@”": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из «%@»"
+          }
+        }
+      }
+    },
+    "Remove rule": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить правило"
+          }
+        }
+      }
+    },
+    "Rename": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переименовать"
+          }
+        }
+      }
+    },
+    "Rename Collection": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переименовать коллекцию"
+          }
+        }
+      }
+    },
+    "Rename…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переименовать…"
+          }
+        }
+      }
+    },
+    "Report an Issue": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сообщить о проблеме"
+          }
+        }
+      }
+    },
+    "Reset": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сбросить"
+          }
+        }
+      }
+    },
+    "Resume": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Продолжить"
+          }
+        }
+      }
+    },
+    "Resume After Storage Error": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Продолжить после ошибки хранилища"
+          }
+        }
+      }
+    },
+    "Resume Capture": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Возобновить захват"
+          }
+        }
+      }
+    },
+    "Retention": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Хранение"
+          }
+        }
+      }
+    },
+    "Reveal in Finder": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать в Finder"
+          }
+        }
+      }
+    },
+    "Revert": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вернуть"
+          }
+        }
+      }
+    },
+    "Rich Text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Форматированный текст"
+          }
+        }
+      }
+    },
+    "Rules for %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Правила для «%@»"
+          }
+        }
+      }
+    },
+    "Rules for All Apps": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Правила для всех приложений"
+          }
+        }
+      }
+    },
+    "Runs on this Mac, one image at a time in the background. Found text is searchable and can be copied in Edit Record.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Работает на этом Mac, по одному изображению в фоне. Найденный текст ищется поиском, а скопировать его можно в окне «Редактировать запись»."
+          }
+        }
+      }
+    },
+    "Save": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить"
+          }
+        }
+      }
+    },
+    "Save Anyway": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Всё равно сохранить"
+          }
+        }
+      }
+    },
+    "Save and Select": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить и выбрать"
+          }
+        }
+      }
+    },
+    "Save as usual": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранять как обычно"
+          }
+        }
+      }
+    },
+    "Save failed: %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ошибка сохранения: %@"
+          }
+        }
+      }
+    },
+    "Save from %@ Again": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Снова сохранять из «%@»"
+          }
+        }
+      }
+    },
+    "Save or revert your changes first": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сначала сохраните или верните изменения"
+          }
+        }
+      }
+    },
+    "Save the changes": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить изменения"
+          }
+        }
+      }
+    },
+    "Save the changes, make this record the clipboard content and go back to the app you were in (⌘↩)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить изменения, положить запись в буфер обмена и вернуться в приложение, в котором вы были (⌘↩)"
+          }
+        }
+      }
+    },
+    "Save the changes; the window stays open": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить изменения; окно останется открытым"
+          }
+        }
+      }
+    },
+    "Save the changes; the window stays open (⌘S)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить изменения; окно останется открытым (⌘S)"
+          }
+        }
+      }
+    },
+    "Save · up to %lld MB": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранять · до %lld МБ"
+          }
+        }
+      }
+    },
+    "Save, delete after %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранять, удалять через %@"
+          }
+        }
+      }
+    },
+    "Save, delete after 1 day": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранять, удалять через 1 день"
+          }
+        }
+      }
+    },
+    "Save, delete after 1 hour": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранять, удалять через 1 час"
+          }
+        }
+      }
+    },
+    "Save, delete after 15 minutes": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранять, удалять через 15 минут"
+          }
+        }
+      }
+    },
+    "Save, delete after…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранять, удалять через…"
+          }
+        }
+      }
+    },
+    "Saved": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохраняется"
+          }
+        }
+      }
+    },
+    "Saving from %@ again": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Снова сохраняем из «%@»"
+          }
+        }
+      }
+    },
+    "Saving…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранение…"
+          }
+        }
+      }
+    },
+    "Search": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Поиск"
+          }
+        }
+      }
+    },
+    "Search actions": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Поиск действий"
+          }
+        }
+      }
+    },
+    "Search history": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Поиск по истории"
+          }
+        }
+      }
+    },
+    "Secrets": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Секреты"
+          }
+        }
+      }
+    },
+    "Select": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать"
+          }
+        }
+      }
+    },
+    "Select All": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать всё"
+          }
+        }
+      }
+    },
+    "Select and Paste": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать и вставить"
+          }
+        }
+      }
+    },
+    "Select and paste into the app you were in": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать и вставить в приложение, в котором вы были"
+          }
+        }
+      }
+    },
+    "Select several cards": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выделить несколько карточек"
+          }
+        }
+      }
+    },
+    "Select the first nine cards": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать одну из первых девяти карточек"
+          }
+        }
+      }
+    },
+    "Select, never pasting": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать, никогда не вставляя"
+          }
+        }
+      }
+    },
+    "Select: put the record on the clipboard and go back": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать: положить запись в буфер и вернуться"
+          }
+        }
+      }
+    },
+    "Settings": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Настройки"
+          }
+        }
+      }
+    },
+    "Settings…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Настройки…"
+          }
+        }
+      }
+    },
+    "Shortcuts": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сочетания клавиш"
+          }
+        }
+      }
+    },
+    "Show All of History": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать всю историю"
+          }
+        }
+      }
+    },
+    "Show Formatting": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывать оформление"
+          }
+        }
+      }
+    },
+    "Show Invisible Characters": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывать невидимые символы"
+          }
+        }
+      }
+    },
+    "Show Sidebar": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать боковую панель"
+          }
+        }
+      }
+    },
+    "Show all of History": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать всю историю"
+          }
+        }
+      }
+    },
+    "Show in Finder": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать в Finder"
+          }
+        }
+      }
+    },
+    "Show or hide the sidebar": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать или скрыть боковую панель"
+          }
+        }
+      }
+    },
+    "Show or hide the sidebar (⌥⌘S)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать или скрыть боковую панель (⌥⌘S)"
+          }
+        }
+      }
+    },
+    "Show the text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать текст"
+          }
+        }
+      }
+    },
+    "Show the title, source and details (⌥⌘I)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать заголовок, источник и подробности (⌥⌘I)"
+          }
+        }
+      }
+    },
+    "Show this file above": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать этот файл выше"
+          }
+        }
+      }
+    },
+    "Shown on the card": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывается на карточке"
+          }
+        }
+      }
+    },
+    "Shown on the card and found by search; saved when you leave the field": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывается на карточке и находится поиском; сохраняется, когда вы выходите из поля"
+          }
+        }
+      }
+    },
+    "Sidebar": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Боковая панель"
+          }
+        }
+      }
+    },
+    "Size": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Размер"
+          }
+        }
+      }
+    },
+    "Size limit: %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Лимит размера: %@"
+          }
+        }
+      }
+    },
+    "Size of the text against the “Largest item” limit (Settings → Apps → All Apps)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Размер текста относительно лимита «Наибольший элемент» (Настройки → Приложения → Все приложения)"
+          }
+        }
+      }
+    },
+    "Skip": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пропускать"
+          }
+        }
+      }
+    },
+    "Skip Next Copy": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пропустить следующее копирование"
+          }
+        }
+      }
+    },
+    "Skip next copy": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пропустить следующее копирование"
+          }
+        }
+      }
+    },
+    "Skipped": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пропускается"
+          }
+        }
+      }
+    },
+    "Slack token": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токен Slack"
+          }
+        }
+      }
+    },
+    "Slack tokens and webhooks": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токены и вебхуки Slack"
+          }
+        }
+      }
+    },
+    "Smaller Text (⌘−)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Мельче (⌘−)"
+          }
+        }
+      }
+    },
+    "Sort Lines A→Z": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сортировать строки А→Я"
+          }
+        }
+      }
+    },
+    "Source": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Источник"
+          }
+        }
+      }
+    },
+    "Source App": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Исходное приложение"
+          }
+        }
+      }
+    },
+    "Source on GitHub": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Исходный код на GitHub"
+          }
+        }
+      }
+    },
+    "Space": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пробел"
+          }
+        }
+      }
+    },
+    "Standard uses the marker some apps add, else the frontmost app. Strict trusts only the marker: while any app is set to Don't Save, unmarked copies are skipped. Neither is a security boundary.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«Стандартно» использует метку, которую добавляют некоторые приложения, а без неё — активное приложение. «Строго» доверяет только метке: пока хотя бы одному приложению задано «Не сохранять», копирования без метки пропускаются. Ни один режим не является защитой."
+          }
+        }
+      }
+    },
+    "Standard: marker or frontmost app": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стандартно: метка или активное приложение"
+          }
+        }
+      }
+    },
+    "Startup": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запуск"
+          }
+        }
+      }
+    },
+    "Status": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Состояние"
+          }
+        }
+      }
+    },
+    "Storage": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Хранилище"
+          }
+        }
+      }
+    },
+    "Storage limit": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Лимит хранилища"
+          }
+        }
+      }
+    },
+    "Stored data": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Данные"
+          }
+        }
+      }
+    },
+    "Strict: marker only": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Строго: только метка"
+          }
+        }
+      }
+    },
+    "Stripe key": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключ Stripe"
+          }
+        }
+      }
+    },
+    "Stripe keys": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ключи Stripe"
+          }
+        }
+      }
+    },
+    "Text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст"
+          }
+        }
+      }
+    },
+    "Text Recognition": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Распознавание текста"
+          }
+        }
+      }
+    },
+    "Text found in this image": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "На изображении найден текст"
+          }
+        }
+      }
+    },
+    "Text from Image": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст с изображения"
+          }
+        }
+      }
+    },
+    "Text in Image": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст на изображении"
+          }
+        }
+      }
+    },
+    "The clipboard is empty. Copy something, then choose Enable Capture again.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Буфер обмена пуст. Скопируйте что-нибудь и снова выберите «Включить захват»."
+          }
+        }
+      }
+    },
+    "The file is no longer available.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Файл больше недоступен."
+          }
+        }
+      }
+    },
+    "The formatting could not be saved.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось сохранить оформление."
+          }
+        }
+      }
+    },
+    "The history could not be opened, so a new one was started. The old files are kept in “%@”.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Историю не удалось открыть, поэтому начата новая. Старые файлы сохранены в «%@»."
+          }
+        }
+      }
+    },
+    "The image could not be shown.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось показать изображение."
+          }
+        }
+      }
+    },
+    "The item no longer exists.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Элемент больше не существует."
+          }
+        }
+      }
+    },
+    "The next copy will be skipped": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Следующее копирование будет пропущено"
+          }
+        }
+      }
+    },
+    "The text contains a secret, and Settings say not to save secrets.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В тексте есть секрет, а в настройках указано не сохранять секреты."
+          }
+        }
+      }
+    },
+    "The text could not be loaded.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось загрузить текст."
+          }
+        }
+      }
+    },
+    "The text goes to the clipboard and appears in history as a new item": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст попадёт в буфер обмена и появится в истории новой записью"
+          }
+        }
+      }
+    },
+    "The text has no valid percent-encoding.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В тексте нет корректного percent-кодирования."
+          }
+        }
+      }
+    },
+    "The text is empty.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст пуст."
+          }
+        }
+      }
+    },
+    "The text is not Base64 for UTF-8 text.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст не является Base64 с текстом в UTF-8."
+          }
+        }
+      }
+    },
+    "The text is not valid JSON.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст не является корректным JSON."
+          }
+        }
+      }
+    },
+    "The text is still loading": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст ещё загружается"
+          }
+        }
+      }
+    },
+    "The text is the same as the saved text.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст не отличается от сохранённого."
+          }
+        }
+      }
+    },
+    "This can't be undone.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Это действие нельзя отменить."
+          }
+        }
+      }
+    },
+    "This collection is empty. Drop a card on it in the sidebar, or use Collections in a card's menu.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Коллекция пуста. Перетащите на неё карточку в боковой панели или используйте «Коллекции» в меню карточки."
+          }
+        }
+      }
+    },
+    "This item can't be restored: its stored data is damaged.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Этот элемент нельзя восстановить: его данные повреждены."
+          }
+        }
+      }
+    },
+    "This item has no image to open.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В этой записи нет изображения."
+          }
+        }
+      }
+    },
+    "This item has no text.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В этом элементе нет текста."
+          }
+        }
+      }
+    },
+    "This item has rich text; saving keeps the plain text only.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В этом элементе форматированный текст; при сохранении останется только простой текст."
+          }
+        }
+      }
+    },
+    "Title": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Заголовок"
+          }
+        }
+      }
+    },
+    "Title (empty removes it)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Название (пустое — убрать)"
+          }
+        }
+      }
+    },
+    "Title Case": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Каждое Слово С Заглавной"
+          }
+        }
+      }
+    },
+    "To paste, allow Memopila in System Settings → Privacy & Security → Accessibility, then try again.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Чтобы вставлять, разрешите Memopila в Системных настройках → Конфиденциальность и безопасность → Универсальный доступ и повторите."
+          }
+        }
+      }
+    },
+    "Today": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сегодня"
+          }
+        }
+      }
+    },
+    "Tokens, keys, JWTs and card numbers are recognized on this Mac. Saved secrets are masked on cards (Edit Record shows one) and deleted on time; ⌘D keeps one for good.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токены, ключи, JWT и номера карт распознаются на этом Mac. Сохранённые секреты скрыты на карточках (окно «Редактировать запись» показывает их) и удаляются в срок; ⌘D оставляет секрет навсегда."
+          }
+        }
+      }
+    },
+    "Transform": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Преобразовать"
+          }
+        }
+      }
+    },
+    "Trim Whitespace": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать пробелы по краям"
+          }
+        }
+      }
+    },
+    "Type, e.g. com.adobe.photoshop-image": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Тип, например com.adobe.photoshop-image"
+          }
+        }
+      }
+    },
+    "Types": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Типы"
+          }
+        }
+      }
+    },
+    "UPPERCASE": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ВЕРХНИЙ РЕГИСТР"
+          }
+        }
+      }
+    },
+    "URL-Decode": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL-декодировать"
+          }
+        }
+      }
+    },
+    "URL-Encode": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "URL-кодировать"
+          }
+        }
+      }
+    },
+    "Unavailable": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недоступно"
+          }
+        }
+      }
+    },
+    "Unavailable: the file was moved or deleted.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недоступно: файл перемещён или удалён."
+          }
+        }
+      }
+    },
+    "Underline (⌘U)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подчёркнутый (⌘U)"
+          }
+        }
+      }
+    },
+    "Undo": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить"
+          }
+        }
+      }
+    },
+    "Undo (⌘Z)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить (⌘Z)"
+          }
+        }
+      }
+    },
+    "Unknown app": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Неизвестное приложение"
+          }
+        }
+      }
+    },
+    "Unpin (⌘P): the window closes after you choose an item or switch apps": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открепить (⌘P): окно закрывается после выбора записи или при переходе в другое приложение"
+          }
+        }
+      }
+    },
+    "Unpin Window": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открепить окно"
+          }
+        }
+      }
+    },
+    "Unpin window": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открепить окно"
+          }
+        }
+      }
+    },
+    "Until I Resume": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пока не возобновлю"
+          }
+        }
+      }
+    },
+    "Usage": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Использование"
+          }
+        }
+      }
+    },
+    "Use my preferred languages": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Использовать мои предпочитаемые языки"
+          }
+        }
+      }
+    },
+    "Version": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Версия"
+          }
+        }
+      }
+    },
+    "Version %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Версия %@"
+          }
+        }
+      }
+    },
+    "View": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вид"
+          }
+        }
+      }
+    },
+    "When a copy contains a secret": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Если в копии есть секрет"
+          }
+        }
+      }
+    },
+    "When it was copied, how often, its size and formats": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Когда скопировано, сколько раз, размер и форматы"
+          }
+        }
+      }
+    },
+    "Which formats of what is on the clipboard now would be saved; nothing is read but the format names.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Какие форматы того, что сейчас в буфере обмена, были бы сохранены; читаются только названия форматов."
+          }
+        }
+      }
+    },
+    "Window": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Окно"
+          }
+        }
+      }
+    },
+    "Window: “%@”": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Окно: «%@»"
+          }
+        }
+      }
+    },
+    "Won't save from %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не сохраняем из «%@»"
+          }
+        }
+      }
+    },
+    "Wrap Lines": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переносить строки"
+          }
+        }
+      }
+    },
+    "Wrap lines": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переносить строки"
+          }
+        }
+      }
+    },
+    "Wrap lines, line numbers, invisible characters (spaces, tabs, line breaks), font and text size": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перенос строк, номера строк, невидимые символы (пробелы, табуляции, переносы строк), шрифт и размер текста"
+          }
+        }
+      }
+    },
+    "You can undo it for a few seconds.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить можно в течение нескольких секунд."
+          }
+        }
+      }
+    },
+    "Your Data": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ваши данные"
+          }
+        }
+      }
+    },
+    "Your changes to the text will be lost if you don’t save them.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Если не сохранить, изменения текста будут потеряны."
+          }
+        }
+      }
+    },
+    "Zoom In (⌘+)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Увеличить (⌘+)"
+          }
+        }
+      }
+    },
+    "Zoom Out (⌘−)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Уменьшить (⌘−)"
+          }
+        }
+      }
+    },
+    "Zoom level: at 100, one image pixel is one screen pixel": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Масштаб: при 100 один пиксель изображения — один пиксель экрана"
+          }
+        }
+      }
+    },
+    "all formats": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "все форматы"
+          }
+        }
+      }
+    },
+    "all of the text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "всему тексту"
+          }
+        }
+      }
+    },
+    "click": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "щелчок"
+          }
+        }
+      }
+    },
+    "double-click": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "двойной щелчок"
+          }
+        }
+      }
+    },
+    "from %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "из «%@»"
+          }
+        }
+      }
+    },
+    "lowercase": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "нижний регистр"
+          }
+        }
+      }
+    },
+    "macOS asks before apps read the clipboard in the background. Choose Always Allow for Memopila.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS спрашивает разрешение, прежде чем приложения читают буфер обмена в фоне. Выберите для Memopila «Всегда разрешать»."
+          }
+        }
+      }
+    },
+    "npm token": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токен npm"
+          }
+        }
+      }
+    },
+    "npm tokens": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Токены npm"
+          }
+        }
+      }
+    },
+    "plain text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "простой текст"
+          }
+        }
+      }
+    },
+    "the selected text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "выделенному тексту"
+          }
+        }
+      }
+    },
+    "← → other records · ↩ selects · Esc closes": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "← → другие записи · ↩ выбрать · Esc закрыть"
+          }
+        }
+      }
+    },
+    "⋯ %lld unchanged lines": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "⋯ %lld unchanged line"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "⋯ %lld unchanged lines"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "⋯ %lld строка без изменений"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "⋯ %lld строки без изменений"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "⋯ %lld строк без изменений"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "⋯ %lld строки без изменений"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "⌘+ ⌘− zoom · ⌘0 fit · ← → other records · ↩ selects · Esc closes": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌘+ ⌘− масштаб · ⌘0 вписать · ← → другие записи · ↩ выбрать · Esc закрыть"
+          }
+        }
+      }
+    },
+    "⌘S saves · ⌘↩ saves and selects · Esc asks to save": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌘S сохранить · ⌘↩ сохранить и выбрать · Esc спросит о сохранении"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

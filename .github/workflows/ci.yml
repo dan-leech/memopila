@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  core-linux:
+    name: Core (Linux)
+    runs-on: ubuntu-24.04
+    container: swift:6.4.0-noble
+    steps:
+      - uses: actions/checkout@v5
+      - run: swift --version
+      - run: swift test --package-path Packages/MemopilaCore
+
+  core-macos:
+    name: Core (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+          ls -d /Applications/Xcode*.app
+      - run: swift test --package-path Packages/MemopilaCore
+
+  services-macos:
+    name: Services (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: swift test --package-path Packages/MemopilaServices
+
+  app-macos:
+    name: App (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Build
+        shell: bash
+        run: |
+          xcodebuild -version
+          xcodebuild -project App/Memopila.xcodeproj -scheme Memopila -configuration Debug \
+            -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO -quiet build
+      # The same build as release.yml (optimized, arm64 + x86_64, ad-hoc signed), so a tag
+      # never meets a Release-only failure for the first time.
+      - name: Build Release (as release.yml)
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=build/DD/Build/Products/Release/Memopila.app
+          xcodebuild -project App/Memopila.xcodeproj -scheme Memopila -configuration Release \
+            -destination 'generic/platform=macOS' -derivedDataPath build/DD \
+            ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO -quiet build
+          lipo -archs "$app/Contents/MacOS/Memopila"
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict "$app"

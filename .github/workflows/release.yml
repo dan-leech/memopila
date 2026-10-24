@@ -1,0 +1,357 @@
+name: Release
+
+# Builds Memopila.app (Release, universal), signs it, packages a .zip and a .dmg with SHA-256
+# checksums and publishes a GitHub release.
+#
+# - Push a tag:   git tag v0.1.0 && git push origin v0.1.0
+# - Or run it from the Actions tab with a version; tag v<version> is created on the commit
+#   of the branch (or tag) the run uses, so releases from non-default branches work too.
+#
+# Signing: with the secrets MACOS_CERTIFICATE (base64 .p12 with a "Developer ID Application"
+# certificate and its private key), MACOS_CERTIFICATE_PASSWORD, APPLE_TEAM_ID, APPLE_ID and
+# APPLE_APP_PASSWORD (app-specific password), the app is signed with Developer ID and the
+# hardened runtime, notarized and stapled. Without them it is signed ad hoc; the release notes
+# say how to open it. Only versions with a suffix (0.2.0-beta.1) are pre-releases.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version, e.g. 0.1.0 (a leading "v" is fine). Tag v<version> is created on the selected ref if it does not exist.'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  # One group for every release: a tag push and a manual run of the same version never race.
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      PROJECT: App/Memopila.xcodeproj
+      SCHEME: Memopila
+      DERIVED_DATA: ${{ github.workspace }}/build/DerivedData
+      DIST: ${{ github.workspace }}/build/dist
+      APP: ${{ github.workspace }}/build/DerivedData/Build/Products/Release/Memopila.app
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Resolve version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            raw="$GITHUB_REF_NAME"
+          else
+            raw="$INPUT_VERSION"
+          fi
+          raw="$(printf '%s' "$raw" | tr -d '[:space:]')"
+          version="${raw#v}"
+          if ! [[ "$version" =~ ^[0-9]+(\.[0-9]+){0,2}([-+][0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::\"$raw\" is not a version like 1.2.3, v1.2.3 or v1.2.3-beta.1"
+            exit 1
+          fi
+          tag="v$version"
+
+          # A run from the Actions tab builds the selected ref. If the tag already exists it
+          # must point at that same commit, or the release would not match its tag.
+          if [[ "$GITHUB_EVENT_NAME" != "push" ]]; then
+            found=0
+            git ls-remote --exit-code --tags origin "refs/tags/$tag" > /dev/null || found=$?
+            if [[ $found -eq 0 ]]; then
+              git fetch --quiet --depth=1 origin "+refs/tags/$tag:refs/tags/$tag"
+              existing="$(git rev-parse "refs/tags/$tag^{commit}")"
+              if [[ "$existing" != "$GITHUB_SHA" ]]; then
+                echo "::error::Tag $tag already exists at ${existing:0:12}, but this run builds ${GITHUB_SHA:0:12}. Run the workflow from the tag $tag, or choose another version."
+                exit 1
+              fi
+            elif [[ $found -ne 2 ]]; then
+              echo "::error::Could not check whether tag $tag exists (git ls-remote exit code $found)."
+              exit 1
+            fi
+          fi
+
+          {
+            echo "RELEASE_VERSION=$version"
+            # CFBundleShortVersionString takes numbers only: 1.2.3-beta.1 → 1.2.3.
+            echo "RELEASE_MARKETING_VERSION=${version%%[-+]*}"
+            echo "RELEASE_BUILD_NUMBER=$GITHUB_RUN_NUMBER"
+            echo "RELEASE_TAG=$tag"
+          } >> "$GITHUB_ENV"
+          echo "Version $version (tag $tag, build $GITHUB_RUN_NUMBER) from ${GITHUB_SHA:0:12}"
+
+      # Secrets cannot be tested in `if:` directly; turn their presence into a step output.
+      - name: Check signing secrets
+        id: signing
+        env:
+          HAS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE != '' }}
+          HAS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD != '' }}
+          HAS_TEAM_ID: ${{ secrets.APPLE_TEAM_ID != '' }}
+          HAS_APPLE_ID: ${{ secrets.APPLE_ID != '' }}
+          HAS_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD != '' }}
+        run: |
+          set -euo pipefail
+          present=0
+          for flag in "$HAS_CERTIFICATE" "$HAS_CERTIFICATE_PASSWORD" "$HAS_TEAM_ID" "$HAS_APPLE_ID" "$HAS_APP_PASSWORD"; do
+            if [[ "$flag" == "true" ]]; then present=$((present + 1)); fi
+          done
+          if [[ $present -eq 5 ]]; then
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+            echo "Signing with Developer ID, then notarizing."
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            if [[ $present -gt 0 ]]; then
+              echo "::warning::Only $present of the 5 signing secrets are set. Building an ad-hoc signed release."
+            else
+              echo "::notice::No signing secrets. Building an ad-hoc signed release."
+            fi
+          fi
+
+      - name: Build
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          xcodebuild -project "$PROJECT" -scheme "$SCHEME" -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath "$DERIVED_DATA" \
+            MARKETING_VERSION="$RELEASE_MARKETING_VERSION" \
+            CURRENT_PROJECT_VERSION="$RELEASE_BUILD_NUMBER" \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            -quiet build
+          test -d "$APP"
+          echo "Version: $(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist") ($(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist"))"
+          echo "Architectures: $(lipo -archs "$APP/Contents/MacOS/Memopila")"
+
+      - name: Sign ad hoc
+        if: steps.signing.outputs.signed != 'true'
+        run: |
+          set -euo pipefail
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      - name: Import Developer ID certificate
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          keychain="$RUNNER_TEMP/memopila-signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          certificate="$RUNNER_TEMP/certificate.p12"
+          printf '%s' "$MACOS_CERTIFICATE" | base64 --decode > "$certificate"
+
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12
+          rm -f "$certificate"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" > /dev/null
+          # Search the new keychain first, keep the existing ones.
+          existing="$(security list-keychains -d user | tr -d '"' | xargs)"
+          # shellcheck disable=SC2086
+          security list-keychains -d user -s "$keychain" $existing
+
+          # The Developer ID G2 intermediate is usually present already; add it in case it is not.
+          if curl -fsSL --retry 3 -o "$RUNNER_TEMP/DeveloperIDG2CA.cer" https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer; then
+            security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$keychain" > /dev/null 2>&1 || true
+          fi
+
+          identity="$(security find-identity -v -p codesigning "$keychain" \
+            | grep -F "Developer ID Application" | grep -F "($APPLE_TEAM_ID)" | head -n 1 | awk '{print $2}' || true)"
+          if [[ -z "$identity" ]]; then
+            echo "::error::No \"Developer ID Application\" identity for team $APPLE_TEAM_ID in MACOS_CERTIFICATE."
+            security find-identity -v -p codesigning "$keychain" || true
+            exit 1
+          fi
+          {
+            echo "SIGNING_KEYCHAIN=$keychain"
+            echo "SIGNING_IDENTITY=$identity"
+          } >> "$GITHUB_ENV"
+
+      - name: Sign with Developer ID
+        if: steps.signing.outputs.signed == 'true'
+        run: |
+          set -euo pipefail
+          sign() {
+            codesign --force --options runtime --timestamp \
+              --keychain "$SIGNING_KEYCHAIN" --sign "$SIGNING_IDENTITY" "$1"
+          }
+          # Nested code first, innermost first. Today there is none (the Swift packages are
+          # linked statically), but this keeps working if a framework or helper is added.
+          while IFS= read -r -d '' item; do
+            sign "$item"
+          done < <(find "$APP/Contents" -depth \( -name '*.dylib' -o -name '*.framework' \
+            -o -name '*.xpc' -o -name '*.appex' -o -name '*.app' \) -print0)
+          sign "$APP"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign --display --verbose=2 "$APP"
+
+      - name: Create disk image
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$DIST"
+          dmg="$DIST/Memopila-$RELEASE_VERSION.dmg"
+          stage="$RUNNER_TEMP/dmg"
+          rm -rf "$stage"
+          mkdir -p "$stage"
+          ditto "$APP" "$stage/Memopila.app"
+          ln -s /Applications "$stage/Applications"
+          # hdiutil on hosted runners sometimes fails with "Resource busy"; retry a few times.
+          for attempt in 1 2 3 4 5; do
+            if hdiutil create -volname "Memopila $RELEASE_VERSION" -srcfolder "$stage" \
+                 -format UDZO -ov "$dmg"; then
+              break
+            fi
+            if [[ $attempt -eq 5 ]]; then
+              echo "::error::hdiutil create failed"
+              exit 1
+            fi
+            echo "hdiutil create failed (attempt $attempt), retrying"
+            sleep $((attempt * 5))
+          done
+          if [[ "$SIGNED" == "true" ]]; then
+            codesign --force --timestamp --keychain "$SIGNING_KEYCHAIN" --sign "$SIGNING_IDENTITY" "$dmg"
+            codesign --verify --verbose=2 "$dmg"
+          fi
+
+      # Notarizing the disk image covers the app inside it, so one submission gives tickets for
+      # both: staple the .dmg, and the .app before it goes into the .zip.
+      - name: Notarize and staple
+        if: steps.signing.outputs.signed == 'true'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          dmg="$DIST/Memopila-$RELEASE_VERSION.dmg"
+          result="$(xcrun notarytool submit "$dmg" \
+            --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" \
+            --wait --timeout 45m --output-format json)" || true
+          echo "$result"
+          status="$(jq -r '.status // empty' <<< "$result" 2>/dev/null || true)"
+          submission="$(jq -r '.id // empty' <<< "$result" 2>/dev/null || true)"
+          if [[ "$status" != "Accepted" ]]; then
+            if [[ -n "$submission" ]]; then
+              xcrun notarytool log "$submission" \
+                --apple-id "$APPLE_ID" --password "$APPLE_APP_PASSWORD" --team-id "$APPLE_TEAM_ID" || true
+            fi
+            echo "::error::Notarization finished with status \"${status:-unknown}\"."
+            exit 1
+          fi
+          xcrun stapler staple "$dmg"
+          xcrun stapler staple "$APP"
+          xcrun stapler validate "$dmg"
+          xcrun stapler validate "$APP"
+          spctl --assess --type execute --verbose=2 "$APP"
+
+      - name: Create zip and checksums
+        run: |
+          set -euo pipefail
+          mkdir -p "$DIST"
+          ditto -c -k --keepParent "$APP" "$DIST/Memopila-$RELEASE_VERSION.zip"
+          cd "$DIST"
+          shasum -a 256 "Memopila-$RELEASE_VERSION.zip" "Memopila-$RELEASE_VERSION.dmg" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Write release notes
+        env:
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          set -euo pipefail
+          notes="$RUNNER_TEMP/release-notes.md"
+          {
+            printf '## Install\n\n'
+            printf '1. Download `Memopila-%s.zip` (or `Memopila-%s.dmg`) below.\n' "$RELEASE_VERSION" "$RELEASE_VERSION"
+            cat <<'EOF'
+          2. Unzip it (or open the disk image) and move **Memopila.app** to **Applications**.
+          3. Open Memopila and choose **Enable Capture** in the panel banner or the menu bar menu. When macOS asks whether Memopila may read the clipboard, choose **Always Allow**. If capture stays paused, set Memopila to *Always Allow* in **System Settings → Privacy & Security**.
+          4. Optional: for paste after copying, turn on *Settings → General → After Copying → Also paste into the app you were in* and allow Memopila in **System Settings → Privacy & Security → Accessibility**.
+
+          Requires macOS 15.4 or later. Only one app can hold the ⌥⌘V shortcut: quit Pasta (or another app using it) first, or pick another shortcut in Settings.
+
+          EOF
+            if [[ "$SIGNED" == "true" ]]; then
+              cat <<'EOF'
+          This build is signed with a Developer ID and notarized by Apple.
+
+          EOF
+            else
+              cat <<'EOF'
+          > [!WARNING]
+          > **Unsigned build.** This build is not signed with a Developer ID or notarized by Apple, so macOS blocks it on first launch. Use either of these:
+          > - Open Memopila once and click **Done** when macOS says it was not opened. Then click **Open Anyway** next to the Memopila message in **System Settings → Privacy & Security** (right-click → Open no longer works since macOS 15).
+          > - Or, before the first launch, run in Terminal: `xattr -dr com.apple.quarantine /Applications/Memopila.app`
+          >
+          > macOS ties clipboard access and Accessibility to the app's signature, and every unsigned build has a new one. After an update, choose **Always Allow** again when asked. If you use auto-paste, remove Memopila from the Accessibility list and add it back.
+
+          EOF
+            fi
+            printf '## SHA-256\n\n```\n'
+            cat "$DIST/SHA256SUMS.txt"
+            printf '```\n'
+          } > "$notes"
+          cat "$notes"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          SIGNED: ${{ steps.signing.outputs.signed }}
+        run: |
+          set -euo pipefail
+          files=(
+            "$DIST/Memopila-$RELEASE_VERSION.zip"
+            "$DIST/Memopila-$RELEASE_VERSION.dmg"
+            "$DIST/SHA256SUMS.txt"
+          )
+          if gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            # A re-run after the release was created: refresh the files.
+            echo "Release $RELEASE_TAG exists; replacing its files."
+            gh release upload "$RELEASE_TAG" "${files[@]}" --clobber
+            exit 0
+          fi
+          args=(
+            --title "Memopila $RELEASE_VERSION"
+            --notes-file "$RUNNER_TEMP/release-notes.md"
+            --generate-notes
+          )
+          # Only versions like 0.2.0-beta.1 are pre-releases: an unsigned build is still the latest
+          # release, so the Download links (releases/latest) find it; its notes say how to open it.
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            # The pushed tag exists; never let gh create a tag elsewhere.
+            args+=(--verify-tag)
+          else
+            # Create the tag at the built commit, not at the default branch.
+            args+=(--target "$GITHUB_SHA")
+          fi
+          gh release create "$RELEASE_TAG" "${files[@]}" "${args[@]}"
+          echo "Published $(gh release view "$RELEASE_TAG" --json url --jq .url)"
+
+      - name: Remove signing keychain
+        if: always() && steps.signing.outputs.signed == 'true'
+        run: |
+          if [[ -n "${SIGNING_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$SIGNING_KEYCHAIN" || true
+          fi
