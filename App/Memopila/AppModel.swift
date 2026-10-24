@@ -253,6 +253,8 @@ final class AppModel {
 
     /// `keepingState`: back from a record or Settings, with the same search and selection.
     func panelWillShow(keepingState: Bool = false) {
+        // Shown by hand (hotkey, menu bar) while a window replaced it: that window no longer owes it.
+        panelHiddenForWindow = false
         refreshPreviousApp()
         purgeTask?.cancel()
         present(nil)

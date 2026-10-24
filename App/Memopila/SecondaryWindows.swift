@@ -60,6 +60,9 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
             defer: true
         )
         window.contentViewController = host
+        // Setting the controller sized the window to its view, which has no size of its own: 0 × 0,
+        // an invisible window that still counted as open (first-run bug).
+        window.setContentSize(Self.recordSize)
         window.title = String(localized: "Edit Record")
         window.minSize = NSSize(width: 520, height: 360)
         window.keyHandler = { [weak self, weak window] event in
@@ -68,9 +71,11 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
                 return RecordKeys.handle(event, in: window, model: self.model)
             }
         }
-        configure(window, frameName: "MemopilaRecordWindow")
+        configure(window, frameName: "MemopilaRecordWindow", defaultSize: Self.recordSize)
         return window
     }
+
+    private static let recordSize = NSSize(width: 760, height: 540)
 
     // MARK: Settings and Diagnostics (§8.7)
 
@@ -116,7 +121,7 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
         window.title = String(localized: "Diagnostics")
         window.styleMask = [.titled, .closable, .resizable, .miniaturizable]
         window.setContentSize(NSSize(width: 640, height: 520))
-        configure(window, frameName: "MemopilaDiagnosticsWindow")
+        configure(window, frameName: "MemopilaDiagnosticsWindow", defaultSize: NSSize(width: 640, height: 520))
         return window
     }
 
@@ -132,15 +137,23 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
         window.makeKeyAndOrderFront(nil)
     }
 
-    /// Floating, kept after closing, and back where the user left it.
-    private func configure(_ window: NSWindow, frameName: String) {
+    /// Floating, kept after closing, and back where the user left it — unless that frame is too
+    /// small or on no screen any more, then centered at `defaultSize`.
+    private func configure(_ window: NSWindow, frameName: String, defaultSize: NSSize? = nil) {
         window.level = .floating
         // The window stays above other apps, so its tooltips must work while they are active.
         window.allowsToolTipsWhenApplicationIsInactive = true
         window.collectionBehavior.insert(.moveToActiveSpace)
         window.isReleasedWhenClosed = false
         window.delegate = self
-        if !window.setFrameUsingName(frameName) { window.center() }
+        let restored = window.setFrameUsingName(frameName)
+        let frame = window.frame
+        let usable = frame.width >= max(window.minSize.width, 100) && frame.height >= max(window.minSize.height, 100)
+            && NSScreen.screens.contains { $0.visibleFrame.intersects(frame) }
+        if !restored || !usable {
+            if let defaultSize { window.setContentSize(defaultSize) }
+            window.center()
+        }
         window.setFrameAutosaveName(frameName)
     }
 
