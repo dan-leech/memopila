@@ -38,6 +38,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// ⌘Q asks about unsaved text and carries out a delete waiting for Undo (review findings).
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        model.prepareToQuit { quit in sender.reply(toApplicationShouldTerminate: quit) }
+        return .terminateLater
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         model.monitor.record("quitting")
     }

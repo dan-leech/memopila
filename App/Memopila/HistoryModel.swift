@@ -58,7 +58,7 @@ final class HistoryModel {
     @ObservationIgnored var clipboardRecordID: () -> UUID? = { nil }
     @ObservationIgnored private var followsClipboard = false
     /// Deleted cards waiting for Undo (§8.3): out of the grid, still in the store.
-    @ObservationIgnored private var hiddenIDs: Set<UUID> = []
+    @ObservationIgnored private(set) var hiddenIDs: Set<UUID> = []
     @ObservationIgnored private var isLoadingMore = false
     @ObservationIgnored private var isActive = false
     @ObservationIgnored private var isStale = true
@@ -337,6 +337,12 @@ final class HistoryModel {
 
     func clearMarks() {
         if !markedIDs.isEmpty { markedIDs = [] }
+    }
+
+    /// ⌘A with an empty search: every loaded card.
+    func selectAll() {
+        let all = Set(cards.map(\.id))
+        if all.count > 1, all != markedIDs { markedIDs = all }
     }
 
     // MARK: Deletion with Undo (§8.3)

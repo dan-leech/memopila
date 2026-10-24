@@ -87,7 +87,11 @@ public enum DedupMerge {
         merged.firstCopiedAt = min(existing.firstCopiedAt, observation.observedAt)
         merged.lastCopiedAt = max(existing.lastCopiedAt, observation.observedAt)
         merged.copyCount = existing.copyCount + 1
-        if observation.observedAt >= existing.lastCopiedAt {
+        // An observation of unknown origin (the content at launch, a remote clipboard) says nothing
+        // about who copied it: a known source, its page and its expiry stay (review finding: it
+        // cleared *Delete after* and the app filter).
+        let replacesSource = observation.sourceAppBundleID != nil || existing.lastSourceAppBundleID == nil
+        if observation.observedAt >= existing.lastCopiedAt, replacesSource {
             merged.lastSourceAppBundleID = observation.sourceAppBundleID
             merged.lastSourceAppName = observation.sourceAppName
             merged.sourceURL = observation.sourceURL

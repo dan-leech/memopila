@@ -178,6 +178,17 @@ struct ClipboardStoreTests {
         #expect(try await store.page(recentText, offset: 0, limit: 10).map(\.preview) == ["more words"])
     }
 
+    @Test func idsOfAQuerySetFavoritesApart() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let a) = await ingest(store, snapshot("a", at: 1, app: "com.a.app")),
+              case .committed(let b) = await ingest(store, snapshot("b", at: 2, app: "com.a.app")),
+              case .committed = await ingest(store, snapshot("c", at: 3, app: "com.c.app")) else { return }
+        try await store.setFavorite(a, true, limits: RetentionLimits(), now: Date(timeIntervalSince1970: 4))
+        let found = try await store.ids(HistoryQuery(scope: .app("com.a.app")))
+        #expect(found.others == [b])
+        #expect(found.favorites == [a])
+    }
+
     @Test func scopes() async throws {
         let store = try ClipboardStore(url: nil)
         guard case .committed(let a) = await ingest(store, snapshot("a", at: 1, app: "com.a.app")),

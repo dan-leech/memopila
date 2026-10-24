@@ -151,6 +151,23 @@ public actor ClipboardStore {
         return try context.fetch(descriptor).map(Self.card)
     }
 
+    /// Everything a query finds (§8.2), favorites apart: for deleting all that is shown, from an
+    /// app or in a collection. Identifiers only.
+    public func ids(_ query: HistoryQuery) throws -> (others: [UUID], favorites: [UUID]) {
+        let context = makeContext()
+        var descriptor = FetchDescriptor<ClipboardRecord>(
+            predicate: try predicate(for: query, in: context),
+            sortBy: [SortDescriptor(\.lastCopiedAt, order: .reverse)]
+        )
+        descriptor.propertiesToFetch = [\.id, \.isFavorite]
+        var others: [UUID] = []
+        var favorites: [UUID] = []
+        for record in try context.fetch(descriptor) {
+            if record.isFavorite { favorites.append(record.id) } else { others.append(record.id) }
+        }
+        return (others, favorites)
+    }
+
     public func count(_ query: HistoryQuery) throws -> Int {
         let context = makeContext()
         return try context.fetchCount(FetchDescriptor(predicate: try predicate(for: query, in: context)))
@@ -165,8 +182,14 @@ public actor ClipboardStore {
         let context = makeContext()
         guard let record = try fetchRecord(id, in: context) else { return nil }
         let rows = record.representations.sorted { ($0.itemIndex, $0.repIndex) < ($1.itemIndex, $1.repIndex) }
-        let items = Self.items(from: rows)
-        let text = RichText.plainText(of: items).map { TextDecoding.prefix($0, maxScalars: maxTextScalars) }
+        // Only text rows are read, and none when no text is wanted: an image's payload stays on
+        // disk (review finding: every open of a record loaded all of it).
+        var text: String?
+        if maxTextScalars > 0 {
+            let textTypes = Set(PasteboardType.plainTextTypes.union(PasteboardType.richTextTypes).union([.url]).map(\.rawValue))
+            let items = Self.items(from: rows.filter { textTypes.contains($0.uti) })
+            text = RichText.plainText(of: items).map { TextDecoding.prefix($0, maxScalars: maxTextScalars) }
+        }
         let tags = try context.fetch(FetchDescriptor<RecordTag>(predicate: #Predicate { $0.recordID == id }))
         return RecordDetails(
             card: Self.card(record),
@@ -294,7 +317,10 @@ public actor ClipboardStore {
             }
             let candidates = try retentionCandidates(in: context)
             var victims = RetentionPlanner.planUnfavorite(id, existing: candidates, maxCount: limits.maxCount)
-            victims += RetentionPlanner.planAge(existing: candidates, now: now, maxAge: limits.maxAge).filter { !victims.contains($0) }
+            // The record just unfavorited stays, however old (review finding: an old favorite was
+            // deleted at once, with no Undo).
+            let planned = Set(victims)
+            victims += RetentionPlanner.planAge(existing: candidates, now: now, maxAge: limits.maxAge).filter { $0 != id && !planned.contains($0) }
             try deleteRecords(ids: victims, in: context)
         }
     }
@@ -367,7 +393,8 @@ public actor ClipboardStore {
             record.textIndex = TextDecoding.prefix(text, maxScalars: IngestEnrichment.searchScalars)
             record.textLength = text.count
             record.lineCount = TextStats.lineCount(text)
-            if record.sensitiveKind != nil { record.sensitiveKind = SecretDetector.detect(text)?.rawValue }
+            // Edited text is checked like a copy: a password typed in is masked too (review finding).
+            record.sensitiveKind = SecretDetector.detect(text)?.rawValue
             record.editedAt = Date()
             record.storedTypes = representations.map(\.type.rawValue)
             record.skippedTypes = []
@@ -383,17 +410,19 @@ public actor ClipboardStore {
         let candidates = try retentionCandidates(in: context)
         var victims = RetentionPlanner.planAge(existing: candidates, now: now, maxAge: limits.maxAge)
         victims += RetentionPlanner.planExpired(existing: candidates, now: now)
-        victims += RetentionPlanner.planCountShrink(existing: candidates, maxCount: limits.maxCount)
-        let planned = Set(victims)
+        // The count and the storage limit apply to what is left, not to records already going.
+        var planned = Set(victims)
+        victims += RetentionPlanner.planCountShrink(existing: candidates.filter { !planned.contains($0.id) }, maxCount: limits.maxCount)
+        planned = Set(victims)
         victims += RetentionPlanner.planStorageShrink(
             existing: candidates.filter { !planned.contains($0.id) },
             maxStorageBytes: limits.maxStorageBytes
         )
-        let unique = Array(Set(victims))
-        if !unique.isEmpty {
-            try saveOrRollback(context) { try deleteRecords(ids: unique, in: context) }
+        let removed = Set(victims)
+        if !removed.isEmpty {
+            try saveOrRollback(context) { try deleteRecords(ids: Array(removed), in: context) }
         }
-        return RetentionPlanner.nextExpiry(existing: candidates.filter { !unique.contains($0.id) })
+        return RetentionPlanner.nextExpiry(existing: candidates.filter { !removed.contains($0.id) })
     }
 
     /// *Also delete N existing items from <App>* (§5.1): non-favorites only.
@@ -464,6 +493,8 @@ public actor ClipboardStore {
 
     public func setMembership(record recordID: UUID, collection collectionID: UUID, isMember: Bool) throws {
         let context = makeContext()
+        // A record deleted meanwhile (expiry, retention) must not leave a tag behind.
+        if isMember, try fetchRecord(recordID, in: context) == nil { return }
         let existing = try context.fetch(FetchDescriptor<RecordTag>(
             predicate: #Predicate { $0.recordID == recordID && $0.collectionID == collectionID }
         ))
@@ -493,8 +524,14 @@ public actor ClipboardStore {
     public func recognitionInput(for id: UUID) throws -> (data: Data, isPDF: Bool)? {
         let context = makeContext()
         guard let record = try fetchRecord(id, in: context) else { return nil }
-        let imageTypes = Set(PasteboardType.rasterImagePreference.map(\.rawValue)).union([PasteboardType.pdf.rawValue])
-        guard let row = record.representations.first(where: { imageTypes.contains($0.uti) }), let data = row.bytes else { return nil }
+        // A PDF record's PDF, else the most compact common raster first: the relationship has no
+        // order, and a multi-megabyte TIFF was sometimes read instead of the PNG.
+        let preference: [PasteboardType] = record.displayTypeRaw == DisplayType.pdf.rawValue
+            ? [.pdf, .png, .jpeg, .heic, .tiff, .gif]
+            : [.png, .jpeg, .heic, .tiff, .gif, .pdf]
+        let rows = record.representations
+        guard let row = preference.lazy.compactMap({ type in rows.first { $0.uti == type.rawValue } }).first,
+              let data = row.bytes else { return nil }
         return (data, row.uti == PasteboardType.pdf.rawValue)
     }
 

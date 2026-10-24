@@ -21,6 +21,16 @@
         }
       }
     },
+    "%@ is in use by another app (for example Pasta). Choose another shortcut or quit that app.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ занято другим приложением (например, Pasta). Выберите другое сочетание или закройте то приложение."
+          }
+        }
+      }
+    },
     "%@ of %@": {
       "localizations": {
         "ru": {
@@ -1233,6 +1243,16 @@
         }
       }
     },
+    "Change Shortcut…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменить сочетание…"
+          }
+        }
+      }
+    },
     "Change case, lines, JSON or encoding; applies to %@; ⌘Z undoes it": {
       "localizations": {
         "ru": {
@@ -1653,6 +1673,16 @@
         }
       }
     },
+    "Could not register %@ (error %lld).": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось зарегистрировать %@ (ошибка %lld)."
+          }
+        }
+      }
+    },
     "Could not write to the clipboard.": {
       "localizations": {
         "ru": {
@@ -1753,6 +1783,16 @@
         }
       }
     },
+    "Delete %lld Shown…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить показанные (%lld)…"
+          }
+        }
+      }
+    },
     "Delete %lld items, including favorites?": {
       "localizations": {
         "en": {
@@ -1815,6 +1855,26 @@
         }
       }
     },
+    "Delete All Items in It…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить все элементы в ней…"
+          }
+        }
+      }
+    },
+    "Delete All from %@…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить все из «%@»…"
+          }
+        }
+      }
+    },
     "Delete Collection": {
       "localizations": {
         "ru": {
@@ -1845,6 +1905,16 @@
         }
       }
     },
+    "Delete Favorites Too": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить и избранное"
+          }
+        }
+      }
+    },
     "Delete This and Stop Saving from %@": {
       "localizations": {
         "ru": {
@@ -1871,6 +1941,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Удалять через %@"
+          }
+        }
+      }
+    },
+    "Delete all %lld items from %@?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить все элементы из «%2$@» (%1$lld)?"
+          }
+        }
+      }
+    },
+    "Delete all %lld items in “%@”?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить все элементы в «%2$@» (%1$lld)?"
           }
         }
       }
@@ -1911,6 +2001,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Удалять элементы старше"
+          }
+        }
+      }
+    },
+    "Delete the %lld items shown?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить показанные элементы (%lld)?"
           }
         }
       }
@@ -2211,6 +2311,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Избранное"
+          }
+        }
+      }
+    },
+    "Favorites among them: %lld. They are kept unless you delete them too.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Среди них избранных: %lld. Они сохранятся, если не удалить и их."
           }
         }
       }
@@ -2601,6 +2711,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Не удалось открыть историю (%@). Элементы хранятся в памяти до выхода из Memopila."
+          }
+        }
+      }
+    },
+    "History is larger than the new limit. The oldest items that are not favorites are deleted until it fits; favorites stay. This can't be undone.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "История больше нового лимита. Самые старые элементы, кроме избранного, будут удалены, пока она не поместится; избранное останется. Это нельзя отменить."
           }
         }
       }
@@ -3035,6 +3155,26 @@
         }
       }
     },
+    "Lower and Delete the Oldest Items": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Уменьшить и удалить самые старые"
+          }
+        }
+      }
+    },
+    "Lower the storage limit?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Уменьшить лимит хранилища?"
+          }
+        }
+      }
+    },
     "Make this record the clipboard content and go back to the app you were in (↩)": {
       "localizations": {
         "ru": {
@@ -3411,6 +3551,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Под фильтры ничего не подходит."
+          }
+        }
+      }
+    },
+    "Nothing to delete": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нечего удалять"
           }
         }
       }
@@ -5085,6 +5235,16 @@
         }
       }
     },
+    "The image could not be shown.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось показать изображение."
+          }
+        }
+      }
+    },
     "The item no longer exists.": {
       "localizations": {
         "ru": {
@@ -5611,6 +5771,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Перенос строк, номера строк, невидимые символы (пробелы, табуляции, переносы строк), шрифт и размер текста"
+          }
+        }
+      }
+    },
+    "You can undo it for a few seconds.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить можно в течение нескольких секунд."
           }
         }
       }

@@ -11,10 +11,19 @@ enum PanelOverlay: Equatable {
     case newCollection(addingRecord: UUID?)
     case renameCollection(UUID)
     case confirmDelete([UUID])
+    /// Everything shown, from an app or in a collection: favorites kept unless asked.
+    case confirmDeleteMany(DeleteManyScope, others: [UUID], favorites: [UUID])
     case confirmDeleteCollection(UUID)
     case confirmClear
     /// ⌘/ — every shortcut of the panel (§8.3).
     case shortcuts
+}
+
+/// What *Delete All…* deletes, for its question.
+enum DeleteManyScope: Equatable {
+    case shown
+    case app(String)
+    case collection(String)
 }
 
 enum RestoreVariant: Equatable {
@@ -115,8 +124,10 @@ final class AppModel {
         panel = PanelController(model: self)
         windows = SecondaryWindows(model: self)
 
-        monitor.panelIsKey = { [weak self] in self?.panel.isKey ?? false }
-        monitor.onSaved = { [weak self] _ in self?.didSave() }
+        // The panel, or a window of Memopila's own while it is the active app (the record window,
+        // Settings): what is copied there is Memopila's (review finding: it was Unknown).
+        monitor.panelIsKey = { [weak self] in (self?.panel.isKey ?? false) || (NSApp.isActive && NSApp.keyWindow != nil) }
+        monitor.onSaved = { [weak self] id in self?.didSave(id) }
         history.clipboardRecordID = { [weak monitor] in monitor?.clipboardRecordID }
         recognition.onUpdate = { [weak self] id, state in
             if state == .done { self?.history.storeDidChange() }
@@ -149,7 +160,10 @@ final class AppModel {
         switch next {
         case .actions(let id)?:
             guard let card = history.cards.first(where: { $0.id == id }) else { return }
-            actionsState = ActionsPanelState(items: ActionRegistry.cardActions(card, model: self).flatMap { $0.flattened() })
+            // Several cards selected: the actions for all of them, as in the context menu.
+            let selection = history.selection
+            let items = selection.count > 1 ? ActionRegistry.selectionActions(selection, model: self) : ActionRegistry.cardActions(card, model: self)
+            actionsState = ActionsPanelState(items: items.flatMap { $0.flattened() })
         default:
             actionsState = nil
         }
@@ -173,9 +187,19 @@ final class AppModel {
     /// panel as Settings does and can be moved and resized. `focusText` puts the cursor in the text (⌘E).
     func openRecord(_ id: UUID, focusText: Bool = false) {
         if let itemState, itemState.id == id {
+            hidePanelForWindow()
+            windows.showRecord(focusText: false)
             if focusText, itemState.isEditable { itemState.focus() }
             return
         }
+        // Another record with unsaved text open: Save / Don't Save / Cancel first (review finding:
+        // opening one from the panel replaced the edit without asking).
+        if let itemState, itemState.isDirty {
+            hidePanelForWindow()
+            windows.showRecord(focusText: false)
+            return resolveUnsavedChanges { [weak self] in self?.openRecord(id, focusText: focusText) }
+        }
+        itemState?.loadTask?.cancel()
         guard let card = history.cards.first(where: { $0.id == id }) else { return }
         let state = ItemState(card: card, focusOnLoad: focusText && Self.isEditable(card), maxBytes: settings.maxItemBytes)
         itemState = state
@@ -183,16 +207,20 @@ final class AppModel {
         hidePanelForWindow()
         windows.showRecord(focusText: state.focusOnLoad)
         guard state.hasText else { return }
-        Task { await loadText(into: state) }
+        // Cancelled when another record replaces this one (review finding: loads for records
+        // already passed kept running).
+        state.loadTask = Task { await loadText(into: state) }
     }
 
     /// Formatted records open formatted when their RTF or HTML can be read, others as plain text.
     private func loadText(into state: ItemState) async {
         if state.card.displayType == .richText, let rich = await editorRichText(state.id) {
+            guard !Task.isCancelled, itemState === state else { return }
             state.load(rich: rich)
         } else if let text = await editorText(state.id) {
+            guard !Task.isCancelled, itemState === state else { return }
             state.load(text)
-        } else {
+        } else if itemState === state {
             state.error = String(localized: "The text could not be loaded.")
         }
     }
@@ -219,18 +247,24 @@ final class AppModel {
     /// The title saves itself when its field is left or ↩ is pressed, and before the record
     /// window moves on or closes (first-run feedback: a separate Save for a title was one step too many).
     func saveTitle() {
-        guard let state = itemState, state.titleChanged else { return }
-        let id = state.id
-        let title = state.title
+        guard let change = takeTitleChange() else { return }
+        Task { await persist(change) }
+    }
+
+    /// The changed title, marked saved at once so closing or moving on does not save it twice.
+    private func takeTitleChange() -> (id: UUID, title: String)? {
+        guard let state = itemState, state.titleChanged else { return nil }
         state.titleSaved()
-        Task {
-            do {
-                try await store.rename(id, title: title)
-            } catch {
-                toasts.error(error.localizedDescription)
-            }
-            history.storeDidChange()
+        return (state.id, state.title)
+    }
+
+    private func persist(_ change: (id: UUID, title: String)) async {
+        do {
+            try await store.rename(change.id, title: change.title)
+        } catch {
+            toasts.error(error.localizedDescription)
         }
+        history.storeDidChange()
     }
 
     /// Esc, Space: unsaved text asks first (Save / Don't Save / Cancel), then the window closes.
@@ -251,13 +285,13 @@ final class AppModel {
     /// With unsaved text, the standard sheet: *Save* saves and goes on, *Don't Save* drops the edit
     /// and goes on, *Cancel* stays (first-run feedback: an inline question in the status bar was easy
     /// to miss). Without unsaved text it goes on at once.
-    func resolveUnsavedChanges(then proceed: @escaping @MainActor () -> Void) {
+    func resolveUnsavedChanges(then proceed: @escaping @MainActor () -> Void, onCancel: @escaping @MainActor () -> Void = {}) {
         guard let state = itemState, state.isDirty else { return proceed() }
         windows.askToSaveRecord { [weak self] choice in
             switch choice {
             case .save:
                 Task {
-                    guard let self, await self.saveText() else { return }
+                    guard let self, await self.saveText() else { return onCancel() }
                     proceed()
                 }
             case .discard:
@@ -266,7 +300,7 @@ final class AppModel {
                 state.revert()
                 proceed()
             case .cancel:
-                break
+                onCancel()
             }
         }
     }
@@ -293,8 +327,9 @@ final class AppModel {
     @discardableResult
     func saveText() async -> Bool {
         guard let state = itemState, !state.isSaving else { return false }
-        // The title first: an edit that merges into another record keeps that record's title (§3.6).
-        saveTitle()
+        // The title first, awaited: an edit that merges into another record keeps the edited
+        // record's new title only if it is stored before the merge (§3.6; review finding).
+        if let change = takeTitleChange() { await persist(change) }
         guard state.isTextDirty else { return true }
         guard let text = state.currentText(), !text.isEmpty else {
             state.error = String(localized: "The text is empty.")
@@ -306,8 +341,9 @@ final class AppModel {
             state.error = String(localized: "The formatting could not be saved.")
             return false
         }
+        let savedRich = state.isRich ? state.textView?.textStorage?.copy() as? NSAttributedString : nil
         state.isSaving = true
-        let error = await saveEdit(state.id, text: text, rich: rich)
+        let error = await saveEdit(state.id, text: text, rich: rich, savedRich: savedRich)
         state.isSaving = false
         state.error = error
         return error == nil
@@ -353,6 +389,7 @@ final class AppModel {
             }
             let preview = URL(fileURLWithPath: "/System/Applications/Preview.app")
             do {
+                External.announce()
                 _ = try await NSWorkspace.shared.open([url], withApplicationAt: preview, configuration: NSWorkspace.OpenConfiguration())
             } catch {
                 toasts.error(error.localizedDescription)
@@ -378,7 +415,7 @@ final class AppModel {
     func refreshPreviousApp() {
         previousApp = NSWorkspace.shared.frontmostApplication.flatMap {
             $0.bundleIdentifier == ClipboardMonitor.ownBundleID ? nil : $0
-        } ?? previousApp
+        } ?? monitor.lastOtherApp ?? previousApp
     }
 
     func panelDidClose() {
@@ -417,7 +454,8 @@ final class AppModel {
 
     // MARK: Capture follow-ups
 
-    private func didSave() {
+    private func didSave(_ id: UUID) {
+        rescueFromPendingDeletion(id)
         history.storeDidChange()
         recognition.wake()
         // Age and expiry after a successful ingest (§6), coalesced.
@@ -433,9 +471,15 @@ final class AppModel {
     func runRetention() {
         let limits = settings.retentionLimits
         Task {
-            let next = (try? await store.applyRetention(limits: limits, now: Date())) ?? nil
-            history.storeDidChange()
-            armExpiry(next)
+            do {
+                let next = try await store.applyRetention(limits: limits, now: Date())
+                history.storeDidChange()
+                armExpiry(next)
+            } catch {
+                // The store failed this time: try again in a minute instead of dropping the timer
+                // (review finding: a "delete after 8 hours" secret could outlive it).
+                armExpiry(Date().addingTimeInterval(60))
+            }
         }
     }
 
@@ -518,13 +562,18 @@ final class AppModel {
             if isPinned {
                 showCopied(id, pasted: pastes)
                 // Pinned: the panel stays visible but gives the key focus back to the target app.
-                if pastes { _ = target?.activate() }
+                if pastes {
+                    // The panel keeps the keyboard while pinned: give it back, or ⌘V would paste
+                    // into the search field (review finding).
+                    panel.yieldKeyFocus()
+                    _ = target?.activate()
+                }
             } else {
                 panel.close()
             }
             if pastes, let target, !target.isTerminated {
                 try? await Task.sleep(for: .milliseconds(wasActive || isPinned ? 250 : 80))
-                AccessibilityBridge.paste()
+                if !panel.isKey { AccessibilityBridge.paste() }
             }
             try? await store.markUsed(id, at: Date())
             history.storeDidChange()
@@ -671,6 +720,9 @@ final class AppModel {
         let enrichment = IngestEnrichment.make(for: items, sourceAppName: original?.sourceAppName)
         switch await store.ingest(snapshot, readerSeq: monitor.coordinator.opSeq, enrichment: enrichment, limits: settings.retentionLimits) {
         case .committed(let newID), .merged(let newID):
+            // As for a capture: a pending delete of the same content is undone, retention and its
+            // expiry timer run (review finding).
+            didSave(newID)
             return .saved(newID)
         case .rejected(let message), .failed(let message):
             return .failed(message)
@@ -712,8 +764,9 @@ final class AppModel {
         history.hide(set)
         let task = Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))
-            guard !Task.isCancelled else { return }
-            await self?.performDeletion(set)
+            guard !Task.isCancelled, let self, let pending = self.pendingDeletion else { return }
+            self.pendingDeletion = nil
+            await self.performDeletion(pending.ids)
         }
         pendingDeletion = (set, task)
         let message = ids.count == 1 ? String(localized: "Deleted") : String(localized: "Deleted \(ids.count) items")
@@ -727,6 +780,36 @@ final class AppModel {
         pending.task.cancel()
         pendingDeletion = nil
         history.unhide(pending.ids)
+    }
+
+    /// A record waiting out its Undo period came back — copied again, merged into by an edit or a
+    /// derived copy: it is not deleted after all (review finding: the new copy was lost).
+    private func rescueFromPendingDeletion(_ id: UUID) {
+        guard let pending = pendingDeletion, pending.ids.contains(id) else { return }
+        pendingDeletion = (pending.ids.subtracting([id]), pending.task)
+        history.unhide([id])
+    }
+
+    /// Before quitting: the delete waiting for Undo is carried out, not forgotten.
+    func commitPendingDeletionNow() async {
+        guard let pending = pendingDeletion else { return }
+        pending.task.cancel()
+        pendingDeletion = nil
+        await performDeletion(pending.ids)
+    }
+
+    /// ⌘Q: unsaved text asks first — Cancel keeps Memopila running — and a pending delete is
+    /// carried out (review findings: both were lost).
+    func prepareToQuit(_ reply: @escaping @MainActor (Bool) -> Void) {
+        let quit: @MainActor () -> Void = { [weak self] in
+            Task { @MainActor in
+                await self?.commitPendingDeletionNow()
+                reply(true)
+            }
+        }
+        guard let state = itemState, state.isDirty else { return quit() }
+        windows.showRecord(focusText: false)
+        resolveUnsavedChanges(then: quit) { reply(false) }
     }
 
     /// A second deletion does not wait for the first.
@@ -800,6 +883,28 @@ final class AppModel {
         delete(history.selection)
     }
 
+    /// Everything a query finds — the panel's current list, an app, a collection — after a
+    /// question that says how many and keeps favorites unless asked (first-run feedback: there
+    /// was no way to clean up by filter). Undo works as for any delete.
+    func deleteAll(matching query: HistoryQuery, scope: DeleteManyScope) {
+        let store = store
+        Task {
+            guard let found = try? await store.ids(query) else { return }
+            let hidden = history.hiddenIDs
+            let others = found.others.filter { !hidden.contains($0) }
+            let favorites = found.favorites.filter { !hidden.contains($0) }
+            guard !others.isEmpty || !favorites.isEmpty else {
+                return toasts.show(String(localized: "Nothing to delete"))
+            }
+            present(.confirmDeleteMany(scope, others: others, favorites: favorites))
+        }
+    }
+
+    /// The panel's list as filtered and searched now.
+    func deleteAllShown() {
+        deleteAll(matching: history.query, scope: .shown)
+    }
+
 
     func rename(_ id: UUID, title: String) {
         present(nil)
@@ -831,7 +936,8 @@ final class AppModel {
     }
 
     /// Edit save (§3.6). Returns an error message, or `nil` on success; the window stays open.
-    func saveEdit(_ id: UUID, text: String, rich: RichContent? = nil) async -> String? {
+    /// `savedRich` is the formatted text as saved: typing during the save stays unsaved.
+    func saveEdit(_ id: UUID, text: String, rich: RichContent? = nil, savedRich: NSAttributedString? = nil) async -> String? {
         let store = store
         let maxBytes = settings.maxItemBytes
         switch await monitor.destructive({ opSeq in try await store.editText(id, text: text, rich: rich, opSeq: opSeq, maxBytes: maxBytes) }) {
@@ -839,14 +945,15 @@ final class AppModel {
             monitor.recordChanged(id)
             history.storeDidChange()
             if let state = itemState, state.id == id {
-                // Saved in place: the saved text is the new starting point.
-                state.textSaved()
+                // Saved in place: what was saved is the new starting point.
+                state.textSaved(text, rich: savedRich)
                 toasts.show(String(localized: "Saved"))
             }
             return nil
         case .success(.merged(let survivor)):
             monitor.recordChanged(id)
             history.removeLocally([id])
+            rescueFromPendingDeletion(survivor)
             history.selectedID = survivor
             history.storeDidChange()
             toasts.show(String(localized: "Merged with an existing record"))

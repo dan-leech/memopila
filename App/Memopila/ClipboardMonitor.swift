@@ -34,9 +34,18 @@ final class ClipboardMonitor {
     @ObservationIgnored private let frontmostTracker = FrontmostTracker()
     /// What was on the clipboard at launch was copied by an unknown app (§3.2 rule 4).
     @ObservationIgnored private var launchChangeCount: Int?
+    /// Who was in front when a change was first seen: its reader may start later, after the user
+    /// moved on (review finding: a copy read after switching apps went to the new app).
+    @ObservationIgnored private var attribution: (changeCount: Int, source: String?, screenshotSource: String?, panelKey: Bool)?
+    /// The panel was key at the previous poll too: opening it right after copying elsewhere does
+    /// not make Memopila the source (review finding).
+    @ObservationIgnored private var panelWasKey = false
     @ObservationIgnored private var previousTick = Date()
 
     static let ownBundleID = Bundle.main.bundleIdentifier ?? "io.github.dan-leech.Memopila"
+
+    /// The last other app that was active: where the focus goes back to when nothing else is known.
+    var lastOtherApp: NSRunningApplication? { frontmostTracker.lastOtherApp }
 
     init(settings: SettingsStore, store: ClipboardStore) {
         self.settings = settings
@@ -92,8 +101,19 @@ final class ClipboardMonitor {
 
     private func tick() {
         refreshAccess()
-        frontmostTracker.sampleScreenshotAgents()
+        // Only while capturing: paused or blocked, nothing is attributed (review finding).
+        if !isCaptureBlocked, !isPaused { frontmostTracker.sampleScreenshotAgents() }
         let changeCount = NSPasteboard.general.changeCount
+        let panelKeyNow = panelIsKey()
+        if attribution?.changeCount != changeCount {
+            attribution = (
+                changeCount,
+                frontmostTracker.source(since: previousTick),
+                frontmostTracker.screenshotSource(),
+                panelKeyNow && panelWasKey
+            )
+        }
+        panelWasKey = panelKeyNow
         if let current, changeCount != current.changeCount {
             self.current = nil
         }
@@ -126,8 +146,14 @@ final class ClipboardMonitor {
 
     /// - Parameter expectedChangeCount: *Save anyway* reads only the change its red card shows;
     ///   any other count is treated as unstable.
-    private func startReader(readerSeq: Int, saveAnyway: Bool, expectedChangeCount: Int? = nil, sourceSince: Date? = nil) {
-        let reader = SnapshotReader(context: captureContext(saveAnyway: saveAnyway, sourceSince: sourceSince))
+    private func startReader(
+        readerSeq: Int,
+        saveAnyway: Bool,
+        expectedChangeCount: Int? = nil,
+        sourceSince: Date? = nil,
+        identity: AppIdentity? = nil
+    ) {
+        let reader = SnapshotReader(context: captureContext(saveAnyway: saveAnyway, sourceSince: sourceSince, identity: identity))
         let frontmost = NSWorkspace.shared.frontmostApplication
         let titleSource = AccessibilityBridge.isTrusted ? frontmost.map { ($0.processIdentifier, $0.bundleIdentifier) } : nil
         Task.detached(priority: .userInitiated) { [weak self] in
@@ -145,15 +171,27 @@ final class ClipboardMonitor {
         }
     }
 
-    private func captureContext(saveAnyway: Bool, sourceSince: Date?) -> CaptureContext {
-        var source = frontmostTracker.source(since: sourceSince ?? Date())
-        var screenshotSource = frontmostTracker.screenshotSource()
-        var panelKey = panelIsKey()
-        if let launchChangeCount, NSPasteboard.general.changeCount == launchChangeCount {
+    private func captureContext(saveAnyway: Bool, sourceSince: Date?, identity: AppIdentity? = nil) -> CaptureContext {
+        let changeCount = NSPasteboard.general.changeCount
+        var source: String?
+        var screenshotSource: String?
+        var panelKey: Bool
+        if let attribution, attribution.changeCount == changeCount {
+            source = attribution.source
+            screenshotSource = attribution.screenshotSource
+            panelKey = attribution.panelKey
+        } else {
+            source = frontmostTracker.source(since: sourceSince ?? Date())
+            screenshotSource = frontmostTracker.screenshotSource()
+            panelKey = panelIsKey()
+        }
+        var isLaunchContent = false
+        if let launchChangeCount, changeCount == launchChangeCount {
             // Copied before launch: not by the panel that opened with it either.
             source = nil
             screenshotSource = nil
             panelKey = false
+            isLaunchContent = true
         } else {
             launchChangeCount = nil
         }
@@ -167,7 +205,9 @@ final class ClipboardMonitor {
             saveAnyway: saveAnyway,
             secretPolicy: settings.secretPolicy,
             secretKinds: settings.secretKinds,
-            screenshotSource: screenshotSource
+            screenshotSource: screenshotSource,
+            isLaunchContent: isLaunchContent,
+            identityOverride: identity
         )
     }
 
@@ -244,7 +284,9 @@ final class ClipboardMonitor {
             return
         }
         isSavingAnyway = true
-        startReader(readerSeq: coordinator.opSeq, saveAnyway: true, expectedChangeCount: current.changeCount)
+        // For the app the red card named: clicking it makes the panel key, which is not who
+        // copied (review finding).
+        startReader(readerSeq: coordinator.opSeq, saveAnyway: true, expectedChangeCount: current.changeCount, identity: current.change.identity)
     }
 
     func dismissCurrent() { current = nil }
@@ -284,7 +326,8 @@ final class ClipboardMonitor {
             record("restored as change \(ownedCount)")
             return .written
         case .unconfirmed:
-            setClipboardRecord(recordID, changeCount: NSPasteboard.general.changeCount)
+            // Not confirmed as ours: the current change may be another app's.
+            setClipboardRecord(nil, changeCount: nil)
             record("restore written but not confirmed: no suppression token")
             return .written
         case .aborted:

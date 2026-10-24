@@ -52,6 +52,7 @@ extension SettingsTab {
 
 private struct GeneralSettings: View {
     let model: AppModel
+    @State private var isTrusted = AccessibilityBridge.isTrusted
 
     var body: some View {
         @Bindable var settings = model.settings
@@ -100,15 +101,17 @@ private struct GeneralSettings: View {
                     .onChange(of: settings.pasteAfterCopy) { _, enabled in
                         if enabled, !AccessibilityBridge.isTrusted { AccessibilityBridge.requestTrust() }
                     }
-                TimelineView(.periodic(from: .now, by: 2)) { _ in
-                    let trusted = AccessibilityBridge.isTrusted
-                    LabeledContent("Accessibility") {
-                        if trusted {
-                            Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
-                        } else {
-                            Button("Allow in System Settings…") { AccessibilityBridge.openSettings() }
-                        }
+                // Checked when Memopila comes back from System Settings, not polled while the kept
+                // Settings window is closed (review finding).
+                LabeledContent("Accessibility") {
+                    if isTrusted {
+                        Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                    } else {
+                        Button("Allow in System Settings…") { AccessibilityBridge.openSettings() }
                     }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                    isTrusted = AccessibilityBridge.isTrusted
                 }
             } header: {
                 Text("After Copying")
@@ -156,6 +159,7 @@ struct ShortcutRecorder: View {
     let role: HotKeyRole
     @State private var isRecording = false
     @State private var monitor: Any?
+    @State private var resignObserver: NSObjectProtocol?
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 4) {
@@ -186,11 +190,25 @@ struct ShortcutRecorder: View {
         .onDisappear(perform: stopRecording)
     }
 
+    /// Only keys typed in this window are recorded, and leaving the window ends the recording:
+    /// the window is kept when closed, so `onDisappear` never came and the monitor went on
+    /// swallowing every key of the app (review finding).
     private func startRecording() {
+        guard let window = NSApp.keyWindow else { return }
         isRecording = true
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            MainActor.assumeIsolated { record(event) }
-            return nil
+            let consumed = MainActor.assumeIsolated { () -> Bool in
+                guard event.window === window else {
+                    stopRecording()
+                    return false
+                }
+                record(event)
+                return true
+            }
+            return consumed ? nil : event
+        }
+        resignObserver = NotificationCenter.default.addObserver(forName: NSWindow.didResignKeyNotification, object: window, queue: .main) { _ in
+            MainActor.assumeIsolated { stopRecording() }
         }
     }
 
@@ -206,7 +224,9 @@ struct ShortcutRecorder: View {
 
     private func stopRecording() {
         if let monitor { NSEvent.removeMonitor(monitor) }
+        if let resignObserver { NotificationCenter.default.removeObserver(resignObserver) }
         monitor = nil
+        resignObserver = nil
         isRecording = false
     }
 }
@@ -218,6 +238,9 @@ private struct HistorySettings: View {
     @State private var usage: HistoryUsage?
     @State private var isConfirmingClear = false
     @State private var clearScope: ClearScope = .nonFavorites
+    /// The picker's value; a lower limit waits here for confirmation, since it deletes at once.
+    @State private var storageChoice = 0
+    @State private var isConfirmingStorage = false
 
     private static let countOptions = [100, 250, 500, 1_000, 2_500, 5_000, 10_000]
     private static let ageOptions = [1, 7, 14, 30, 90, 180, 365]
@@ -237,7 +260,7 @@ private struct HistorySettings: View {
                         Text(Self.ageTitle(days)).tag(days)
                     }
                 }
-                Picker("Storage limit", selection: $settings.maxStorageMiB) {
+                Picker("Storage limit", selection: $storageChoice) {
                     ForEach(Self.options(Self.storageOptions, current: settings.maxStorageMiB), id: \.self) { mib in
                         Text(ByteCount.string(mib * FormatPolicy.mebibyte)).tag(mib)
                     }
@@ -259,7 +282,7 @@ private struct HistorySettings: View {
                     }
                 }
                 LabeledContent("Location") {
-                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([ClipboardStore.defaultURL]) }
+                    Button("Show in Finder") { External.reveal([ClipboardStore.defaultURL]) }
                 }
             } header: {
                 Text("Usage")
@@ -285,6 +308,24 @@ private struct HistorySettings: View {
         }
         .formStyle(.grouped)
         .task { await refreshUsage() }
+        // The window is kept: refresh when it comes forward again (review finding: stale counts).
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { notification in
+            guard (notification.object as? NSWindow)?.identifier == SecondaryWindows.settingsIdentifier else { return }
+            Task { await refreshUsage() }
+        }
+        .onAppear { storageChoice = model.settings.maxStorageMiB }
+        .onChange(of: storageChoice) { _, mib in requestStorageLimit(mib) }
+        .onChange(of: isConfirmingStorage) { _, asking in
+            // Cancelled: the picker shows the limit in force again.
+            if !asking { storageChoice = model.settings.maxStorageMiB }
+        }
+        .confirmationDialog(String(localized: "Lower the storage limit?"), isPresented: $isConfirmingStorage, titleVisibility: .visible) {
+            Button(String(localized: "Lower and Delete the Oldest Items"), role: .destructive) {
+                model.settings.maxStorageMiB = storageChoice
+            }
+        } message: {
+            Text("History is larger than the new limit. The oldest items that are not favorites are deleted until it fits; favorites stay. This can't be undone.")
+        }
         // A lower limit deletes old items; the usage shows the result.
         .onChange(of: model.settings.maxStorageMiB) { _, _ in
             Task {
@@ -314,6 +355,16 @@ private struct HistorySettings: View {
     }
 
     /// The presets plus the current value when it was set elsewhere.
+    /// Lowering the limit below what history holds deletes old items: it asks first.
+    private func requestStorageLimit(_ mib: Int) {
+        guard mib > 0, mib != model.settings.maxStorageMiB else { return }
+        if mib < model.settings.maxStorageMiB, let usage, usage.payloadBytes > mib * FormatPolicy.mebibyte {
+            isConfirmingStorage = true
+        } else {
+            model.settings.maxStorageMiB = mib
+        }
+    }
+
     private static func options(_ presets: [Int], current: Int) -> [Int] {
         presets.contains(current) ? presets : (presets + [current]).sorted()
     }

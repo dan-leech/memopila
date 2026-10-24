@@ -18,7 +18,7 @@ enum AccessibilityBridge {
     @MainActor
     static func openSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
-            NSWorkspace.shared.open(url)
+            External.open(url)
         }
     }
 
@@ -75,6 +75,8 @@ enum AccessibilityBridge {
         var title: CFTypeRef?
         // The type check above makes this cast safe.
         let element = unsafeDowncast(window, to: AXUIElement.self)
+        // The window answers separately: without its own timeout a hung app held capture ~6 s.
+        AXUIElementSetMessagingTimeout(element, 0.25)
         guard AXUIElementCopyAttributeValue(element, "AXTitle" as CFString, &title) == .success,
               let title = title as? String else { return nil }
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)

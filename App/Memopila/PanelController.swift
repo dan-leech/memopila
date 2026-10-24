@@ -63,6 +63,14 @@ final class PanelController: NSObject, NSWindowDelegate {
     var isVisible: Bool { panel?.isVisible ?? false }
     var isKey: Bool { panel?.isKeyWindow ?? false }
 
+    /// A pinned panel stays on screen but lets the app behind it have the keyboard again, so a
+    /// synthetic ⌘V reaches that app, not the search field (review finding).
+    func yieldKeyFocus() {
+        guard let panel, panel.isKeyWindow else { return }
+        panel.orderOut(nil)
+        panel.orderFrontRegardless()
+    }
+
     /// Hotkey: closes a focused panel; brings a pinned panel that lost focus back to the front.
     func toggle() {
         if isVisible, isKey {
@@ -111,9 +119,16 @@ final class PanelController: NSObject, NSWindowDelegate {
     /// A pinned panel can be focused again from any app: that app is the new paste target (§3.4).
     func windowDidBecomeKey(_ notification: Notification) {
         model.refreshPreviousApp()
+        let flags = NSEvent.modifierFlags.intersection([.command, .option, .control, .shift])
+        model.isCommandHeld = flags == .command
+        model.isOptionHeld = flags.contains(.option)
     }
 
     func windowDidResignKey(_ notification: Notification) {
+        // The key-up of a held ⌘ or ⌥ goes to the next app: forget them, or the ⌘1…9 badges and
+        // hidden hover buttons stay (review finding).
+        model.isCommandHeld = false
+        model.isOptionHeld = false
         // Pin keeps the window on screen when focus moves to another app (§8.1).
         if !model.isPinned { close() }
     }
@@ -148,8 +163,14 @@ final class PanelController: NSObject, NSWindowDelegate {
         guard let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main else { return }
         let visible = screen.visibleFrame
         if let saved = model.settings.panelFrames[Self.displayKey(screen)].map(NSRectFromString),
-           visible.contains(saved), saved.width >= Self.minimumSize.width, saved.height >= Self.minimumSize.height {
-            panel.setFrame(saved, display: false)
+           saved.width >= Self.minimumSize.width, saved.height >= Self.minimumSize.height,
+           saved.width <= visible.width, saved.height <= visible.height {
+            // Moved back inside the visible area rather than forgotten when the Dock or the menu bar
+            // now covers part of it (review finding).
+            var frame = saved
+            frame.origin.x = min(max(frame.minX, visible.minX), visible.maxX - frame.width)
+            frame.origin.y = min(max(frame.minY, visible.minY), visible.maxY - frame.height)
+            panel.setFrame(frame, display: false)
             return
         }
         var frame = NSRect(origin: .zero, size: Self.defaultSize)
@@ -183,7 +204,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
         switch model.overlay {
         case nil:
-            return handleGridKey(key, flags: flags)
+            return handleGridKey(key, flags: flags, isRepeat: event.isARepeat)
         case .actions:
             guard let state = model.actionsState else { return false }
             switch key.code {
@@ -197,6 +218,14 @@ final class PanelController: NSObject, NSWindowDelegate {
         case .confirmDelete(let ids):
             if key.code == kVK_Escape { model.present(nil); return true }
             if key.isReturn { model.delete(ids, confirmed: true); return true }
+            return false
+        case .confirmDeleteMany(_, let others, _):
+            if key.code == kVK_Escape { model.present(nil); return true }
+            if key.isReturn, !others.isEmpty {
+                model.present(nil)
+                model.delete(others, confirmed: true)
+                return true
+            }
             return false
         case .confirmDeleteCollection(let id):
             if key.code == kVK_Escape { model.present(nil); return true }
@@ -222,7 +251,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    private func handleGridKey(_ key: KeyPress, flags: NSEvent.ModifierFlags) -> Bool {
+    private func handleGridKey(_ key: KeyPress, flags: NSEvent.ModifierFlags, isRepeat: Bool) -> Bool {
         let history = model.history
         let searchIsEmpty = history.search.isEmpty
         if flags == .shift {
@@ -246,6 +275,12 @@ final class PanelController: NSObject, NSWindowDelegate {
                 if history.selection.count > 1 { history.clearMarks() } else { cancel() }
                 return true
             case kVK_Space where searchIsEmpty: openSelected(); return true
+            // ⌫ / ⌦ delete the selected cards when there is no search text to delete; a held key
+            // that has just emptied the search does not go on to delete cards (first-run feedback:
+            // only ⌘⌫ worked).
+            case kVK_Delete where searchIsEmpty && !isRepeat, kVK_ForwardDelete where searchIsEmpty && !isRepeat:
+                model.deleteSelection()
+                return true
             case _ where key.isReturn:
                 model.restoreSelected()
                 return true
@@ -273,6 +308,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
         switch key.letter {
         case "k": if let id = history.selectedID { model.present(.actions(id)) }
+        case "a": history.selectAll()
         case "y": openSelected()
         case "e": openSelected(focusText: true)
         case "r": if let id = history.selectedID { model.present(.rename(id)) }
@@ -320,7 +356,10 @@ final class PanelController: NSObject, NSWindowDelegate {
             guard textView.selectedRange().length > 0 else { return nil }
             selector = #selector(NSText.copy(_:))
         case ("v", .command): selector = #selector(NSText.paste(_:))
-        case ("a", .command): selector = #selector(NSText.selectAll(_:))
+        case ("a", .command):
+            // With no search text, ⌘A selects every card instead — not in an overlay's field.
+            guard model.overlay != nil || !model.history.search.isEmpty else { return nil }
+            selector = #selector(NSText.selectAll(_:))
         default: return nil
         }
         return NSApp.sendAction(selector, to: textView, from: nil)

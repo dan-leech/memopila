@@ -45,7 +45,8 @@ struct RetentionTests {
         let existing = [candidate(1, bytes: 40), candidate(2, favorite: true, bytes: 40), candidate(3, bytes: 40), candidate(4, bytes: 40)]
         #expect(RetentionPlanner.planStorageShrink(existing: existing, maxStorageBytes: 100) == [candidate(1).id, candidate(3).id])
         #expect(RetentionPlanner.planStorageShrink(existing: existing, maxStorageBytes: 200).isEmpty)
-        #expect(RetentionPlanner.planStorageShrink(existing: existing, maxStorageBytes: 10).count == 3, "favorites stay")
+        #expect(RetentionPlanner.planStorageShrink(existing: existing, maxStorageBytes: 50) == [candidate(1).id, candidate(3).id, candidate(4).id])
+        #expect(RetentionPlanner.planStorageShrink(existing: existing, maxStorageBytes: 10).isEmpty, "favorites alone are over: nothing goes")
     }
 
     @Test func unfavoriteKeepsTheUnfavoritedRecord() {
@@ -95,6 +96,14 @@ struct DedupMergeTests {
         #expect(merged.copyCount == 4)
         #expect(merged.lastSourceAppBundleID == "com.new.app")
         #expect(merged.expiresAt == nil)
+    }
+
+    @Test func unknownObservationKeepsAKnownSourceAndExpiry() {
+        let existing = RecordMetadata(firstCopiedAt: t0, lastCopiedAt: t0, copyCount: 1, lastSourceAppBundleID: "com.a.b", expiresAt: t0 + 900)
+        let merged = DedupMerge.merge(existing, with: CaptureObservation(observedAt: t0 + 10, sourceAppBundleID: nil))
+        #expect(merged.lastCopiedAt == t0 + 10 && merged.copyCount == 2)
+        #expect(merged.lastSourceAppBundleID == "com.a.b")
+        #expect(merged.expiresAt == t0 + 900)
     }
 
     @Test func favoritesNeverGetAnExpiry() {
@@ -231,6 +240,15 @@ struct CaptureCoordinatorTests {
         h.coordinator.armSkip()
         #expect(h.tick(3) == .skipped(changeCount: 3))
         #expect(h.tick(4) == .startReader(readerSeq: 0))
+    }
+
+    @Test func skipWaitsForTheChangeAlreadyBeingRead() {
+        let h = CoordinatorHarness()
+        #expect(h.tick(3) == .startReader(readerSeq: 0))
+        h.coordinator.armSkip()
+        #expect(h.tick(4) == .idle(.busy))
+        h.finish(3)
+        #expect(h.tick(4) == .skipped(changeCount: 4))
     }
 
     @Test func restoreWhileSkipIsArmedLeavesSkipArmed() {

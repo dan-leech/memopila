@@ -124,6 +124,11 @@ private struct PanelMenu: View {
         } else {
             Button("Skip Next Copy") { monitor.toggleSkip() }
         }
+        // Filtered or searched: everything the panel shows now; else all of history.
+        if model.history.isFiltered || !model.history.search.isEmpty {
+            Button(String(localized: "Delete \(model.history.totalCount) Shown…")) { model.deleteAllShown() }
+                .disabled(monitor.isBusy || model.history.totalCount == 0)
+        }
         Button("Clear History…") { model.present(.confirmClear) }
             .disabled(monitor.isBusy)
         Divider()
@@ -283,6 +288,11 @@ private struct PanelStatus: View {
         .font(.system(size: 11).monospacedDigit())
         .help(status.help + " · " + countText)
         .accessibilityElement(children: .combine)
+        .contextMenu {
+            if model.history.totalCount > 0 {
+                Button(String(localized: "Delete \(model.history.totalCount) Shown…")) { model.deleteAllShown() }
+            }
+        }
     }
 
     private func label(_ status: (symbol: String, tint: Color, help: String), _ text: String?) -> some View {
@@ -343,6 +353,10 @@ private struct CollectionRow: View {
         .help(String(localized: "Drop a card here to add it"))
         .contextMenu {
             Button("Rename…") { model.present(.renameCollection(collection.id)) }
+            Button("Delete All Items in It…") {
+                model.deleteAll(matching: HistoryQuery(scope: .collection(collection.id)), scope: .collection(collection.name))
+            }
+            Divider()
             Button("Delete Collection…", role: .destructive) { model.present(.confirmDeleteCollection(collection.id)) }
         }
     }
@@ -410,6 +424,10 @@ private struct SidebarView: View {
                 skippedTypes: [],
                 model: model
             ))
+            Divider()
+            Button(String(localized: "Delete All from \(name)…")) {
+                model.deleteAll(matching: HistoryQuery(scope: .app(app.bundleID)), scope: .app(name))
+            }
         }
     }
 }
@@ -473,6 +491,13 @@ private struct BannerStack: View {
                 ) {
                     Button("Open Settings") { PasteboardAccess.openSystemSettings() }
                     Button("Check Again") { monitor.refreshAccess() }
+                }
+            }
+            // The panel's shortcut could not be registered: said where it is seen, not only in
+            // Settings (review finding).
+            if let error = model.hotKeyErrors[.window] {
+                Banner(systemImage: "keyboard", tint: .orange, message: error) {
+                    Button("Change Shortcut…") { model.openSettings(.general) }
                 }
             }
             if let error = model.history.loadError {
@@ -668,6 +693,16 @@ private struct OverlayHost: View {
             } cancel: {
                 model.present(nil)
             }
+        case .confirmDeleteMany(let scope, let others, let favorites):
+            ConfirmDeleteManyOverlay(scope: scope, others: others.count, favorites: favorites.count) {
+                model.present(nil)
+                model.delete(others, confirmed: true)
+            } deleteFavoritesToo: {
+                model.present(nil)
+                model.delete(others + favorites, confirmed: true)
+            } cancel: {
+                model.present(nil)
+            }
         case .confirmDeleteCollection(let id):
             ConfirmDeleteCollectionOverlay(name: model.history.collections.first { $0.id == id }?.name ?? "") {
                 model.deleteCollection(id)
@@ -859,6 +894,52 @@ private struct ConfirmDeleteCollectionOverlay: View {
         }
         .padding(18)
         .frame(width: 360)
+    }
+}
+
+/// *Delete All…*: how many, what happens to favorites, and that Undo is there for a moment.
+private struct ConfirmDeleteManyOverlay: View {
+    let scope: DeleteManyScope
+    let others: Int
+    let favorites: Int
+    let delete: () -> Void
+    let deleteFavoritesToo: () -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(question).font(.headline)
+            if favorites > 0 {
+                Text(String(localized: "Favorites among them: \(favorites). They are kept unless you delete them too."))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+            Text("You can undo it for a few seconds.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Cancel", action: cancel)
+                if favorites > 0 {
+                    Button(String(localized: "Delete Favorites Too"), role: .destructive, action: deleteFavoritesToo)
+                }
+                if others > 0 {
+                    Button(String(localized: "Delete \(others) Items"), role: .destructive, action: delete)
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+        }
+        .padding(18)
+        .frame(width: 400)
+    }
+
+    private var question: String {
+        let total = others + favorites
+        switch scope {
+        case .shown: return String(localized: "Delete the \(total) items shown?")
+        case .app(let name): return String(localized: "Delete all \(total) items from \(name)?")
+        case .collection(let name): return String(localized: "Delete all \(total) items in “\(name)”?")
+        }
     }
 }
 

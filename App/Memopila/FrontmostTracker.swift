@@ -21,6 +21,13 @@ final class FrontmostTracker {
     private var observers: [NSObjectProtocol] = []
     /// Running screenshot agents and the CPU time each had used at the last sample.
     private var agentCPU: [pid_t: UInt64] = [:]
+    /// When an agent was last seen working: a shorter window than for launches and activations,
+    /// since recording the screen keeps it busy for minutes (review finding).
+    private var lastAgentWork: Date?
+    private var lastSample = Date()
+    private var samplesSinceScan = 0
+    /// The last other app that was active.
+    private(set) var lastOtherApp: NSRunningApplication?
     /// CPU time in Mach units that counts as work: taking a screenshot uses tens of milliseconds
     /// or more, an idle agent next to none.
     private let busyCPU: UInt64 = {
@@ -56,12 +63,30 @@ final class FrontmostTracker {
     /// work shows only in its CPU time (first-run feedback: such a screenshot taken over Finder
     /// was attributed to Finder). One system call per running agent.
     func sampleScreenshotAgents() {
+        let now = Date()
+        let elapsed = max(now.timeIntervalSince(lastSample), 0.001)
+        lastSample = now
+        // Agents started after Memopila (or without a launch notification) are found every 5 s.
+        samplesSinceScan += 1
+        if samplesSinceScan >= 20 {
+            samplesSinceScan = 0
+            for app in NSWorkspace.shared.runningApplications where app.bundleIdentifier.map(Self.screenshotAgents.contains) == true {
+                if agentCPU[app.processIdentifier] == nil { agentCPU[app.processIdentifier] = cpuTime(of: app.processIdentifier) ?? 0 }
+            }
+        }
         for (pid, previous) in agentCPU {
             guard let current = cpuTime(of: pid) else {
                 agentCPU[pid] = nil
                 continue
             }
-            if current > previous, current - previous >= busyCPU { lastScreenshotActivity = Date() }
+            // A burst: at least 15 ms and 6 % of the time since the last sample, so a poll
+            // stretched by App Nap does not turn idle work into a screenshot.
+            if current > previous {
+                let delta = current - previous
+                // `busyCPU` is 15 ms in Mach units.
+                let seconds = Double(delta) / Double(busyCPU) * 0.015
+                if delta >= busyCPU, seconds / elapsed >= 0.06 { lastAgentWork = now }
+            }
             agentCPU[pid] = current
         }
     }
@@ -93,6 +118,9 @@ final class FrontmostTracker {
         if let lastScreenshotActivity, now.timeIntervalSince(lastScreenshotActivity) < Self.screenshotWindow {
             return Self.screenshotApp
         }
+        if let lastAgentWork, now.timeIntervalSince(lastAgentWork) < 3 {
+            return Self.screenshotApp
+        }
         // An agent that never became frontmost and was started for this capture.
         let launched = NSWorkspace.shared.runningApplications.contains { app in
             guard let bundleID = app.bundleIdentifier, Self.screenshotAgents.contains(bundleID), let launch = app.launchDate else { return false }
@@ -103,8 +131,12 @@ final class FrontmostTracker {
 
     private func noteEvent(_ name: Notification.Name, bundleID: String?, pid: pid_t?) {
         let now = Date()
+        if name == NSWorkspace.didActivateApplicationNotification, let pid, bundleID != ClipboardMonitor.ownBundleID {
+            lastOtherApp = NSRunningApplication(processIdentifier: pid)
+        }
         if let bundleID, Self.screenshotAgents.contains(bundleID) {
-            lastScreenshotActivity = now
+            // An agent quitting when idle is not a screenshot (review finding).
+            if name != NSWorkspace.didTerminateApplicationNotification { lastScreenshotActivity = now }
             if let pid {
                 if name == NSWorkspace.didTerminateApplicationNotification {
                     agentCPU[pid] = nil

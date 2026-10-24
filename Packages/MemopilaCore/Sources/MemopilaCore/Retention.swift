@@ -67,6 +67,10 @@ public enum RetentionPlanner {
     /// Settings lowered the storage limit: oldest non-favorites until everything fits. Favorites
     /// count but are never deleted, so with many of them the total may stay above the limit.
     public static func planStorageShrink(existing: [RetentionCandidate], maxStorageBytes: Int) -> [UUID] {
+        // Favorites alone over the limit: deleting everything else would not reach it (review
+        // finding), so nothing goes; new copies are refused as at any full quota.
+        let favoriteBytes = existing.filter(\.isFavorite).reduce(0) { $0 + $1.payloadSizeBytes }
+        guard favoriteBytes <= maxStorageBytes else { return [] }
         var excess = existing.reduce(0) { $0 + $1.payloadSizeBytes } - maxStorageBytes
         var victims: [UUID] = []
         for candidate in oldestFirst(existing.filter { !$0.isFavorite }) where excess > 0 {

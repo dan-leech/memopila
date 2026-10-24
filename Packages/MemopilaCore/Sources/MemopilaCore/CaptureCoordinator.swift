@@ -43,7 +43,7 @@ public struct CaptureCoordinator: Sendable, Equatable {
 
     // MARK: Tick
 
-    /// Tick order (§3.2 rule 1): access → pause → unchanged → token → skip → single flight → reader.
+    /// Tick order (§3.2 rule 1): access → pause → unchanged → token → single flight → skip → reader.
     public mutating func tick(accessAllowed: Bool, now: Date, changeCount readChangeCount: () -> Int) -> TickDecision {
         guard accessAllowed else { return .idle(.accessNotAllowed) }
         if pausedIndefinitely { return .idle(.paused) }
@@ -64,12 +64,15 @@ public struct CaptureCoordinator: Sendable, Equatable {
                 return .suppressedOwnWrite(changeCount: count)
             }
         }
+        // A change already being read is not the next copy: *Skip Next Copy* waits for the one
+        // after it (review finding: a slow read used the skip up and the password was saved).
+        guard !isCapturing else { return .idle(.busy) }
         if skipArmed {
             skipArmed = false
             markHandled(count)
             return .skipped(changeCount: count)
         }
-        guard !isCapturing, !destructiveInProgress else { return .idle(.busy) }
+        guard !destructiveInProgress else { return .idle(.busy) }
         isCapturing = true
         return .startReader(readerSeq: opSeq)
     }

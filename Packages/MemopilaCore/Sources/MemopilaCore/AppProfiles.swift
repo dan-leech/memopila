@@ -78,7 +78,7 @@ public struct AppProfiles: Sendable, Equatable {
         return .capture(settings)
     }
 
-    private var hasDontSaveApps: Bool {
+    public var hasDontSaveApps: Bool {
         profiles.values.contains { $0.settings.captureMode == .dontSave }
     }
 }

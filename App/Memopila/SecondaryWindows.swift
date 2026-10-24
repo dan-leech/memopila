@@ -1,4 +1,5 @@
 import AppKit
+import MemopilaServices
 import SwiftUI
 
 /// The record window, Settings and Diagnostics (PLAN §8.5, §8.7): AppKit windows that open only when
@@ -18,7 +19,27 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
 
     init(model: AppModel) {
         self.model = model
+        super.init()
+        // Opening System Settings, Finder or a browser from a floating window: the window steps down
+        // until Memopila is active again, so what it opened is not hidden under it (review finding).
+        let center = NotificationCenter.default
+        _ = center.addObserver(forName: External.willOpen, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.setFloating(false) }
+        }
+        _ = center.addObserver(forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.setFloating(true) }
+        }
     }
+
+    private func setFloating(_ floating: Bool) {
+        let level: NSWindow.Level = floating ? .floating : .normal
+        for window in [settings?.window, diagnostics, record].compactMap({ $0 }) where window.level != level {
+            window.level = level
+        }
+    }
+
+    /// The Settings window, for views that refresh when it comes forward again.
+    static let settingsIdentifier = NSUserInterfaceItemIdentifier("MemopilaSettingsWindow")
 
     var isAnyVisible: Bool {
         settings?.window.isVisible == true || diagnostics?.isVisible == true || record?.isVisible == true
@@ -36,18 +57,21 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
     func showRecord(focusText: Bool) {
         let window = record ?? makeRecord()
         record = window
-        // A record opens saved; its text view sets the dot again once edited.
-        window.isDocumentEdited = false
-        if let card = model.itemState?.card {
-            // The record's name and where it came from, so the window says what it shows.
-            window.title = card.customTitle ?? card.displayType.title
-            window.subtitle = card.sourceAppName ?? ""
-        }
+        // The dot in the close button follows the record's unsaved text.
+        window.isDocumentEdited = model.itemState?.isDirty ?? false
+        if let card = model.itemState?.card { updateRecordTitle(card) }
         present(window)
         guard !focusText else { return }
         window.makeFirstResponder(nil)
         // SwiftUI may still focus the title field once it lays the view out.
         Task { @MainActor in window.makeFirstResponder(nil) }
+    }
+
+    /// The record's name and where it came from, so the window says what it shows.
+    func updateRecordTitle(_ card: HistoryCard) {
+        guard let record else { return }
+        record.title = card.customTitle ?? card.displayType.title
+        record.subtitle = card.sourceAppName ?? ""
     }
 
     func closeRecord(returningToPanel: Bool) {
@@ -64,8 +88,9 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
     /// cancels, ⌘D does not save.
     func askToSaveRecord(_ answer: @escaping @MainActor (UnsavedChoice) -> Void) {
         guard let record, record.isVisible else { return answer(.cancel) }
-        // Already asking (a second Esc or ⌘W while the sheet is up).
-        guard record.attachedSheet == nil else { return }
+        // Already asking (a second Esc or ⌘W while the sheet is up), or another sheet is open:
+        // the answer is Cancel, so whoever asked is never left waiting (⌘Q).
+        guard record.attachedSheet == nil else { return answer(.cancel) }
         let alert = NSAlert()
         alert.messageText = String(localized: "Do you want to save the changes to this record?")
         alert.informativeText = String(localized: "Your changes to the text will be lost if you don’t save them.")
@@ -147,6 +172,7 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
             tabs.addTabViewItem(item)
         }
         let window = NSWindow(contentViewController: tabs)
+        window.identifier = Self.settingsIdentifier
         window.styleMask = [.titled, .closable]
         window.toolbarStyle = .preference
         configure(window, frameName: "MemopilaSettingsWindow")
@@ -180,7 +206,9 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
         window.level = .floating
         // The window stays above other apps, so its tooltips must work while they are active.
         window.allowsToolTipsWhenApplicationIsInactive = true
-        window.collectionBehavior.insert(.moveToActiveSpace)
+        // Over a full-screen app it opens in that Space instead of switching to a desktop
+        // (review finding).
+        window.collectionBehavior.formUnion([.moveToActiveSpace, .fullScreenAuxiliary])
         window.isReleasedWhenClosed = false
         window.delegate = self
         let restored = window.setFrameUsingName(frameName)
@@ -217,5 +245,26 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
             }
             returnApp = nil
         }
+    }
+}
+
+/// Opens something in another app — System Settings, Finder, a browser, Preview — announcing it
+/// first, so Memopila's floating windows step down below it.
+@MainActor
+enum External {
+    static let willOpen = Notification.Name("MemopilaWillOpenExternally")
+
+    static func announce() {
+        NotificationCenter.default.post(name: willOpen, object: nil)
+    }
+
+    static func open(_ url: URL) {
+        announce()
+        NSWorkspace.shared.open(url)
+    }
+
+    static func reveal(_ urls: [URL]) {
+        announce()
+        NSWorkspace.shared.activateFileViewerSelecting(urls)
     }
 }

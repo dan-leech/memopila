@@ -51,7 +51,19 @@ final class ItemState {
     private(set) var originalTitle: String
     var title: String
     private(set) var isLoaded = false
-    private(set) var initialText = ""
+    private(set) var initialText = "" {
+        didSet { initialLength = (initialText as NSString).length }
+    }
+    /// UTF-16 length of `initialText`: *Edited* compares lengths before any text.
+    @ObservationIgnored private var initialLength = 0
+    /// The record's own undo history: the window and its undo manager are reused for every record
+    /// (review finding: ⌘Z in one record undid a change of the previous one).
+    let undoManager = UndoManager()
+    /// Loading the text; cancelled when another record replaces this one.
+    @ObservationIgnored var loadTask: Task<Void, Never>?
+    /// Counts edits, so work done off the main thread is applied only to the text it was made for.
+    @ObservationIgnored private var editVersion = 0
+    @ObservationIgnored private var countsTask: Task<Void, Never>?
     private(set) var isTextDirty = false
     private(set) var lineCount = 1
     private(set) var characterCount = 0
@@ -252,14 +264,29 @@ final class ItemState {
         originalTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    /// Save kept the window open: the saved text is the new starting point.
-    func textSaved() {
-        initialText = textView?.string ?? initialText
-        if isRich, let storage = textView?.textStorage {
-            initialRich = storage.copy() as? NSAttributedString
-            richSource = initialRich
+    /// Save kept the window open: what was saved is the new starting point. Typing during the save
+    /// stays unsaved (review finding).
+    func textSaved(_ text: String, rich: NSAttributedString?) {
+        initialText = text
+        if isRich, let rich {
+            initialRich = rich
+            richSource = rich
+        } else if !isRich, hasRichSource {
+            // Saved as plain text: the formatted original is no longer stored (review finding).
+            richSource = nil
+            initialRich = nil
+            hasRichSource = false
         }
         updateDirty()
+    }
+
+    /// The title as stored, once the record's details are read: the card the window opened with
+    /// may be older (review finding). A title being typed is left alone.
+    func adoptStoredTitle(_ stored: String?) {
+        let stored = stored ?? ""
+        guard stored != originalTitle, !titleChanged else { return }
+        originalTitle = stored
+        title = stored
     }
 
     /// Formatted text: shown with its formatting, editable as rich text.
@@ -269,7 +296,10 @@ final class ItemState {
         isRich = true
         initialText = rich.string
         isLoaded = true
-        if let textView { showRich(in: textView) }
+        if let textView {
+            showRich(in: textView)
+            textView.isEditable = isEditable
+        }
         textDidChange()
         if focusOnLoad { focus() }
     }
@@ -443,14 +473,19 @@ final class ItemState {
     func load(_ text: String) {
         initialText = text
         isLoaded = true
-        if let textView, textView.string.isEmpty { textView.string = text }
+        if let textView {
+            if textView.string.isEmpty { textView.string = text }
+            textView.isEditable = isEditable
+        }
         textDidChange()
         if focusOnLoad { focus() }
     }
 
     func attach(_ textView: NSTextView) {
         self.textView = textView
-        textView.isEditable = isEditable
+        // Editable once the text is in: typed before, it would replace the record's text
+        // (review finding).
+        textView.isEditable = isEditable && isLoaded
         applyFont()
         applyInvisibles()
         if isLoaded, textView.string.isEmpty {
@@ -475,6 +510,26 @@ final class ItemState {
 
     /// From the text view's delegate after every edit.
     func textDidChange() {
+        editVersion += 1
+        // Counting walks the whole text: for long text it waits until typing pauses (review
+        // finding: every keystroke copied and counted megabytes).
+        countsTask?.cancel()
+        if (textView?.textStorage?.length ?? initialLength) > 200_000 {
+            countsTask = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(400))
+                guard !Task.isCancelled else { return }
+                self?.updateCounts()
+            }
+        } else {
+            updateCounts()
+        }
+        updateDirty()
+        (textView?.enclosingScrollView?.verticalRulerView as? LineNumberRuler)?.textDidChange()
+        scheduleAvailability()
+        scheduleHighlight(after: .milliseconds(isLoaded && isTextDirty ? 300 : 0))
+    }
+
+    private func updateCounts() {
         let text = textView?.string ?? initialText
         let length = (text as NSString).length
         characterCount = length < 200_000 ? text.count : length
@@ -486,18 +541,19 @@ final class ItemState {
             let link = length < 10_000 ? text.trimmingCharacters(in: .whitespacesAndNewlines) : ""
             if link != linkText { linkText = link }
         }
-        updateDirty()
-        (textView?.enclosingScrollView?.verticalRulerView as? LineNumberRuler)?.textDidChange()
-        scheduleAvailability()
-        scheduleHighlight(after: .milliseconds(isLoaded && isTextDirty ? 300 : 0))
     }
 
     private func updateDirty() {
         let textChanged: Bool
-        if isRich, let storage = textView?.textStorage, let initialRich {
-            textChanged = isLoaded && !storage.isEqual(to: initialRich)
+        if !isLoaded {
+            textChanged = false
+        } else if isRich, let storage = textView?.textStorage, let initialRich {
+            textChanged = !storage.isEqual(to: initialRich)
+        } else if let storage = textView?.textStorage {
+            // Lengths first; the text itself without copying it.
+            textChanged = storage.length != initialLength || !storage.mutableString.isEqual(to: initialText)
         } else {
-            textChanged = isLoaded && (textView?.string ?? initialText) != initialText
+            textChanged = false
         }
         if textChanged != isTextDirty { isTextDirty = textChanged }
         // The dot in the close button, as in any Mac editor.
@@ -520,12 +576,25 @@ final class ItemState {
     }
 
     /// Runs a text action on the selection, or on everything when nothing is selected (§3.9).
+    /// Long text is worked on off the main thread and replaced only if it did not change meanwhile
+    /// (review finding: formatting a 10 MB JSON froze the app).
     func apply(_ action: TextAction) {
-        guard let textView, isEditable else { return }
-        let text = textView.string as NSString
+        guard let textView, isEditable, isLoaded, let storage = textView.textStorage else { return }
         let selection = textView.selectedRange()
-        let range = selection.length > 0 ? selection : NSRange(location: 0, length: text.length)
-        guard let output = action.apply(to: text.substring(with: range)) else {
+        let range = selection.length > 0 ? selection : NSRange(location: 0, length: storage.length)
+        let input = storage.mutableString.substring(with: range)
+        guard range.length > 100_000 else { return replace(range, with: action.apply(to: input), for: action) }
+        let version = editVersion
+        Task { [weak self] in
+            let output = await Task.detached(priority: .userInitiated) { action.apply(to: input) }.value
+            guard let self, self.editVersion == version else { return }
+            self.replace(range, with: output, for: action)
+        }
+    }
+
+    private func replace(_ range: NSRange, with output: String?, for action: TextAction) {
+        guard let textView else { return }
+        guard let output else {
             error = action.unavailableReason
             return
         }
@@ -603,6 +672,8 @@ final class ItemState {
         guard let textView, let container = textView.textContainer, let scrollView = textView.enclosingScrollView else { return }
         if wrapsLines {
             textView.isHorizontallyResizable = false
+            // Back to the visible width first: the text view kept the width of its longest line.
+            textView.setFrameSize(NSSize(width: scrollView.contentSize.width, height: textView.frame.height))
             container.widthTracksTextView = true
             container.containerSize = NSSize(width: scrollView.contentSize.width, height: .greatestFiniteMagnitude)
             scrollView.hasHorizontalScroller = false

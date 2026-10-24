@@ -45,6 +45,7 @@ struct RecordView: View {
     @Bindable var state: ItemState
     @State private var details: RecordDetails?
     @State private var image: NSImage?
+    @State private var imageFailed = false
     @State private var newCollectionName = ""
     @State private var showsChanges = false
     @State private var isNamingCollection = false
@@ -270,6 +271,8 @@ struct RecordView: View {
                     Group {
                         if let image {
                             ZoomableImage(image: image, zoom: state.imageZoom)
+                        } else if imageFailed {
+                            Text("The image could not be shown.").foregroundStyle(.secondary)
                         } else {
                             ProgressView().controlSize(.small)
                         }
@@ -289,7 +292,7 @@ struct RecordView: View {
 
     /// The text, editable for text, rich text and links (read-only for mixed items).
     private var textEditor: some View {
-        TextPane(isEditable: state.isEditable, font: .monospacedSystemFont(ofSize: 12.5, weight: .regular), hasLineNumbers: true) { textView in
+        TextPane(isEditable: state.isEditable, font: .monospacedSystemFont(ofSize: 12.5, weight: .regular), hasLineNumbers: true, undoManager: state.undoManager) { textView in
             state.attach(textView)
         } onTextChange: {
             state.textDidChange()
@@ -331,7 +334,7 @@ struct RecordView: View {
             }
             Spacer(minLength: 8)
             Button {
-                if let url { NSWorkspace.shared.open(url) }
+                if let url { External.open(url) }
             } label: {
                 Label("Open", systemImage: "arrow.up.forward.app")
             }
@@ -435,7 +438,7 @@ struct RecordView: View {
                     if NSEvent.modifierFlags.contains(.option) {
                         model.copyNewText(url, from: state.id)
                     } else {
-                        NSWorkspace.shared.open(link)
+                        External.open(link)
                     }
                 } label: {
                     Label(link.host() ?? url, systemImage: "arrow.up.right.square").lineLimit(1)
@@ -783,11 +786,17 @@ struct RecordView: View {
         // `.task(id:)` cancels a load for a record the user already moved past; never let it overwrite.
         guard !Task.isCancelled else { return }
         details = loaded
+        if let card = loaded?.card {
+            // The card the window opened with may be older than the stored record.
+            state.adoptStoredTitle(card.customTitle)
+            model.windows.updateRecordTitle(card)
+        }
         guard [.image, .pdf].contains(state.card.displayType) else { return }
         // Large enough for Actual Size on most screenshots, still bounded in memory (§7.3).
         let loadedImage = await model.previewImage(state.id, maxPixelSize: 4_096)
         guard !Task.isCancelled else { return }
         image = loadedImage
+        imageFailed = loadedImage == nil
     }
 }
 
@@ -825,7 +834,7 @@ private struct FilePreview: View {
                         Text("Memopila may not read this folder.").font(.callout).foregroundStyle(.orange)
                         Button("Allow in System Settings…") {
                             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders") {
-                                NSWorkspace.shared.open(url)
+                                External.open(url)
                             }
                         }
                         .help(String(localized: "Privacy & Security → Files and Folders: let Memopila read this folder, then open the record again"))
@@ -852,7 +861,7 @@ private struct FilePreview: View {
                     Spacer(minLength: 8)
                     Button("Reveal in Finder") {
                         let urls = card.filePaths.map { URL(fileURLWithPath: $0) }.filter { FileManager.default.fileExists(atPath: $0.path) }
-                        NSWorkspace.shared.activateFileViewerSelecting(urls)
+                        External.reveal(urls)
                     }
                     .disabled(status?.allMissing ?? false)
                     Button(card.filePaths.count > 1 ? String(localized: "Copy Paths") : String(localized: "Copy Path")) {
@@ -997,6 +1006,8 @@ struct TextPane: NSViewRepresentable {
     let font: NSFont
     /// A line-number ruler, shown or hidden later through `scrollView.rulersVisible`.
     var hasLineNumbers = false
+    /// The text's own undo history instead of the window's.
+    var undoManager: UndoManager?
     let onAttach: @MainActor (NSTextView) -> Void
     var onTextChange: @MainActor () -> Void = {}
     var onSelectionChange: @MainActor () -> Void = {}
@@ -1067,6 +1078,10 @@ struct TextPane: NSViewRepresentable {
             pane?.onTextChange()
         }
 
+        func undoManager(for view: NSTextView) -> UndoManager? {
+            pane?.undoManager ?? view.window?.undoManager
+        }
+
         func textViewDidChangeSelection(_ notification: Notification) {
             pane?.onSelectionChange()
         }
@@ -1113,7 +1128,7 @@ final class LineNumberRuler: NSRulerView {
 
     private func countLines() {
         isStale = false
-        guard let text = textView?.string as NSString? else { return }
+        guard let text = textView?.textStorage?.mutableString else { return }
         var starts = [0]
         let length = text.length
         // In blocks rather than a call per character: this runs on every edit while numbers show.
@@ -1161,7 +1176,7 @@ final class LineNumberRuler: NSRulerView {
         let visible = clip.bounds
         let glyphs = layoutManager.glyphRange(forBoundingRect: visible, in: container)
         let characters = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
-        let length = (textView.string as NSString).length
+        let length = textView.textStorage?.length ?? 0
         let attributes: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: max(9, (textView.font?.pointSize ?? 12) - 2), weight: .regular),
             .foregroundColor: NSColor.tertiaryLabelColor,
@@ -1204,7 +1219,7 @@ final class FocusReportingTextView: NSTextView {
         let glyphs = layoutManager.glyphRange(forBoundingRect: dirtyRect.offsetBy(dx: -origin.x, dy: -origin.y), in: textContainer)
         let characters = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
         guard characters.length > 0 else { return }
-        let text = storage.string as NSString
+        let text = storage.mutableString
         let font = self.font ?? .monospacedSystemFont(ofSize: 12, weight: .regular)
         let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.tertiaryLabelColor]
         for index in characters.location..<NSMaxRange(characters) {

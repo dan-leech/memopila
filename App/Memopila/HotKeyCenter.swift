@@ -26,8 +26,10 @@ final class HotKeyCenter {
             if flags.contains(.option) { modifiers |= optionKey }
             if flags.contains(.control) { modifiers |= controlKey }
             if flags.contains(.shift) { modifiers |= shiftKey }
-            // A global shortcut needs ⌘ or ⌃; ⌥/⇧-only combinations type characters.
+            // A global shortcut needs ⌘ or ⌃; ⌥/⇧-only combinations type characters, and ⌘ alone
+            // would take ⌘W, ⌘Q, ⌘C… away from every app's menu (review finding).
             guard flags.contains(.command) || flags.contains(.control) else { return nil }
+            guard flags.intersection([.command, .option, .control, .shift]) != .command else { return nil }
             self.init(keyCode: UInt32(event.keyCode), carbonModifiers: UInt32(modifiers))
         }
 
@@ -63,9 +65,9 @@ final class HotKeyCenter {
         func message(for shortcut: Shortcut) -> String {
             switch self {
             case .alreadyTaken:
-                "\(shortcut.displayString) is in use by another app (for example Pasta). Choose another shortcut or quit that app."
+                String(localized: "\(shortcut.displayString) is in use by another app (for example Pasta). Choose another shortcut or quit that app.")
             case .failed(let status):
-                "Could not register \(shortcut.displayString) (error \(status))."
+                String(localized: "Could not register \(shortcut.displayString) (error \(Int(status))).")
             }
         }
     }
@@ -86,7 +88,9 @@ final class HotKeyCenter {
             shortcut.carbonModifiers,
             EventHotKeyID(signature: Self.signature, id: id),
             GetApplicationEventTarget(),
-            0,
+            // Exclusive: when another app (Pasta) holds the same keys, registering fails and says so
+            // instead of both apps reacting to every press (review finding).
+            OptionBits(kEventHotKeyExclusive),
             &reference
         )
         guard status == noErr, let reference else {

@@ -110,7 +110,7 @@ enum RecordKeys {
             case "u" where state.isRich && responder === state.textView: state.toggleUnderline()
             case "o" where state.card.displayType == .url:
                 guard let url = URL(string: state.linkText), url.scheme != nil else { return true }
-                NSWorkspace.shared.open(url)
+                External.open(url)
             case "y": model.dismissRecord()
             case "e" where state.isEditable: state.focus()
             default: return false

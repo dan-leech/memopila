@@ -19,14 +19,30 @@ final class RecognitionService {
         self.settings = settings
     }
 
+    /// A wake that came while the queue was busy: it looks once more before it stops (review
+    /// finding: an image captured just as the queue emptied waited for the next capture).
+    private var wakeAgain = false
+
     /// Starts the queue if it is idle (after an ingest, on launch, when recognition is turned on).
+    /// Whether a record is recognized is decided per record from its app's settings, so an app
+    /// turned on while the global switch is off is still served (review finding).
     func wake() {
-        guard loop == nil, settings.recognizeText else { return }
         if let pausedUntil, pausedUntil > Date() { return }
-        loop = Task { [weak self] in
-            await self?.run()
-            self?.loop = nil
+        guard loop == nil else {
+            wakeAgain = true
+            return
         }
+        loop = Task { [weak self] in
+            await self?.drain()
+        }
+    }
+
+    private func drain() async {
+        repeat {
+            wakeAgain = false
+            await run()
+        } while wakeAgain && !Task.isCancelled
+        loop = nil
     }
 
     /// Memory pressure (§7.3): stop after the current job and stay idle for a minute.
@@ -41,17 +57,23 @@ final class RecognitionService {
 
     private func run() async {
         var failures = 0
-        while !Task.isCancelled, settings.recognizeText {
+        while !Task.isCancelled {
             guard let id = try? await store.recognitionCandidates(limit: 1).first else { return }
-            if let card = try? await store.card(id), let app = card.sourceAppBundleID, !settings.settings(for: app).recognizeText {
-                try? await store.setRecognizedText(id, text: nil, state: .off)
+            let app = (try? await store.card(id))?.sourceAppBundleID
+            let allowed = app.map { settings.settings(for: $0).recognizeText } ?? settings.recognizeText
+            // Every outcome is saved before going on, and a store that fails stops the queue
+            // instead of handing back the same record forever (review finding).
+            guard allowed else {
+                guard (try? await store.setRecognizedText(id, text: nil, state: .off)) != nil else { return }
+                onUpdate?(id, .off)
                 continue
             }
             let state: RecognitionState
             var text: String?
             do {
                 guard let input = try await store.recognitionInput(for: id) else {
-                    try? await store.setRecognizedText(id, text: nil, state: .failed)
+                    guard (try? await store.setRecognizedText(id, text: nil, state: .failed)) != nil else { return }
+                    onUpdate?(id, .failed)
                     continue
                 }
                 let languages = settings.effectiveRecognitionLanguages

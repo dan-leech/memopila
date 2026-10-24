@@ -36,6 +36,10 @@ public struct CaptureContext: Sendable {
     /// while another app stays frontmost, so an image-only change without a source marker is
     /// attributed to this app (the Screenshot app) instead of the frontmost one (§5).
     public var screenshotSource: String?
+    /// The content was on the clipboard before Memopila started: nobody knows who copied it.
+    public var isLaunchContent: Bool
+    /// *Save Anyway* saves the change its red card showed, for the app it named (§3.2.3).
+    public var identityOverride: AppIdentity?
 
     public init(
         profiles: AppProfiles = AppProfiles(),
@@ -47,7 +51,9 @@ public struct CaptureContext: Sendable {
         saveAnyway: Bool = false,
         secretPolicy: SecretPolicy = .off,
         secretKinds: Set<SecretKind> = Set(SecretKind.allCases),
-        screenshotSource: String? = nil
+        screenshotSource: String? = nil,
+        isLaunchContent: Bool = false,
+        identityOverride: AppIdentity? = nil
     ) {
         self.profiles = profiles
         self.formatPolicy = formatPolicy
@@ -59,6 +65,8 @@ public struct CaptureContext: Sendable {
         self.secretPolicy = secretPolicy
         self.secretKinds = secretKinds
         self.screenshotSource = screenshotSource
+        self.isLaunchContent = isLaunchContent
+        self.identityOverride = identityOverride
     }
 }
 
@@ -190,7 +198,12 @@ public struct SnapshotReader: Sendable {
         })
         var frontmost = context.frontmostBundleID
         var panelIsKey = context.panelIsKey
-        if marker == .absent, Self.isImageOnly(itemTypes) {
+        // Universal Clipboard content was copied on another device: not by the app in front here.
+        let isRemote = itemTypes.contains { $0.contains(.remoteClipboard) }
+        if marker == .absent, isRemote {
+            frontmost = nil
+            panelIsKey = false
+        } else if marker == .absent, Self.isImageOnly(itemTypes) {
             // Memopila never puts an image-only copy of its own here (its writes are recognised
             // before any read), so one that arrives while its panel or a window of it has the
             // keyboard is a screenshot taken over it, even when no screenshot agent was seen
@@ -201,12 +214,17 @@ public struct SnapshotReader: Sendable {
                 panelIsKey = false
             }
         }
-        var identity = AppIdentity.resolve(
+        var identity = context.identityOverride ?? AppIdentity.resolve(
             marker: marker,
             frontmostBundleID: frontmost,
             panelIsKey: panelIsKey,
             ownBundleID: context.ownBundleID
         )
+        // Copied before launch by an unknown app while some apps are *Don't Save*: it may be theirs,
+        // so it is not saved, as in Strict mode (review finding).
+        if context.isLaunchContent, context.identityOverride == nil, identity.source == .unknown, context.profiles.hasDontSaveApps {
+            return finish { .skipped(changeCount: $0, reason: .strictIdentity) }
+        }
 
         var settings: ResolvedAppSettings
         switch context.profiles.admission(for: identity) {
@@ -256,7 +274,7 @@ public struct SnapshotReader: Sendable {
 
         // The image says it is a screenshot: the Screenshot app's, whichever app was in front
         // (first-run feedback: one taken over Finder was attributed to Finder).
-        if marker == .absent, identity.bundleID != AppIdentity.screenshotApp, Self.isScreenshotImage(items) {
+        if marker == .absent, context.identityOverride == nil, identity.bundleID != AppIdentity.screenshotApp, Self.isScreenshotImage(items) {
             identity = AppIdentity(bundleID: AppIdentity.screenshotApp, source: .frontmost)
             switch context.profiles.admission(for: identity) {
             case .skipDontSave:

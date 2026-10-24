@@ -36,7 +36,11 @@ enum PasteboardAccess {
     /// Returns the OS build to remember when the state stayed `.default` (no alert: enforcement is off).
     static func bootstrapRead() -> (didRead: Bool, verifiedBuild: String?) {
         let pasteboard = NSPasteboard.general
-        guard let item = pasteboard.pasteboardItems?.first, let type = item.types.first else { return (false, nil) }
+        guard let item = pasteboard.pasteboardItems?.first, let first = item.types.first else { return (false, nil) }
+        // A small type when there is one — text, the source marker, a link — rather than an image
+        // or a document a lazy provider would have to render on the main thread (review finding).
+        let small: [NSPasteboard.PasteboardType] = [.string, NSPasteboard.PasteboardType("org.nspasteboard.source"), .URL, .fileURL]
+        let type = small.first { item.types.contains($0) } ?? first
         _ = item.data(forType: type)
         return (true, behavior == .default ? osBuild : nil)
     }
@@ -54,7 +58,7 @@ enum PasteboardAccess {
     /// Opens System Settings → Privacy & Security (the exact pane name is a Phase 1 spike question).
     static func openSystemSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy") {
-            NSWorkspace.shared.open(url)
+            External.open(url)
         }
     }
 
