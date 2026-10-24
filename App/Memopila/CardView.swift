@@ -21,8 +21,8 @@ struct CardView: View {
     private var thumbnails: ThumbnailCache { model.thumbnails }
     private var isUnavailable: Bool { fileStatus?.allMissing ?? false }
     private var isMedia: Bool { secretKind == nil && (card.displayType == .image || card.displayType == .pdf) }
-    /// The clipboard holds this record now (§8.2): a thin outline around the card, so with the
-    /// selection on it the card has a double frame. Selecting another record changes it; no card
+    /// The clipboard holds this record now (§8.2): a thin green line at the card's edge, drawn over
+    /// the selection border, so with the selection on it the card has a double frame. Selecting another record changes it; no card
     /// has it when the clipboard holds something that is not in history.
     private var isOnClipboard: Bool { model.monitor.clipboardRecordID == card.id }
 
@@ -46,15 +46,14 @@ struct CardView: View {
             RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
                 .strokeBorder(
                     hasCursor ? Color.accentColor : Color.primary.opacity(isHovered ? 0.2 : 0.08),
-                    lineWidth: hasCursor ? 2.5 : 1
+                    lineWidth: hasCursor ? 3 : 1
                 )
         }
         .overlay {
             if isOnClipboard {
-                // Outside the card with a gap, so next to the selection border it reads as a second frame.
-                RoundedRectangle(cornerRadius: Self.radius + 4, style: .continuous)
-                    .strokeBorder(Color.accentColor, lineWidth: 1.25)
-                    .padding(-4)
+                // Drawn second, on the outer part of the selection border: green edge, blue inside it.
+                RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
+                    .strokeBorder(Color.green, lineWidth: 1.5)
                     .allowsHitTesting(false)
             }
         }
