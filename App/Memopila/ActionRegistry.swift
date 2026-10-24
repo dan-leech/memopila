@@ -44,13 +44,26 @@ enum ActionRegistry {
     /// shown disabled, so the menu stays short.
     static func cardActions(_ card: HistoryCard, model: AppModel) -> [ActionItem] {
         let id = card.id
+        // Choosing an item pastes it (§3.4); the titles say when it can only be copied.
         var items: [ActionItem] = [
-            ActionItem(id: "copy", title: String(localized: "Copy"), systemImage: "doc.on.doc", shortcut: "↩") {
-                model.restore(id)
-            },
-            ActionItem(id: "cut", title: String(localized: "Copy and Delete"), systemImage: "scissors", shortcut: "⌘X") {
-                model.cut(id)
-            },
+            ActionItem(
+                id: "paste",
+                title: model.chooseTitle,
+                systemImage: model.pastesOnChoose ? "arrow.right.doc.on.clipboard" : "doc.on.clipboard",
+                shortcut: "↩"
+            ) { model.restore(id) },
+        ]
+        if card.hasText, card.displayType != .text {
+            items.append(ActionItem(id: "paste.plain", title: model.choosePlainTextTitle, systemImage: "textformat", shortcut: "⇧↩") {
+                model.restore(id, variant: .plainText)
+            })
+        }
+        if model.pastesOnChoose {
+            items.append(ActionItem(id: "copy", title: String(localized: "Copy to Clipboard"), systemImage: "doc.on.clipboard", shortcut: "⌘C") {
+                model.restore(id, paste: false)
+            })
+        }
+        items += [
             ActionItem(
                 id: "favorite",
                 title: card.isFavorite ? String(localized: "Remove from Favorites") : String(localized: "Add to Favorites"),

@@ -2,8 +2,8 @@ import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
 
-/// Accessibility is used only for *Paste after restore* (§3.4) and, once granted, for source
-/// window titles (§5.2). Memopila never prompts for it on its own.
+/// Accessibility is used only to paste a chosen item (§3.4) and, once granted, for source window
+/// titles (§5.2). Memopila prompts for it only when the user asks (banner, Settings).
 enum AccessibilityBridge {
     static var isTrusted: Bool { AXIsProcessTrusted() }
 
@@ -22,18 +22,46 @@ enum AccessibilityBridge {
         }
     }
 
-    /// Posts ⌘V to the app that was frontmost before the panel opened.
+    /// Presses ⌘V in the frontmost app, as clipboard managers commonly do. The flags are set
+    /// explicitly, so ⇧ still held from ⇧↩ does not turn it into Paste and Match Style.
     @MainActor
-    static func paste(to app: NSRunningApplication?) {
-        guard isTrusted, let app, !app.isTerminated else { return }
+    static func paste() {
+        guard isTrusted else { return }
         let source = CGEventSource(stateID: .combinedSessionState)
-        let keyCode = CGKeyCode(kVK_ANSI_V)
+        let keyCode = keyCode(producing: "v") ?? CGKeyCode(kVK_ANSI_V)
         let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
         let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
         down?.flags = .maskCommand
         up?.flags = .maskCommand
-        down?.postToPid(app.processIdentifier)
-        up?.postToPid(app.processIdentifier)
+        down?.post(tap: .cgSessionEventTap)
+        up?.post(tap: .cgSessionEventTap)
+    }
+
+    /// The key that types `character` in the current Latin layout: ⌘V is on another key with
+    /// Dvorak or AZERTY-like layouts. With a non-Latin layout (Russian) apps read shortcuts through
+    /// the Latin layout that goes with it, which is the one asked for here.
+    @MainActor
+    private static func keyCode(producing character: Character) -> CGKeyCode? {
+        guard let target = character.unicodeScalars.first?.value,
+              let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue(),
+              // `kTISPropertyUnicodeKeyLayoutData`, by value: the imported global is not concurrency-safe.
+              let pointer = TISGetInputSourceProperty(source, "TISPropertyUnicodeKeyLayoutData" as CFString) else { return nil }
+        let data = Unmanaged<CFData>.fromOpaque(pointer).takeUnretainedValue()
+        guard let bytes = CFDataGetBytePtr(data) else { return nil }
+        return bytes.withMemoryRebound(to: UCKeyboardLayout.self, capacity: 1) { layout in
+            let maxLength = 4
+            for code in 0..<UInt16(128) {
+                var deadKeyState: UInt32 = 0
+                var length = 0
+                var characters = [UniChar](repeating: 0, count: maxLength)
+                let status = UCKeyTranslate(
+                    layout, code, UInt16(kUCKeyActionDisplay), 0, UInt32(LMGetKbdType()),
+                    OptionBits(kUCKeyTranslateNoDeadKeysMask), &deadKeyState, maxLength, &length, &characters
+                )
+                if status == noErr, length == 1, UInt32(characters[0]) == target { return CGKeyCode(code) }
+            }
+            return nil
+        }
     }
 
     /// Title of the app's focused window, with a short timeout so a hung app cannot stall capture.

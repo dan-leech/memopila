@@ -85,13 +85,17 @@ struct PreviewOverlay: View {
                     Task { await restyle() }
                 }
             }
-            Button("Copy") { model.restore(id) }
+            Button(model.chooseTitle) { model.restore(id) }
+                .help(model.pastesOnChoose
+                    ? String(localized: "Paste into the app you were in (↩)")
+                    : String(localized: "Copy to the clipboard (↩)"))
             Button {
                 model.present(nil)
             } label: {
                 Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
             }
             .buttonStyle(.borderless)
+            .help(String(localized: "Close preview (Esc or Space)"))
             .accessibilityLabel(Text("Close preview"))
         }
     }
@@ -143,7 +147,9 @@ struct PreviewOverlay: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Text in Image").font(.subheadline.bold())
                             ScrollView { Text(text).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
-                            Button("Copy Text") { model.restore(id, variant: .recognizedText) }
+                            Button(model.pastesOnChoose ? String(localized: "Paste Text") : String(localized: "Copy Text")) {
+                                model.restore(id, variant: .recognizedText)
+                            }
                         }
                         .frame(width: 220)
                     }
@@ -409,12 +415,6 @@ struct EditorOverlay: View {
                 actions: [.urlEncode, .urlDecode, .base64Encode, .base64Decode]
             )
             Spacer()
-            Toggle(isOn: $state.wrapsLines) {
-                Image(systemName: "arrow.turn.down.left")
-            }
-            .toggleStyle(.button)
-            .buttonStyle(.borderless)
-            .help(String(localized: "Wrap long lines"))
             ToolbarIcon(systemImage: "magnifyingglass", help: String(localized: "Find (⌘F)")) { state.showFind() }
         }
         .padding(.horizontal, 10)
@@ -443,6 +443,10 @@ struct EditorOverlay: View {
                 .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
+            Toggle("Wrap lines", isOn: $state.wrapsLines)
+                .toggleStyle(.checkbox)
+                .controlSize(.small)
+                .help(String(localized: "Break long lines at the window edge instead of scrolling sideways"))
             if state.isDirty {
                 Label("Edited", systemImage: "circle.fill")
                     .labelStyle(.titleAndIcon)
@@ -460,11 +464,18 @@ struct EditorOverlay: View {
                 Button("Discard", role: .destructive) { model.present(nil) }
             } else {
                 Button("Cancel") { model.cancelEditor() }
-                Button { model.saveEditor(thenCopy: false) } label: { ShortcutLabel(title: String(localized: "Save"), shortcut: "⌘S") }
+                    .help(String(localized: "Close the editor without saving (Esc)"))
+                Button { model.saveEditor(thenRestore: false) } label: { ShortcutLabel(title: String(localized: "Save"), shortcut: "⌘S") }
                     .disabled(!state.isLoaded || state.isSaving)
-                Button { model.saveEditor(thenCopy: true) } label: { ShortcutLabel(title: String(localized: "Save & Copy"), shortcut: "⌘↩") }
-                    .disabled(!state.isLoaded || state.isSaving)
-                    .buttonStyle(.borderedProminent)
+                    .help(String(localized: "Save the changes and stay in Memopila"))
+                Button { model.saveEditor(thenRestore: true) } label: {
+                    ShortcutLabel(title: model.pastesOnChoose ? String(localized: "Save and Paste") : String(localized: "Save and Copy"), shortcut: "⌘↩")
+                }
+                .disabled(!state.isLoaded || state.isSaving)
+                .buttonStyle(.borderedProminent)
+                .help(model.pastesOnChoose
+                    ? String(localized: "Save the changes and paste the text into the app you were in")
+                    : String(localized: "Save the changes and copy the text to the clipboard"))
             }
         }
         .padding(.horizontal, 12)

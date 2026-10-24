@@ -80,6 +80,8 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
 
     private func configure(_ window: NSWindow) {
         window.level = .floating
+        // The window stays above other apps, so its tooltips must work while they are active.
+        window.allowsToolTipsWhenApplicationIsInactive = true
         window.collectionBehavior.insert(.moveToActiveSpace)
         window.isReleasedWhenClosed = false
         window.delegate = self

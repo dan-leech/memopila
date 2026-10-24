@@ -651,6 +651,16 @@
         }
       }
     },
+    "Allow…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешить…"
+          }
+        }
+      }
+    },
     "Already set": {
       "localizations": {
         "ru": {
@@ -893,6 +903,16 @@
         }
       }
     },
+    "Break long lines at the window edge instead of scrolling sideways": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переносить длинные строки по краю окна, а не прокручивать вбок"
+          }
+        }
+      }
+    },
     "Cancel": {
       "localizations": {
         "ru": {
@@ -1013,6 +1033,26 @@
         }
       }
     },
+    "Choosing an item": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбор записи"
+          }
+        }
+      }
+    },
+    "Choosing an item only copies it; paste with ⌘V. You can change this in Settings → General.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбор записи будет только копировать её; вставляйте через ⌘V. Это можно изменить в Настройках → Основные."
+          }
+        }
+      }
+    },
     "Clear": {
       "localizations": {
         "ru": {
@@ -1119,6 +1159,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Закрыть просмотр"
+          }
+        }
+      }
+    },
+    "Close preview (Esc or Space)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Закрыть просмотр (Esc или пробел)"
+          }
+        }
+      }
+    },
+    "Close the editor without saving (Esc)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Закрыть редактор без сохранения (Esc)"
           }
         }
       }
@@ -1263,16 +1323,6 @@
         }
       }
     },
-    "Copy and Delete": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Скопировать и удалить"
-          }
-        }
-      }
-    },
     "Copy as Plain Text": {
       "localizations": {
         "ru": {
@@ -1303,12 +1353,12 @@
         }
       }
     },
-    "Copying works without Accessibility. When allowed, Memopila also remembers the title of the window you copied from.": {
+    "Copy to the clipboard (↩)": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Копирование работает и без универсального доступа. Если он разрешён, Memopila также запоминает заголовок окна, из которого вы копировали."
+            "value": "Скопировать в буфер обмена (↩)"
           }
         }
       }
@@ -2625,6 +2675,26 @@
         }
       }
     },
+    "Only Copy": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Только копировать"
+          }
+        }
+      }
+    },
+    "Only copies it to the clipboard": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Только копирует её в буфер обмена"
+          }
+        }
+      }
+    },
     "Only text, rich text and links can be edited.": {
       "localizations": {
         "ru": {
@@ -2745,22 +2815,32 @@
         }
       }
     },
-    "Paste After Restore": {
+    "Paste Text": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Вставка после восстановления"
+            "value": "Вставить текст"
           }
         }
       }
     },
-    "Paste into the previous app after copying": {
+    "Paste as Plain Text": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Вставлять в предыдущее приложение после копирования"
+            "value": "Вставить как простой текст"
+          }
+        }
+      }
+    },
+    "Paste into the app you were in (↩)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вставить в приложение, в котором вы были (↩)"
           }
         }
       }
@@ -2771,6 +2851,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Вставлять в предыдущее приложение после восстановления"
+          }
+        }
+      }
+    },
+    "Pasted": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вставлено"
+          }
+        }
+      }
+    },
+    "Pastes it into the app you were in": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вставляет её в приложение, в котором вы были"
           }
         }
       }
@@ -2835,12 +2935,32 @@
         }
       }
     },
+    "Pause, Clear History, Settings and more": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пауза, очистка истории, настройки и другое"
+          }
+        }
+      }
+    },
     "Paused until %@": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Пауза до %@"
+          }
+        }
+      }
+    },
+    "Pin (⌘P): keep the window open after choosing an item and when you switch apps": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Закрепить (⌘P): окно остаётся открытым после выбора записи и при переходе в другое приложение"
           }
         }
       }
@@ -2861,16 +2981,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Закрепить окно"
-          }
-        }
-      }
-    },
-    "Pin: keep the window open": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Закрепить: окно остаётся открытым"
           }
         }
       }
@@ -3305,7 +3415,17 @@
         }
       }
     },
-    "Save & Copy": {
+    "Save Anyway": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Всё равно сохранить"
+          }
+        }
+      }
+    },
+    "Save and Copy": {
       "localizations": {
         "ru": {
           "stringUnit": {
@@ -3315,12 +3435,12 @@
         }
       }
     },
-    "Save Anyway": {
+    "Save and Paste": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Всё равно сохранить"
+            "value": "Сохранить и вставить"
           }
         }
       }
@@ -3351,6 +3471,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Снова сохранять из «%@»"
+          }
+        }
+      }
+    },
+    "Save the changes and copy the text to the clipboard": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить изменения и скопировать текст в буфер обмена"
+          }
+        }
+      }
+    },
+    "Save the changes and paste the text into the app you were in": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить изменения и вставить текст в приложение, в котором вы были"
+          }
+        }
+      }
+    },
+    "Save the changes and stay in Memopila": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить изменения и остаться в Memopila"
           }
         }
       }
@@ -4025,6 +4175,16 @@
         }
       }
     },
+    "To paste into apps, Memopila needs Accessibility. Until then a chosen item is only copied: paste it with ⌘V.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Чтобы вставлять в приложения, Memopila нужен Универсальный доступ. Пока его нет, выбранная запись только копируется: вставьте её через ⌘V."
+          }
+        }
+      }
+    },
     "Tokens, keys, JWTs and card numbers are recognized on this Mac. Saved secrets are masked on cards (open the preview to see one) and deleted on time; ⌘D keeps one for good.": {
       "localizations": {
         "ru": {
@@ -4041,6 +4201,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Убрать пробелы по краям"
+          }
+        }
+      }
+    },
+    "Turn on Memopila in System Settings → Privacy & Security → Accessibility": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Включите Memopila в Системных настройках → Конфиденциальность и безопасность → Универсальный доступ"
           }
         }
       }
@@ -4155,6 +4325,16 @@
         }
       }
     },
+    "Unpin (⌘P): the window closes after you choose an item or switch apps": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открепить (⌘P): окно закрывается после выбора записи или при переходе в другое приложение"
+          }
+        }
+      }
+    },
     "Unpin Window": {
       "localizations": {
         "ru": {
@@ -4171,16 +4351,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Открепить окно"
-          }
-        }
-      }
-    },
-    "Unpin: close after copying and on focus loss": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Открепить: закрывать после копирования и при потере фокуса"
           }
         }
       }
@@ -4275,12 +4445,12 @@
         }
       }
     },
-    "Wrap long lines": {
+    "Wrap lines": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Переносить длинные строки"
+            "value": "Переносить строки"
           }
         }
       }
@@ -4381,6 +4551,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "простой текст"
+          }
+        }
+      }
+    },
+    "↩, a double-click or ⌘1…⌘9 choose an item; ⌘C only copies it. To paste, Memopila puts the item on the clipboard and presses ⌘V for you, which needs Accessibility. Without it items are only copied: paste them with ⌘V. When allowed, Memopila also remembers the title of the window you copied from.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "↩, двойной щелчок или ⌘1…⌘9 выбирают запись; ⌘C только копирует её. Чтобы вставить, Memopila кладёт запись в буфер обмена и нажимает за вас ⌘V — для этого нужен Универсальный доступ. Без него записи только копируются: вставляйте их через ⌘V. С этим доступом Memopila также запоминает заголовок окна, из которого вы копировали."
           }
         }
       }

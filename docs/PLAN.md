@@ -14,7 +14,7 @@
 - **Pasta-parity UI** (§8): menu-bar app; hotkey window with sidebar (History, Favorites, Apps, Types, Collections), search and a card grid with thumbnails.
 - Capture clipboard history as **deduplicated canonical snapshots** of allowlisted formats (text, rich text, URL, image, PDF, color, files) plus formats the user opts into with **format rules** (§3.2.2).
 - **Show the current clipboard even when it is not saved**: a red *Current — not saved* card with the reason and quick fixes (§3.2.3).
-- **Restore to Clipboard**: rewrite the pasteboard, close the window, return focus to the previous app. Variants: **Copy as plain text**, **Copy as <text action>**, **Copy text from image**; optional **Paste after restore** (Accessibility, off by default).
+- **Paste** (choosing an item, as in Pasta): rewrite the pasteboard, close the window, return focus to the previous app and press ⌘V there (Accessibility). Without Accessibility, or with *Choosing an item: Only copies it*, it stops at the clipboard. Variants: **Paste as plain text**, **Paste text from image**; **Copy to Clipboard** (⌘C) never pastes. First-run feedback: a primary action called *Copy* (with *Copy and Delete*, *Save & Copy*) made no sense in a window of items meant for pasting.
 - **Edit records**: edit text content and set a custom title on any record (§3.6).
 - **Per-app settings** (§5.1): save / don't save / delete after a short time, format rules, text recognition, source page — set in two clicks from any card through the actions menu (§8.4).
 - **Pause capture** (timed) and **Skip next copy** (§3.7).
@@ -379,7 +379,7 @@ User-facing name: **Restore** (menu: *Copy to Clipboard*).
 - **Restore:** all stored representations.
 - **Copy as plain text:** one item with `public.utf8-plain-text` derived from the record's text (UTF-8 decode helper, §7.4); available when the record has text.
 - **Copy text from image** (§3.8, preview button): one item with `public.utf8-plain-text` holding the result. Text actions and other transformations do not copy: they create a new card (*Duplicate As*, §3.9).
-- **Paste after restore** (Settings, off by default): once the panel has given up key status (it closes; when pinned it resigns key and stays visible), post ⌘V to the previous app via `CGEvent`. Requires Accessibility; without it the setting shows guidance and Restore still works.
+- **Paste** (Settings → General → *Choosing an item*, on by default): once the panel has given up key status (it closes; when pinned it resigns key and stays visible), post ⌘V through the session event tap, on the key that types *v* in the current Latin layout (Dvorak, AZERTY) and with only ⌘ set (⇧ still held from ⇧↩ must not make it Paste and Match Style). Requires Accessibility: until it is granted the panel shows a banner (*Allow…* / *Only Copy*), titles say *Copy to Clipboard*, and restoring still works.
 
 **After any confirmed write** (Restore or a variant): the store moves the source record to the top: `lastCopiedAt = max(lastCopiedAt, restoreTime)`; `copyCount` unchanged. The written content is suppressed by the token, so variant outputs (plain text, text actions, recognized text) are **not** added to history; to keep a transformed text, apply the action in the editor and save (§3.6).
 
@@ -475,15 +475,15 @@ If a mandatory gate fails → amend this PLAN with a fallback (layout, commit or
 
 **Edit text** — records with `displayType` `text`, `richText` or `url` (not images, PDFs, colors, files, mixed):
 
-- Editor: an overlay filling the window (⌘E / **Edit…**): an optional **title** field above the text (saved with it), a toolbar — Undo / Redo, *Change Case*, *Lines and Spaces*, *JSON*, *Encode and Decode* menus with the text actions (§3.9, on the selection or the whole text, undoable), *Wrap long lines*, *Find* (⌘F, system find bar) — a monospaced plain-text view, and a footer with live line and character counts, an *Edited* mark, Cancel / Save (⌘S) / Save & Copy (⌘↩). Esc or Cancel with unsaved changes asks *Discard your changes?* first; Esc in the find bar closes the find bar.
+- Editor: an overlay filling the window (⌘E / **Edit…**): an optional **title** field above the text (saved with it), a toolbar — Undo / Redo, *Change Case*, *Lines and Spaces*, *JSON*, *Encode and Decode* menus with the text actions (§3.9, on the selection or the whole text, undoable), *Find* (⌘F, system find bar) — a monospaced plain-text view, and a footer with live line and character counts, a *Wrap lines* checkbox, an *Edited* mark, Cancel / Save (⌘S) / Save and Paste (⌘↩; *Save and Copy* when items are only copied). Esc or Cancel with unsaved changes asks *Discard your changes?* first; Esc in the find bar closes the find bar.
 - Records with rich formats (RTF, RTFD, HTML, web archive) show a warning: *Formatting will be removed*. Rich-text editing is deferred.
 - **Save** replaces the record's representations **in place** with one item holding `public.utf8-plain-text`. Recompute `contentHash`, `payloadSizeBytes`, `cardPreview`, `searchText`; `displayType` becomes `url` if the whole text is a single URL, else `text`. Keep favorite, collections, `copyCount`, timestamps, `customTitle`, source page; set `editedAt`. No version history.
-- **Save & Copy** (⌘↩ in the editor): save, then Restore.
+- **Save and Paste** (⌘↩ in the editor): save, then Paste (§3.4).
 - Empty text → save disabled. Text larger than `maxSinglePayloadBytes` → save rejected with a message.
 - **Dedup collision:** if the new hash equals another record → merge into that record (favorite = OR; collections = union; `copyCount` = sum; `firstCopiedAt` = min; `lastCopiedAt` = max; `customTitle` = the existing one, else the edited one), delete the edited record, select the survivor, show *Merged with an existing record*. One transaction.
 - **Concurrency:** Edit is a `ClipboardStore` mutation; it adds the old hash to the tombstones (§3.2 coordination rule 5). Record deleted meanwhile → *Record no longer exists*.
 
-**Tests:** plain edit; rich → plain with warning; URL detection; collision merge; title shown and searchable; Save & Copy; text action in the editor + undo; in-flight capture of pre-edit content not recreated.
+**Tests:** plain edit; rich → plain with warning; URL detection; collision merge; title shown and searchable; Save and Paste; text action in the editor + undo; in-flight capture of pre-edit content not recreated.
 
 ### 3.7 Pause capture and Skip next copy
 
@@ -683,7 +683,7 @@ Cards also get a top-level **Delete and Don't Save from <App>**. Every settings 
   1. `org.chromium.source-url` — seen in pasteboard dumps from Chromium-based apps; which apps write it and its exact format **(spike)**.
   2. Safari / WebKit: the main resource URL of a stored `com.apple.webarchive` representation (`WebMainResource` → `WebResourceURL`).
   3. Other browsers, e.g. Firefox **(spike: find their types)**.
-  4. Window title: only when Accessibility is already granted (for Paste after restore) — title of the frontmost app's focused window at detection time. Never prompts for Accessibility by itself.
+  4. Window title: only when Accessibility is already granted (for Paste) — title of the frontmost app's focused window at detection time. Never prompts for Accessibility by itself.
 - Only `http`, `https` and `file` URLs up to 2 048 bytes; anything else is ignored.
 - **UI:** preview line *Copied from example.com* (click opens it in the default browser; ⌥-click copies the URL); card tooltip; context menu **Open Source Page**; search matches host, URL and window title (§8.6).
 - The source-page types are metadata only: never stored as representations and never kept by format rules.
@@ -812,7 +812,7 @@ No mandatory Repository / UseCase / Coordinator layers. Add test seams only wher
 | `TextActions` (pure) | §3.9 |
 | `CodeHighlighter` | Lazy, preview only (§8.5) |
 | Read models | Immutable `Sendable` DTOs; card DTOs carry no payload bytes and no thumbnail data |
-| `PasteboardWriter` | Verify → build items → synchronous clear/write/confirm on the main actor; variants; Paste after restore (§3.4) |
+| `PasteboardWriter` | Verify → build items → synchronous clear/write/confirm on the main actor; variants; Paste (§3.4) |
 | `WindowPresenter` | Non-activating panel, screen choice, pin, frame per display (§8.1) |
 | `HotKeyMonitor` | Carbon register/unregister for the window, Pause and Skip hotkeys; rebind keeps old until new succeeds (§2) |
 | `LoginItemManager` | `SMAppService.mainApp` |
@@ -894,6 +894,8 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 - **Pin** (⚓ button, as in Pasta): the window stays on screen when focus moves to another app and after Restore, until unpinned or closed with Esc / hotkey.
 - Follows system appearance; standard materials (Liquid Glass on 26+ comes from the SDK; 15.x gets the classic look from the same controls).
 
+**Tooltips:** every icon-only control has one, with its shortcut. The panel and the floating windows allow tooltips while Memopila is not the active app (`allowsToolTipsWhenApplicationIsInactive`) — AppKit hides them otherwise, which is the usual state of a non-activating panel (first-run feedback: the editor's wrap toggle, a bent arrow, could not be identified).
+
 ### 8.2 Layout
 
 - **Sidebar** (toggle button, ⌥⌘S as in Pasta; ⌃⌘S also works): **History**, **Favorites**; **Apps** — source apps with icons, most recent first (right-click → **<App> ▸** quick actions, §5.1); **Types** — only types present (Text, Rich text, URL, Image, PDF, Color, File); **Collections**; **+ New Collection** pinned at the bottom. No item counts (as in Pasta). A selection filters the grid; search applies inside it.
@@ -918,9 +920,10 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 |-----|--------|
 | Typing | Goes to search |
 | ↑ ↓ ← → | Move selection (also while search is focused) |
-| ↩ | Restore selected |
-| ⇧↩ | Copy as plain text |
-| ⌘1 … ⌘9 | Restore the Nth visible card |
+| ↩ / double-click | Paste the selected card (§3.4) |
+| ⇧↩ | Paste as plain text |
+| ⌘1 … ⌘9 | Paste the Nth visible card |
+| ⌘C | Copy the selected card to the clipboard, without pasting |
 | ⌘K | Actions panel for the selection (§8.4) |
 | Space (grid focused) / ⌘Y (anywhere) | Toggle preview |
 | ⌘E | Edit text (§3.6) |
@@ -941,7 +944,7 @@ All actions come from `ActionRegistry`, so the context menu, the **⌘K panel** 
 
 Card context menu (also behind the card's **⋯** hover button). Actions that do not apply are left out rather than shown disabled, so the menu stays short (first-run feedback: four "Copy…" items side by side were confusing):
 
-- **Copy** (↩) · **Copy and Delete** (⌘X; first-run feedback: a plain "Cut" was unclear) · Add to / Remove from Favorites (⌘D) · Add to Collection ▸
+- **Paste** (↩) · Paste as Plain Text (⇧↩, formatted text only) · Copy to Clipboard (⌘C) — without Accessibility the first two read *Copy to Clipboard* / *Copy as Plain Text* and the third is left out · Add to / Remove from Favorites (⌘D) · Add to Collection ▸
 - Preview (Space) · Edit… (text only) · Rename… · **Duplicate As ▸** — Plain Text, No Formatting · Text from Image · text actions (§3.9); the result is a new card, the clipboard is untouched
 - Open Source Page (§5.2) · Reveal in Finder (files)
 - **Rules for <App> ▸** — the quick actions of §5.1 plus *Delete This and Stop Saving from <App>*
@@ -969,7 +972,7 @@ In-window overlay (not the system Quick Look panel), with metadata: source app, 
 
 Opening Settings or Diagnostics hides the panel; closing them brings it back. Both are plain AppKit windows (`SecondaryWindows`), and the app uses the AppKit lifecycle with an Edit menu for text fields: with SwiftUI scenes the system showed the Settings scene on its own — at launch and after the panel closed — and the app could not prevent it (first-run feedback). The system may not quit Memopila for having no windows (automatic termination is off). Closing the panel or the last window gives the keyboard back to the app that had it. No window is restored at launch; a manual launch (not at login) opens the panel, so the app is visibly running even when a crowded menu bar hides its icon under the notch (Diagnostics shows where the icon is). The Settings window (and Diagnostics) floats above other apps until closed: Memopila has no Dock icon and no ⌘Tab entry, so a window that fell behind another app could not be found again. There is no Dock icon option (switching the activation policy hid open windows). Explanations sit in section footers.
 
-- **General:** all three shortcuts (window, pause, skip), clipboard access status (§3.1), launch at login, Paste after restore with Accessibility status.
+- **General:** all three shortcuts (window, pause, skip), clipboard access status (§3.1), launch at login, *Choosing an item* (pastes / only copies) with Accessibility status.
 - **History:** *Keep up to* and *Delete items older than* as pickers (presets plus any current value), usage (items, favorites, stored data of 512 MB, location), Clear History (`.nonFavorites`) and Clear Everything (`.all`), both confirmed.
 - **Privacy:** Secrets (§3.10), identity mode Standard / Strict with the trust-boundary note (§5), Ignore content from other devices, a plain list of what Memopila does with data (§9).
 - **Apps:** per-app settings (§5.1).
@@ -994,7 +997,7 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 | Pause / Skip next copy | Content copied while paused or skipped is never read (§3.7) |
 | Markers | Skip entire change; test each identifier (§3.1) |
 | Self-writes | Suppress only a confirmed `ownedCount` once (§3.4) |
-| Accessibility | Only for **Paste after restore** (off by default); when granted, also used for source window titles (§5.2) |
+| Accessibility | Only for **Paste** (§3.4; asked for from a banner or Settings, never on its own); when granted, also used for source window titles (§5.2) |
 | Text recognition | On device; no network (§3.8) |
 | Files | Paths only; display-only QuickLook thumbnails; Unavailable when missing (§3.3) |
 | At-rest encryption | None in v1 |
@@ -1039,7 +1042,7 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 
 ### Phase 6 — Polish
 
-**Done when:** login item, window frame per display, Paste after restore (§3.4), privacy copy does not over-claim (§9), VoiceOver labels on cards and controls, English and Russian localization, UI checked on 15.x without Liquid Glass, all memory budgets re-verified.
+**Done when:** login item, window frame per display, Paste (§3.4), privacy copy does not over-claim (§9), VoiceOver labels on cards and controls, English and Russian localization, UI checked on 15.x without Liquid Glass, all memory budgets re-verified.
 
 ---
 
@@ -1049,7 +1052,7 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 |-------|-------------------------|----------|
 | Unit | §3.1 markers; §3.2 size budget; §3.2.2 format policy; §3.3 paths/coalesce; §3.9 text actions; §4 MCS1/file list; §5 identity / per-app settings; §5.2 source page parsing; §6 retention / expiry / preflight; §3.6 edit/merge; §7.4 decode | TDD on the owning section |
 | Integration | §3.2 coordination (Clear/Delete/Edit races, save failures); §3.4 Writer + token; §3.5 SwiftData rows, integrity, rollback; §3.7 pause / skip; §3.8 recognition queue | Contract test first; seams for store failures and the frontmost app |
-| System / manual | §3.1 access alerts on each OS of the matrix; §2 hotkeys/Dock; §8.1 panel focus; login; Paste after restore | Automate stable cases; OS dialogs on concrete versions |
+| System / manual | §3.1 access alerts on each OS of the matrix; §2 hotkeys/Dock; §8.1 panel focus; login; Paste | Automate stable cases; OS dialogs on concrete versions |
 | Performance | §7.3 memory budgets; §8.6 search budget | Scripted scenarios + `phys_footprint`; Instruments before each phase is done |
 
 **Rules:**

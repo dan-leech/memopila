@@ -23,6 +23,9 @@ final class HistoryPanel: NSPanel {
         titlebarAppearsTransparent = true
         isMovableByWindowBackground = true
         hidesOnDeactivate = false
+        // Memopila is usually not the active app while the panel is open: without this AppKit
+        // shows no tooltips in it.
+        allowsToolTipsWhenApplicationIsInactive = true
         becomesKeyOnlyIfNeeded = false
         isReleasedWhenClosed = false
         minSize = PanelController.minimumSize
@@ -191,8 +194,8 @@ final class PanelController: NSObject, NSWindowDelegate {
                 return true
             }
             if flags == .command, key.letter == "f" { model.editorState?.showFind(); return true }
-            if flags == .command, key.isReturn { model.saveEditor(thenCopy: true); return true }
-            if flags == .command, key.letter == "s" { model.saveEditor(thenCopy: false); return true }
+            if flags == .command, key.isReturn { model.saveEditor(thenRestore: true); return true }
+            if flags == .command, key.letter == "s" { model.saveEditor(thenRestore: false); return true }
             return false
         case .actions:
             guard let state = model.actionsState else { return false }
@@ -263,8 +266,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         case "f": model.focusSearch()
         case ",": model.openSettings()
         case "w": close()
-        case "c": model.restoreSelected()
-        case "x": if let id = history.selectedID { model.cut(id) }
+        case "c": model.restoreSelected(paste: false)
         case "p": model.isPinned.toggle()
         case "=", "+": model.changeGridDensity(by: -1)
         case "-": model.changeGridDensity(by: 1)
@@ -313,7 +315,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     /// Cut / copy / paste / select all / undo in text fields. A non-activating panel does not get
     /// them from the main menu, so they go to the first responder directly. ⌘C without a text
-    /// selection restores the selected card instead.
+    /// selection copies the selected card instead.
     private func forwardEditCommand(_ key: KeyPress, flags: NSEvent.ModifierFlags) -> Bool? {
         guard let textView = panel?.firstResponder as? NSTextView else { return nil }
         switch (key.letter, flags) {
@@ -329,10 +331,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         let selector: Selector
         switch (key.letter, flags) {
         case ("x", .command):
-            // Without a text selection ⌘X cuts the selected card, as in Pasta.
-            guard textView.selectedRange().length > 0 else { return nil }
             selector = #selector(NSText.cut(_:))
         case ("c", .command):
+            // Without a text selection ⌘C copies the selected card.
             guard textView.selectedRange().length > 0 else { return nil }
             selector = #selector(NSText.copy(_:))
         case ("v", .command): selector = #selector(NSText.paste(_:))

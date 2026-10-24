@@ -16,7 +16,7 @@ All v1 features of the plan are implemented and build in CI; they have not yet b
 - Pause capture, *Skip next copy* (menu, optional hotkeys).
 - Preview with syntax highlighting, *Copied from <page>*, text recognized in images (Vision, on device).
 - Edit text with text actions, rename, favorites, collections; *Duplicate As* text actions; ⌘K actions panel; full keyboard map (PLAN §8.3).
-- Launch at login, *Paste after restore* (Accessibility), English and Russian.
+- Choosing an item pastes it into the app you were in (needs Accessibility; otherwise it is copied), launch at login, tooltips on every control, English and Russian.
 
 ## Build and run
 

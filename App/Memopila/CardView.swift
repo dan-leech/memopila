@@ -46,7 +46,7 @@ struct CardView: View {
         .overlay(alignment: .topTrailing) { cornerControls }
         .overlay {
             if model.copiedCardID == card.id {
-                CopiedBadge().transition(.scale(scale: 0.6).combined(with: .opacity))
+                CopiedBadge(pasted: model.copiedCardWasPasted).transition(.scale(scale: 0.6).combined(with: .opacity))
             }
         }
         .opacity(isUnavailable ? 0.55 : 1)
@@ -299,14 +299,16 @@ private struct CardIconButton: View {
     }
 }
 
-/// Shown on a card for a moment after it was copied while the window is pinned.
+/// Shown on a card for a moment after it was pasted or copied while the window is pinned.
 private struct CopiedBadge: View {
+    let pasted: Bool
+
     var body: some View {
         VStack(spacing: 4) {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 26, weight: .semibold))
                 .foregroundStyle(.green)
-            Text("Copied").font(.caption.bold())
+            Text(pasted ? String(localized: "Pasted") : String(localized: "Copied")).font(.caption.bold())
         }
         .padding(12)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))

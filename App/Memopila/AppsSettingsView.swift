@@ -285,6 +285,7 @@ struct FormatRulesEditor: View {
                     Image(systemName: "minus.circle")
                 }
                 .buttonStyle(.borderless)
+                .help(String(localized: "Remove rule"))
                 .accessibilityLabel(Text("Remove rule"))
             }
         }

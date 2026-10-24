@@ -64,7 +64,9 @@ struct HistoryView: View {
                 Image(systemName: model.isPinned ? "pin.fill" : "pin")
                     .foregroundStyle(model.isPinned ? Color.accentColor : Color.secondary)
             }
-            .help(model.isPinned ? String(localized: "Unpin: close after copying and on focus loss") : String(localized: "Pin: keep the window open"))
+            .help(model.isPinned
+                ? String(localized: "Unpin (⌘P): the window closes after you choose an item or switch apps")
+                : String(localized: "Pin (⌘P): keep the window open after choosing an item and when you switch apps"))
             .accessibilityLabel(model.isPinned ? Text("Unpin window") : Text("Pin window"))
 
             Menu {
@@ -75,6 +77,7 @@ struct HistoryView: View {
             .menuStyle(.button)
             .menuIndicator(.hidden)
             .fixedSize()
+            .help(String(localized: "Pause, Clear History, Settings and more"))
             .accessibilityLabel(Text("Menu"))
         }
         .buttonStyle(.borderless)
@@ -280,6 +283,28 @@ private struct BannerStack: View {
                     Button("Check Again") { monitor.refreshAccess() }
                 }
             }
+            if model.settings.pasteDirectly, !model.accessibilityTrusted {
+                Banner(
+                    systemImage: "hand.point.up.left.fill",
+                    tint: .blue,
+                    message: String(localized: "To paste into apps, Memopila needs Accessibility. Until then a chosen item is only copied: paste it with ⌘V.")
+                ) {
+                    Button("Allow…") {
+                        AccessibilityBridge.requestTrust()
+                        AccessibilityBridge.openSettings()
+                    }
+                    .help(String(localized: "Turn on Memopila in System Settings → Privacy & Security → Accessibility"))
+                    Button("Only Copy") { model.settings.pasteDirectly = false }
+                        .help(String(localized: "Choosing an item only copies it; paste with ⌘V. You can change this in Settings → General."))
+                }
+                // Picks up the permission while the banner is on screen.
+                .task {
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .seconds(2))
+                        model.refreshAccessibility()
+                    }
+                }
+            }
             if let error = model.history.loadError {
                 Banner(systemImage: "exclamationmark.triangle.fill", tint: .red, message: String(localized: "History could not be loaded: \(error)"))
             }
@@ -361,7 +386,7 @@ private struct HistoryGrid: View {
                                 insertion: .scale(scale: 0.85).combined(with: .opacity),
                                 removal: .opacity
                             ))
-                            .accessibilityAction(named: Text("Copy to Clipboard")) { model.restore(card.id) }
+                            .accessibilityAction(named: Text(model.chooseTitle)) { model.restore(card.id) }
                             .accessibilityAction(named: Text("Preview")) { model.present(.preview(card.id)) }
                             .onAppear { model.history.cardAppeared(card) }
                         }

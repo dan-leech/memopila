@@ -67,6 +67,10 @@ final class AppModel {
     var isCommandHeld = false
     /// The card just copied while the window is pinned; it shows a checkmark for a moment.
     private(set) var copiedCardID: UUID?
+    /// The badge on that card says Pasted rather than Copied.
+    private(set) var copiedCardWasPasted = false
+    /// Accessibility, needed to paste (§3.4); refreshed when the panel opens.
+    private(set) var accessibilityTrusted = AccessibilityBridge.isTrusted
     /// Bumped whenever search should take focus (open, ⌘F, overlay closed).
     private(set) var focusSearchToken = 0
     private(set) var hotKeyErrors: [HotKeyRole: String] = [:]
@@ -174,7 +178,7 @@ final class AppModel {
         }
     }
 
-    func saveEditor(thenCopy: Bool) {
+    func saveEditor(thenRestore: Bool) {
         guard let state = editorState, !state.isSaving, let text = state.currentText() else { return }
         guard !text.isEmpty else {
             state.error = String(localized: "The text is empty.")
@@ -184,7 +188,7 @@ final class AppModel {
         Task {
             // The title first: an edit that merges into another record keeps that record's title (§3.6).
             if state.titleChanged { try? await store.rename(state.id, title: state.title) }
-            let error = await saveEdit(state.id, text: text, thenCopy: thenCopy)
+            let error = await saveEdit(state.id, text: text, thenRestore: thenRestore)
             state.isSaving = false
             state.error = error
         }
@@ -204,6 +208,7 @@ final class AppModel {
 
     func panelWillShow() {
         refreshPreviousApp()
+        refreshAccessibility()
         purgeTask?.cancel()
         present(nil)
         toasts.dismiss()
@@ -294,12 +299,30 @@ final class AppModel {
 
     // MARK: Restore (§3.4)
 
-    /// ↩ / ⇧↩: waits for a pending search so the restored card is the one the results show.
-    func restoreSelected(variant: RestoreVariant = .original) {
+    /// Choosing an item (↩, double-click, ⌘1…⌘9) pastes it into the app behind the window, as in
+    /// Pasta; without Accessibility, or set to *Only copies it*, it only goes to the clipboard.
+    var pastesOnChoose: Bool { settings.pasteDirectly && accessibilityTrusted }
+
+    var chooseTitle: String {
+        pastesOnChoose ? String(localized: "Paste") : String(localized: "Copy to Clipboard")
+    }
+
+    var choosePlainTextTitle: String {
+        pastesOnChoose ? String(localized: "Paste as Plain Text") : String(localized: "Copy as Plain Text")
+    }
+
+    func refreshAccessibility() {
+        let trusted = AccessibilityBridge.isTrusted
+        if trusted != accessibilityTrusted { accessibilityTrusted = trusted }
+    }
+
+    /// ↩ / ⇧↩ / ⌘C: waits for a pending search so the restored card is the one the results show.
+    /// `paste: false` only copies (⌘C).
+    func restoreSelected(variant: RestoreVariant = .original, paste: Bool? = nil) {
         Task {
             await history.settle()
             guard let id = history.selectedID ?? history.cards.first?.id else { return }
-            await performRestore(id, variant: variant)
+            await performRestore(id, variant: variant, paste: paste)
         }
     }
 
@@ -312,13 +335,13 @@ final class AppModel {
         }
     }
 
-    func restore(_ id: UUID, variant: RestoreVariant = .original) {
-        Task { await performRestore(id, variant: variant) }
+    func restore(_ id: UUID, variant: RestoreVariant = .original, paste: Bool? = nil) {
+        Task { await performRestore(id, variant: variant, paste: paste) }
     }
 
-    /// `true` when the clipboard now holds the item (or its variant).
+    /// `true` when the clipboard now holds the item (or its variant). `paste` overrides the setting.
     @discardableResult
-    private func performRestore(_ id: UUID, variant: RestoreVariant) async -> Bool {
+    private func performRestore(_ id: UUID, variant: RestoreVariant, paste: Bool? = nil) async -> Bool {
         guard let content = await variantContent(id, variant: variant) else { return false }
         let items = content.items
         let sourceBundleID = content.sourceBundleID
@@ -331,17 +354,22 @@ final class AppModel {
         case .failed(let message):
             return fail(message)
         case .written:
+            refreshAccessibility()
+            let pastes = (paste ?? settings.pasteDirectly) && accessibilityTrusted
             let target = previousApp
+            // Memopila itself is active after a launch by hand or after Settings: the target app
+            // needs a moment to take the focus back before ⌘V reaches it.
+            let wasActive = NSApp.isActive
             if isPinned {
-                showCopied(id)
+                showCopied(id, pasted: pastes)
                 // Pinned: the panel stays visible but gives the key focus back to the target app.
-                if settings.pasteAfterRestore { _ = target?.activate() }
+                if pastes { _ = target?.activate() }
             } else {
                 panel.close()
             }
-            if settings.pasteAfterRestore {
-                try? await Task.sleep(for: .milliseconds(80))
-                AccessibilityBridge.paste(to: target)
+            if pastes, let target, !target.isTerminated {
+                try? await Task.sleep(for: .milliseconds(wasActive || isPinned ? 250 : 80))
+                AccessibilityBridge.paste()
             }
             try? await store.markUsed(id, at: Date())
             history.storeDidChange()
@@ -386,8 +414,9 @@ final class AppModel {
         }
     }
 
-    private func showCopied(_ id: UUID) {
+    private func showCopied(_ id: UUID, pasted: Bool) {
         copiedCardID = id
+        copiedCardWasPasted = pasted
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(900))
@@ -448,14 +477,6 @@ final class AppModel {
             case .dropped:
                 break
             }
-        }
-    }
-
-    /// Copy, then delete (⌘X, as in Pasta).
-    func cut(_ id: UUID) {
-        Task {
-            guard await performRestore(id, variant: .original) else { return }
-            delete([id], confirmed: true)
         }
     }
 
@@ -530,14 +551,14 @@ final class AppModel {
     }
 
     /// Edit save (§3.6). Returns an error message to keep the editor open, or `nil` on success.
-    func saveEdit(_ id: UUID, text: String, thenCopy: Bool) async -> String? {
+    func saveEdit(_ id: UUID, text: String, thenRestore: Bool) async -> String? {
         let store = store
         let maxBytes = settings.maxItemBytes
         switch await monitor.destructive({ opSeq in try await store.editText(id, text: text, opSeq: opSeq, maxBytes: maxBytes) }) {
         case .success(.updated):
             present(nil)
             history.storeDidChange()
-            if thenCopy { await performRestore(id, variant: .original) }
+            if thenRestore { await performRestore(id, variant: .original) }
             return nil
         case .success(.merged(let survivor)):
             present(nil)
@@ -545,7 +566,7 @@ final class AppModel {
             history.removeLocally([id])
             history.storeDidChange()
             toasts.show(String(localized: "Merged with an existing record"))
-            if thenCopy { await performRestore(survivor, variant: .original) }
+            if thenRestore { await performRestore(survivor, variant: .original) }
             return nil
         case .success(.rejected(let message)):
             return message
