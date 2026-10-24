@@ -40,6 +40,7 @@ func reader(
     ignoreRemote: Bool = false,
     saveAnyway: Bool = false,
     secretPolicy: SecretPolicy = .off,
+    screenshot: String? = nil,
     now: Date = Date(timeIntervalSince1970: 1_000)
 ) -> SnapshotReader {
     SnapshotReader(
@@ -50,7 +51,8 @@ func reader(
             ownBundleID: ownBundleID,
             ignoreRemoteClipboard: ignoreRemote,
             saveAnyway: saveAnyway,
-            secretPolicy: secretPolicy
+            secretPolicy: secretPolicy,
+            screenshotSource: screenshot
         ),
         now: { now }
     )

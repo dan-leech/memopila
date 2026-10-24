@@ -113,6 +113,31 @@ struct SnapshotReaderTests {
         #expect(snapshot.skippedTypes.isEmpty)
     }
 
+    @Test func screenshotIsAttributedToTheScreenshotAppNotTheFrontmostOne() throws {
+        let pasteboard = FakePasteboard(items: [[(.png, utf8("png"))]])
+        let snapshot = try #require(reader(screenshot: "com.apple.screenshot.launcher").read(pasteboard).snapshot)
+        #expect(snapshot.identity == AppIdentity(bundleID: "com.apple.screenshot.launcher", source: .frontmost))
+    }
+
+    @Test func imageWithALinkKeepsTheFrontmostAppDuringAScreenshot() throws {
+        // A browser's Copy Image carries the page URL as well; it is not a screenshot.
+        let pasteboard = FakePasteboard(items: [[(.png, utf8("png")), (.url, utf8("https://example.com/a.png"))]])
+        let snapshot = try #require(reader(screenshot: "com.apple.screenshot.launcher").read(pasteboard).snapshot)
+        #expect(snapshot.identity == AppIdentity(bundleID: "com.example.editor", source: .frontmost))
+    }
+
+    @Test func textKeepsTheFrontmostAppDuringAScreenshot() throws {
+        let pasteboard = FakePasteboard(items: [[(.utf8PlainText, utf8("hi"))]])
+        let snapshot = try #require(reader(screenshot: "com.apple.screenshot.launcher").read(pasteboard).snapshot)
+        #expect(snapshot.identity == AppIdentity(bundleID: "com.example.editor", source: .frontmost))
+    }
+
+    @Test func sourceMarkerWinsOverAScreenshotGuess() throws {
+        let pasteboard = FakePasteboard(items: [[(.png, utf8("png")), (.source, utf8("com.example.paint"))]])
+        let snapshot = try #require(reader(screenshot: "com.apple.screenshot.launcher").read(pasteboard).snapshot)
+        #expect(snapshot.identity == AppIdentity(bundleID: "com.example.paint", source: .marker))
+    }
+
     @Test func finderCopyStoresCoalescedPathsAndSkipsIcons() throws {
         let pasteboard = FakePasteboard(items: [[
             (.utf8PlainText, utf8("a b.txt")),

@@ -146,8 +146,10 @@ final class ClipboardMonitor {
 
     private func captureContext(saveAnyway: Bool, sourceSince: Date?) -> CaptureContext {
         var source = frontmostTracker.source(since: sourceSince ?? Date())
+        var screenshotSource = frontmostTracker.screenshotSource()
         if let launchChangeCount, NSPasteboard.general.changeCount == launchChangeCount {
             source = nil
+            screenshotSource = nil
         } else {
             launchChangeCount = nil
         }
@@ -160,7 +162,8 @@ final class ClipboardMonitor {
             ignoreRemoteClipboard: settings.ignoreRemoteClipboard,
             saveAnyway: saveAnyway,
             secretPolicy: settings.secretPolicy,
-            secretKinds: settings.secretKinds
+            secretKinds: settings.secretKinds,
+            screenshotSource: screenshotSource
         )
     }
 
@@ -211,7 +214,8 @@ final class ClipboardMonitor {
             coordinator.recordSaveSuccess()
             if current?.changeCount == snapshot.changeCount { current = nil }
             if NSPasteboard.general.changeCount == snapshot.changeCount { setClipboardRecord(id, changeCount: snapshot.changeCount) }
-            record("change \(snapshot.changeCount) saved: \(snapshot.displayType.rawValue), \(snapshot.payloadSizeBytes) bytes")
+            // The source app's bundle ID is metadata, never clipboard content.
+            record("change \(snapshot.changeCount) saved: \(snapshot.displayType.rawValue), \(snapshot.payloadSizeBytes) bytes, from \(snapshot.identity.bundleID ?? "unknown app")")
             onSaved?(id)
         case .rejected(let reason):
             current = CurrentClipboard(changeCount: snapshot.changeCount, status: .rejected(reason), change: change, thumbnail: enrichment.thumbnail)

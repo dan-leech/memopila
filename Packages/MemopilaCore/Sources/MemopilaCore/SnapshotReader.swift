@@ -32,6 +32,10 @@ public struct CaptureContext: Sendable {
     public var secretPolicy: SecretPolicy
     /// Kinds the user left on in Settings.
     public var secretKinds: Set<SecretKind>
+    /// A macOS screenshot agent was active around this change. A screenshot is copied by that agent
+    /// while another app stays frontmost, so an image-only change without a source marker is
+    /// attributed to this app (the Screenshot app) instead of the frontmost one (§5).
+    public var screenshotSource: String?
 
     public init(
         profiles: AppProfiles = AppProfiles(),
@@ -42,7 +46,8 @@ public struct CaptureContext: Sendable {
         ignoreRemoteClipboard: Bool = false,
         saveAnyway: Bool = false,
         secretPolicy: SecretPolicy = .off,
-        secretKinds: Set<SecretKind> = Set(SecretKind.allCases)
+        secretKinds: Set<SecretKind> = Set(SecretKind.allCases),
+        screenshotSource: String? = nil
     ) {
         self.profiles = profiles
         self.formatPolicy = formatPolicy
@@ -53,6 +58,7 @@ public struct CaptureContext: Sendable {
         self.saveAnyway = saveAnyway
         self.secretPolicy = secretPolicy
         self.secretKinds = secretKinds
+        self.screenshotSource = screenshotSource
     }
 }
 
@@ -182,9 +188,13 @@ public struct SnapshotReader: Sendable {
             guard itemTypes[index].contains(.source) else { return .notDeclared }
             return pasteboard.string(forItem: index, type: .source).map(ItemSourceValue.value) ?? .unreadable
         })
+        var frontmost = context.frontmostBundleID
+        if marker == .absent, let screenshotSource = context.screenshotSource, Self.isImageOnly(itemTypes) {
+            frontmost = screenshotSource
+        }
         let identity = AppIdentity.resolve(
             marker: marker,
-            frontmostBundleID: context.frontmostBundleID,
+            frontmostBundleID: frontmost,
             panelIsKey: context.panelIsKey,
             ownBundleID: context.ownBundleID
         )
@@ -306,6 +316,17 @@ public struct SnapshotReader: Sendable {
             if let data = representation.bytes, let url = SourcePage.url(fromWebArchive: data) { return url }
         }
         return nil
+    }
+
+    /// Every item offers a raster image and none offers text, a link or a file: what a screenshot
+    /// copied to the clipboard looks like (an image copied in a browser also carries its URL).
+    static func isImageOnly(_ itemTypes: [[PasteboardType]]) -> Bool {
+        !itemTypes.isEmpty && itemTypes.allSatisfy { types in
+            types.contains(where: \.isRasterImage) && !types.contains { type in
+                PasteboardType.plainTextTypes.contains(type) || PasteboardType.richTextTypes.contains(type)
+                    || type == .url || type.isFileReference
+            }
+        }
     }
 
     /// Declared non-metadata types across all items, first occurrence order.
