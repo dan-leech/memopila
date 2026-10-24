@@ -176,7 +176,16 @@ final class PanelController: NSObject, NSWindowDelegate {
         case .preview(let id):
             return handlePreviewKey(key, flags: flags, id: id)
         case .editor:
-            if key.code == kVK_Escape { model.present(nil); return true }
+            if key.code == kVK_Escape {
+                // Esc inside the find bar closes the find bar, not the editor.
+                if let responder = panel?.firstResponder as? NSView, let editor = model.editorState?.textView,
+                   responder !== editor, let scrollView = editor.enclosingScrollView, responder.isDescendant(of: scrollView) {
+                    return false
+                }
+                model.cancelEditor()
+                return true
+            }
+            if flags == .command, key.letter == "f" { model.editorState?.showFind(); return true }
             if flags == .command, key.isReturn { model.saveEditor(thenCopy: true); return true }
             if flags == .command, key.letter == "s" { model.saveEditor(thenCopy: false); return true }
             return false
@@ -252,6 +261,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         case "c": model.restoreSelected()
         case "x": if let id = history.selectedID { model.cut(id) }
         case "p": model.isPinned.toggle()
+        case "=", "+": model.changeGridDensity(by: -1)
+        case "-": model.changeGridDensity(by: 1)
         case ".": model.monitor.togglePause()
         default: return false
         }
@@ -360,5 +371,6 @@ struct KeyPress {
         kVK_ANSI_A: "a", kVK_ANSI_C: "c", kVK_ANSI_D: "d", kVK_ANSI_E: "e", kVK_ANSI_F: "f", kVK_ANSI_K: "k",
         kVK_ANSI_R: "r", kVK_ANSI_S: "s", kVK_ANSI_V: "v", kVK_ANSI_W: "w", kVK_ANSI_X: "x", kVK_ANSI_Y: "y",
         kVK_ANSI_Z: "z", kVK_ANSI_P: "p", kVK_ANSI_Comma: ",", kVK_ANSI_Period: ".",
+        kVK_ANSI_Equal: "=", kVK_ANSI_Minus: "-",
     ]
 }

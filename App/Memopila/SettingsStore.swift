@@ -49,6 +49,8 @@ final class SettingsStore {
     var pausedUntil: Date? { didSet { defaults.set(pausedUntil, forKey: Key.pausedUntil) } }
     var pausedIndefinitely: Bool { didSet { defaults.set(pausedIndefinitely, forKey: Key.pausedIndefinitely) } }
     var showSidebar: Bool { didSet { defaults.set(showSidebar, forKey: Key.showSidebar) } }
+    /// Cards visible at once, as in Pasta: columns × rows, 3 × 3 by default (§8.2).
+    var gridSize: GridSize { didSet { store(gridSize, Key.gridSize) } }
     /// Panel frame per display (§8.1), keyed by `PanelController.displayKey`.
     var panelFrames: [String: String] { didSet { defaults.set(panelFrames, forKey: Key.panelFrames) } }
 
@@ -75,6 +77,7 @@ final class SettingsStore {
         pausedUntil = defaults.object(forKey: Key.pausedUntil) as? Date
         pausedIndefinitely = defaults.bool(forKey: Key.pausedIndefinitely)
         showSidebar = defaults.object(forKey: Key.showSidebar) as? Bool ?? true
+        gridSize = Self.load(GridSize.self, Key.gridSize, defaults) ?? .default
         panelFrames = defaults.dictionary(forKey: Key.panelFrames) as? [String: String] ?? [:]
     }
 
@@ -195,6 +198,7 @@ final class SettingsStore {
         static let pausedUntil = "pausedUntil"
         static let pausedIndefinitely = "pausedIndefinitely"
         static let showSidebar = "showSidebar"
+        static let gridSize = "gridSize"
         static let panelFrames = "panelFrames"
     }
 
@@ -215,4 +219,19 @@ extension Comparable {
     func clamped(to range: ClosedRange<Self>) -> Self {
         min(max(self, range.lowerBound), range.upperBound)
     }
+}
+
+/// The panel grid: how many cards fit across and down; cards resize with the window (§8.2).
+struct GridSize: Codable, Hashable, Sendable {
+    var columns: Int
+    var rows: Int
+
+    static let `default` = GridSize(columns: 3, rows: 3)
+    /// From big cards to many small ones; ⌘+ and ⌘− step through them.
+    static let presets: [GridSize] = [
+        GridSize(columns: 2, rows: 2), GridSize(columns: 3, rows: 2), GridSize(columns: 3, rows: 3),
+        GridSize(columns: 4, rows: 3), GridSize(columns: 4, rows: 4), GridSize(columns: 5, rows: 4), GridSize(columns: 6, rows: 5),
+    ]
+
+    var title: String { "\(columns) × \(rows)" }
 }

@@ -55,6 +55,18 @@ private struct GeneralSettings: View {
             }
 
             Section {
+                Picker("Grid", selection: $settings.gridSize) {
+                    ForEach(GridSize.presets, id: \.self) { size in
+                        Text(size.title).tag(size)
+                    }
+                }
+            } header: {
+                Text("Window")
+            } footer: {
+                Text("How many cards fit across and down; cards resize with the window. ⌘+ and ⌘− in the window change it too.")
+            }
+
+            Section {
                 AccessStatusRow(monitor: model.monitor)
             } header: {
                 Text("Clipboard Access")

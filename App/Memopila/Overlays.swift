@@ -356,74 +356,201 @@ enum CodeStyler {
 
 struct EditorOverlay: View {
     let model: AppModel
-    let state: EditorState
+    @Bindable var state: EditorState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("Edit Text").font(.headline)
-                Spacer()
-                Menu("Text") {
-                    ForEach(TextAction.allCases, id: \.self) { action in
-                        Button(action.title) { state.apply(action) }
-                    }
-                }
-                .fixedSize()
-                .help(String(localized: "Applies to the selection, or to all text when nothing is selected"))
-            }
-            if state.hasFormatting {
-                Label("Formatting will be removed when you save.", systemImage: "exclamationmark.triangle")
-                    .font(.callout)
-                    .foregroundStyle(.orange)
-            }
+        VStack(spacing: 0) {
+            header
+            toolbar
+            Divider()
             PlainTextEditor(state: state)
-                .frame(minHeight: 200)
                 .overlay {
                     if !state.isLoaded { ProgressView().controlSize(.small) }
                 }
-            if let error = state.error {
-                Text(error).font(.callout).foregroundStyle(.red)
+            Divider()
+            footer
+        }
+        .frame(minWidth: 520, maxWidth: .infinity, minHeight: 340, maxHeight: .infinity)
+    }
+
+    private var header: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "tag").foregroundStyle(.secondary)
+            TextField("Title (optional)", text: $state.title)
+                .textFieldStyle(.plain)
+                .font(.system(size: 15, weight: .semibold))
+            if state.hasFormatting {
+                Label("Formatting will be removed", systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .help(String(localized: "This item has rich text; saving keeps the plain text only."))
             }
-            HStack {
-                Text("⌘S Save · ⌘↩ Save & Copy · Esc Cancel").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button("Cancel") { model.present(nil) }
-                Button("Save") { model.saveEditor(thenCopy: false) }
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+    }
+
+    private var toolbar: some View {
+        HStack(spacing: 2) {
+            ToolbarIcon(systemImage: "arrow.uturn.backward", help: String(localized: "Undo (⌘Z)")) { state.undo() }
+            ToolbarIcon(systemImage: "arrow.uturn.forward", help: String(localized: "Redo (⇧⌘Z)")) { state.redo() }
+            Divider().frame(height: 16).padding(.horizontal, 4)
+            actionMenu(systemImage: "textformat.size", help: String(localized: "Change Case"), actions: [.uppercase, .lowercase, .titleCase])
+            actionMenu(
+                systemImage: "line.3.horizontal.decrease",
+                help: String(localized: "Lines and Spaces"),
+                actions: [.trimWhitespace, .removeLineBreaks, .sortLines, .removeDuplicateLines]
+            )
+            actionMenu(systemImage: "curlybraces", help: String(localized: "JSON"), actions: [.formatJSON, .minifyJSON])
+            actionMenu(
+                systemImage: "chevron.left.forwardslash.chevron.right",
+                help: String(localized: "Encode and Decode"),
+                actions: [.urlEncode, .urlDecode, .base64Encode, .base64Decode]
+            )
+            Spacer()
+            Toggle(isOn: $state.wrapsLines) {
+                Image(systemName: "arrow.turn.down.left")
+            }
+            .toggleStyle(.button)
+            .buttonStyle(.borderless)
+            .help(String(localized: "Wrap long lines"))
+            ToolbarIcon(systemImage: "magnifyingglass", help: String(localized: "Find (⌘F)")) { state.showFind() }
+        }
+        .padding(.horizontal, 10)
+        .padding(.bottom, 6)
+    }
+
+    /// Text actions on the selection, or on all text when nothing is selected (§3.9).
+    private func actionMenu(systemImage: String, help: String, actions: [TextAction]) -> some View {
+        Menu {
+            ForEach(actions, id: \.self) { action in
+                Button(action.title) { state.apply(action) }
+            }
+        } label: {
+            Image(systemName: systemImage).frame(width: 26, height: 22)
+        }
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .buttonStyle(.borderless)
+        .fixedSize()
+        .help(help + " — " + String(localized: "applies to the selection, or to all text"))
+    }
+
+    private var footer: some View {
+        HStack(spacing: 10) {
+            Text(stats)
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+            if state.isDirty {
+                Label("Edited", systemImage: "circle.fill")
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .imageScale(.small)
+            }
+            if let error = state.error {
+                Text(error).font(.caption).foregroundStyle(.red).lineLimit(1)
+            }
+            Spacer()
+            if state.isConfirmingDiscard {
+                Text("Discard your changes?").font(.callout)
+                Button("Keep Editing") { state.isConfirmingDiscard = false }
+                Button("Discard", role: .destructive) { model.present(nil) }
+            } else {
+                Button("Cancel") { model.cancelEditor() }
+                Button { model.saveEditor(thenCopy: false) } label: { ShortcutLabel(title: String(localized: "Save"), shortcut: "⌘S") }
                     .disabled(!state.isLoaded || state.isSaving)
-                Button("Save & Copy") { model.saveEditor(thenCopy: true) }
+                Button { model.saveEditor(thenCopy: true) } label: { ShortcutLabel(title: String(localized: "Save & Copy"), shortcut: "⌘↩") }
                     .disabled(!state.isLoaded || state.isSaving)
                     .buttonStyle(.borderedProminent)
             }
         }
-        .padding(16)
-        .frame(minWidth: 460, maxWidth: .infinity, minHeight: 320, maxHeight: .infinity)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+
+    private var stats: String {
+        let characters = String(localized: "\(state.characterCount) characters")
+        guard state.lineCount > 1 else { return characters }
+        return String(localized: "\(state.lineCount) lines") + " · " + characters
     }
 }
 
-/// Plain `NSTextView` with its own undo stack (§3.6).
+private struct ToolbarIcon: View {
+    let systemImage: String
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage).frame(width: 26, height: 22).contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help(help)
+        .accessibilityLabel(Text(help))
+    }
+}
+
+private struct ShortcutLabel: View {
+    let title: String
+    let shortcut: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title)
+            Text(shortcut).opacity(0.6)
+        }
+    }
+}
+
+/// Plain `NSTextView` with its own undo stack and the system find bar (§3.6).
 struct PlainTextEditor: NSViewRepresentable {
     let state: EditorState
 
+    func makeCoordinator() -> Coordinator { Coordinator(state: state) }
+
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = NSTextView.scrollableTextView()
+        scrollView.drawsBackground = false
         guard let textView = scrollView.documentView as? NSTextView else { return scrollView }
         textView.isRichText = false
         textView.importsGraphics = false
         textView.allowsUndo = true
-        textView.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        textView.usesFindBar = true
+        textView.isIncrementalSearchingEnabled = true
+        textView.font = .monospacedSystemFont(ofSize: 12.5, weight: .regular)
+        textView.drawsBackground = false
         textView.isAutomaticQuoteSubstitutionEnabled = false
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
-        textView.textContainerInset = NSSize(width: 6, height: 6)
-        if state.isLoaded { textView.string = state.initialText }
-        state.textView = textView
+        textView.textContainerInset = NSSize(width: 10, height: 10)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = 2
+        textView.defaultParagraphStyle = paragraph
+        textView.delegate = context.coordinator
+        state.attach(textView)
         let state = state
         Task { @MainActor in state.focus() }
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {}
+
+    @MainActor
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        let state: EditorState
+
+        init(state: EditorState) {
+            self.state = state
+        }
+
+        func textDidChange(_ notification: Notification) {
+            state.textDidChange()
+        }
+    }
 }
 
 // MARK: - ⌘K actions panel (§8.4)

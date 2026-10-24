@@ -803,16 +803,6 @@
         }
       }
     },
-    "Applies to the selection, or to all text when nothing is selected": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Применяется к выделению или ко всему тексту, если ничего не выделено"
-          }
-        }
-      }
-    },
     "Apps": {
       "localizations": {
         "ru": {
@@ -999,6 +989,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Номера карт"
+          }
+        }
+      }
+    },
+    "Change Case": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Регистр"
           }
         }
       }
@@ -1595,6 +1595,26 @@
         }
       }
     },
+    "Discard": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить изменения"
+          }
+        }
+      }
+    },
+    "Discard your changes?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить изменения?"
+          }
+        }
+      }
+    },
     "Dismiss": {
       "localizations": {
         "ru": {
@@ -1635,12 +1655,22 @@
         }
       }
     },
-    "Edit Text": {
+    "Duplicate As": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Редактирование текста"
+            "value": "Дублировать как"
+          }
+        }
+      }
+    },
+    "Duplicated as %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Создан дубликат: %@"
           }
         }
       }
@@ -1671,6 +1701,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Включить захват"
+          }
+        }
+      }
+    },
+    "Encode and Decode": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Кодирование"
           }
         }
       }
@@ -1735,6 +1775,16 @@
         }
       }
     },
+    "Find (⌘F)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найти (⌘F)"
+          }
+        }
+      }
+    },
     "First copied": {
       "localizations": {
         "ru": {
@@ -1795,12 +1845,12 @@
         }
       }
     },
-    "Formatting will be removed when you save.": {
+    "Formatting will be removed": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "При сохранении форматирование будет удалено."
+            "value": "Форматирование будет удалено"
           }
         }
       }
@@ -1871,6 +1921,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ключи Google API"
+          }
+        }
+      }
+    },
+    "Grid": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сетка"
           }
         }
       }
@@ -1951,6 +2011,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "История хранится только на этом Mac, в ~/Library/Application Support/Memopila. Она не шифруется и никуда не отправляется."
+          }
+        }
+      }
+    },
+    "How many cards fit across and down; cards resize with the window. ⌘+ and ⌘− in the window change it too.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сколько карточек помещается по горизонтали и вертикали; карточки подстраиваются под размер окна. ⌘+ и ⌘− в окне тоже меняют сетку."
           }
         }
       }
@@ -2045,6 +2115,16 @@
         }
       }
     },
+    "JSON": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "JSON"
+          }
+        }
+      }
+    },
     "JWT": {
       "localizations": {
         "ru": {
@@ -2071,6 +2151,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Сохранять"
+          }
+        }
+      }
+    },
+    "Keep Editing": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Продолжить"
           }
         }
       }
@@ -2181,6 +2271,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Лимиты и дополнительно"
+          }
+        }
+      }
+    },
+    "Lines and Spaces": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Строки и пробелы"
           }
         }
       }
@@ -2435,6 +2535,16 @@
         }
       }
     },
+    "Not duplicated: the text contains a secret and secrets are not saved.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дубликат не создан: в тексте есть секрет, а секреты не сохраняются."
+          }
+        }
+      }
+    },
     "Not enabled yet": {
       "localizations": {
         "ru": {
@@ -2571,6 +2681,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ключи OpenAI"
+          }
+        }
+      }
+    },
+    "Original": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Оригинал"
           }
         }
       }
@@ -2891,6 +3011,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Запоминать исходную страницу и заголовок окна"
+          }
+        }
+      }
+    },
+    "Redo (⇧⌘Z)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Повторить (⇧⌘Z)"
           }
         }
       }
@@ -3795,12 +3925,32 @@
         }
       }
     },
+    "This item has rich text; saving keeps the plain text only.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В этом элементе форматированный текст; при сохранении останется только простой текст."
+          }
+        }
+      }
+    },
     "Title (empty removes it)": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Название (пустое — убрать)"
+          }
+        }
+      }
+    },
+    "Title (optional)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Название (необязательно)"
           }
         }
       }
@@ -3821,16 +3971,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Токены, ключи, JWT и номера карт распознаются на этом Mac. Сохранённые секреты скрыты на карточках (полностью видны в просмотре) и удаляются в срок; ⌘D оставляет секрет насовсем."
-          }
-        }
-      }
-    },
-    "Transform and Copy": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Преобразовать и скопировать"
           }
         }
       }
@@ -3921,6 +4061,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Отменить"
+          }
+        }
+      }
+    },
+    "Undo (⌘Z)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отменить (⌘Z)"
           }
         }
       }
@@ -4045,12 +4195,32 @@
         }
       }
     },
+    "Window": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Окно"
+          }
+        }
+      }
+    },
     "Won't save from %@": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Не сохраняем из «%@»"
+          }
+        }
+      }
+    },
+    "Wrap long lines": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переносить длинные строки"
           }
         }
       }
@@ -4071,6 +4241,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "все форматы"
+          }
+        }
+      }
+    },
+    "applies to the selection, or to all text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "к выделению или ко всему тексту"
           }
         }
       }
@@ -4141,16 +4321,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "простой текст"
-          }
-        }
-      }
-    },
-    "⌘S Save · ⌘↩ Save & Copy · Esc Cancel": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "⌘S — сохранить · ⌘↩ — сохранить и скопировать · Esc — отменить"
           }
         }
       }

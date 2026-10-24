@@ -1,5 +1,6 @@
 import AppKit
 import MemopilaCore
+import MemopilaServices
 import Observation
 
 /// The ⌘K panel: a searchable list of the selected card's actions (PLAN §8.4).
@@ -42,21 +43,47 @@ final class EditorState {
     let id: UUID
     /// RTF / HTML / web archive records lose their formatting on save.
     let hasFormatting: Bool
+    let originalTitle: String
+    var title: String {
+        didSet { updateDirty() }
+    }
     private(set) var isLoaded = false
     private(set) var initialText = ""
+    private(set) var isDirty = false
+    private(set) var lineCount = 1
+    private(set) var characterCount = 0
     var isSaving = false
     var error: String?
+    /// Esc with unsaved changes asks first.
+    var isConfirmingDiscard = false
+    var wrapsLines = true {
+        didSet { applyWrapping() }
+    }
     @ObservationIgnored weak var textView: NSTextView?
 
-    init(id: UUID, hasFormatting: Bool) {
+    init(id: UUID, hasFormatting: Bool, title: String?) {
         self.id = id
         self.hasFormatting = hasFormatting
+        originalTitle = title ?? ""
+        self.title = title ?? ""
+    }
+
+    var titleChanged: Bool {
+        title.trimmingCharacters(in: .whitespacesAndNewlines) != originalTitle
     }
 
     func load(_ text: String) {
         initialText = text
         isLoaded = true
         if let textView, textView.string.isEmpty { textView.string = text }
+        textDidChange()
+    }
+
+    func attach(_ textView: NSTextView) {
+        self.textView = textView
+        if isLoaded, textView.string.isEmpty { textView.string = initialText }
+        applyWrapping()
+        textDidChange()
     }
 
     func focus() {
@@ -67,6 +94,21 @@ final class EditorState {
     func currentText() -> String? {
         guard isLoaded else { return nil }
         return textView?.string ?? initialText
+    }
+
+    /// From the text view's delegate after every edit.
+    func textDidChange() {
+        let text = textView?.string ?? initialText
+        let length = (text as NSString).length
+        characterCount = length < 200_000 ? text.count : length
+        lineCount = TextStats.lineCount(text)
+        updateDirty()
+    }
+
+    private func updateDirty() {
+        let textChanged = isLoaded && (textView?.string ?? initialText) != initialText
+        isDirty = textChanged || titleChanged
+        if !isDirty { isConfirmingDiscard = false }
     }
 
     /// Runs a text action on the selection, or on everything when nothing is selected (§3.9).
@@ -84,5 +126,39 @@ final class EditorState {
         textView.textStorage?.replaceCharacters(in: range, with: output)
         textView.didChangeText()
         textView.setSelectedRange(NSRange(location: range.location, length: (output as NSString).length))
+    }
+
+    func undo() {
+        guard let manager = textView?.undoManager, manager.canUndo else { return }
+        manager.undo()
+    }
+
+    func redo() {
+        guard let manager = textView?.undoManager, manager.canRedo else { return }
+        manager.redo()
+    }
+
+    /// The text view's find bar (⌘F).
+    func showFind() {
+        guard let textView else { return }
+        let item = NSMenuItem()
+        item.tag = NSTextFinder.Action.showFindInterface.rawValue
+        textView.performFindPanelAction(item)
+    }
+
+    private func applyWrapping() {
+        guard let textView, let container = textView.textContainer, let scrollView = textView.enclosingScrollView else { return }
+        if wrapsLines {
+            textView.isHorizontallyResizable = false
+            container.widthTracksTextView = true
+            container.containerSize = NSSize(width: scrollView.contentSize.width, height: .greatestFiniteMagnitude)
+            scrollView.hasHorizontalScroller = false
+        } else {
+            container.widthTracksTextView = false
+            container.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
+            textView.isHorizontallyResizable = true
+            textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+            scrollView.hasHorizontalScroller = true
+        }
     }
 }

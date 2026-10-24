@@ -330,15 +330,14 @@ private struct HistoryGrid: View {
     let model: AppModel
 
     private static let spacing: CGFloat = 10
-    /// Three cards per row at the default window size, as in Pasta.
-    private static let minimumCardWidth: CGFloat = 136
 
     var body: some View {
         GeometryReader { geometry in
-            let available = geometry.size.width - Self.spacing * 2
-            let columns = max(1, Int((available + Self.spacing) / (Self.minimumCardWidth + Self.spacing)))
-            let cardWidth = (available - Self.spacing * CGFloat(columns - 1)) / CGFloat(columns)
-            let cardHeight = min(max(cardWidth * 0.8, 100), 200)
+            // Columns × rows fill the visible area, as in Pasta (3 × 3 by default); cards resize with the window.
+            let grid = model.settings.gridSize
+            let columns = max(1, grid.columns)
+            let rows = CGFloat(max(1, grid.rows))
+            let cardHeight = max(56, (geometry.size.height - Self.spacing * (rows + 1)) / rows)
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVGrid(
@@ -362,6 +361,10 @@ private struct HistoryGrid: View {
                             .simultaneousGesture(TapGesture().onEnded { model.history.selectedID = card.id })
                             .contextMenu { CardContextMenu(card: card, model: model) }
                             .onDrag { DragSupport.provider(for: card, store: model.store) }
+                            .transition(.asymmetric(
+                                insertion: .scale(scale: 0.85).combined(with: .opacity),
+                                removal: .opacity
+                            ))
                             .accessibilityAction(named: Text("Copy to Clipboard")) { model.restore(card.id) }
                             .accessibilityAction(named: Text("Preview")) { model.present(.preview(card.id)) }
                             .onAppear { model.history.cardAppeared(card) }

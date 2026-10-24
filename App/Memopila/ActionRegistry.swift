@@ -71,7 +71,7 @@ enum ActionRegistry {
         items.append(ActionItem(id: "rename", title: String(localized: "Rename…"), systemImage: "tag", shortcut: "⌘R") {
             model.present(.rename(id))
         })
-        if let transform = transformMenu(for: card, model: model) { items.append(transform) }
+        if let duplicate = duplicateMenu(for: card, model: model) { items.append(duplicate) }
 
         var open: [ActionItem] = []
         if let url = card.sourceURL.flatMap(URL.init(string:)) {
@@ -111,27 +111,26 @@ enum ActionRegistry {
         return items
     }
 
-    /// Every way to copy something other than the item itself, in one place: the result goes to the
-    /// clipboard and is not added to history (§3.4).
-    private static func transformMenu(for card: HistoryCard, model: AppModel) -> ActionItem? {
+    /// *Duplicate As ▸*: a new card with transformed text appears at the top; the original stays.
+    private static func duplicateMenu(for card: HistoryCard, model: AppModel) -> ActionItem? {
         let id = card.id
         var children: [ActionItem] = []
         if card.hasText, card.displayType != .text {
-            children.append(ActionItem(id: "transform.plain", title: String(localized: "Plain Text, No Formatting"), systemImage: "textformat", shortcut: "⇧↩") {
-                model.restore(id, variant: .plainText)
+            children.append(ActionItem(id: "duplicate.plain", title: String(localized: "Plain Text, No Formatting"), systemImage: "textformat") {
+                model.duplicate(id, as: .plainText)
             })
         }
         if card.hasRecognizedText {
-            children.append(ActionItem(id: "transform.ocr", title: String(localized: "Text from Image"), systemImage: "text.viewfinder") {
-                model.restore(id, variant: .recognizedText)
+            children.append(ActionItem(id: "duplicate.ocr", title: String(localized: "Text from Image"), systemImage: "text.viewfinder") {
+                model.duplicate(id, as: .recognizedText)
             })
         }
         if card.hasText {
-            if !children.isEmpty { children.append(.divider("transform.text")) }
-            children += textActions(for: card) { action in model.restore(id, variant: .textAction(action)) }
+            if !children.isEmpty { children.append(.divider("duplicate.text")) }
+            children += textActions(for: card) { action in model.duplicate(id, as: .textAction(action)) }
         }
         guard !children.isEmpty else { return nil }
-        return ActionItem(id: "transform", title: String(localized: "Transform and Copy"), systemImage: "wand.and.stars", children: children)
+        return ActionItem(id: "duplicate", title: String(localized: "Duplicate As"), systemImage: "plus.square.on.square", children: children)
     }
 
     static func textActions(for card: HistoryCard, run: @escaping @MainActor (TextAction) -> Void) -> [ActionItem] {
@@ -141,7 +140,7 @@ enum ActionRegistry {
         return TextAction.allCases.map { action in
             let available = text.map(action.isAvailable(for:)) ?? true
             return ActionItem(
-                id: "copyAs." + action.rawValue,
+                id: "textAction." + action.rawValue,
                 title: action.title,
                 disabledReason: available ? nil : action.unavailableReason
             ) { run(action) }

@@ -185,7 +185,7 @@ struct CardView: View {
         case .url:
             Text(card.preview)
                 .font(.system(size: 11.5, design: .monospaced))
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(Color(nsColor: .linkColor))
                 .lineLimit(6)
         case .text, .richText, .mixed:
             if card.preview.isEmpty {

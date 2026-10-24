@@ -378,7 +378,7 @@ User-facing name: **Restore** (menu: *Copy to Clipboard*).
 
 - **Restore:** all stored representations.
 - **Copy as plain text:** one item with `public.utf8-plain-text` derived from the record's text (UTF-8 decode helper, §7.4); available when the record has text.
-- **Copy as <text action>** (§3.9) and **Copy text from image** (§3.8): one item with `public.utf8-plain-text` holding the result.
+- **Copy text from image** (§3.8, preview button): one item with `public.utf8-plain-text` holding the result. Text actions and other transformations do not copy: they create a new card (*Duplicate As*, §3.9).
 - **Paste after restore** (Settings, off by default): once the panel has given up key status (it closes; when pinned it resigns key and stays visible), post ⌘V to the previous app via `CGEvent`. Requires Accessibility; without it the setting shows guidance and Restore still works.
 
 **After any confirmed write** (Restore or a variant): the store moves the source record to the top: `lastCopiedAt = max(lastCopiedAt, restoreTime)`; `copyCount` unchanged. The written content is suppressed by the token, so variant outputs (plain text, text actions, recognized text) are **not** added to history; to keep a transformed text, apply the action in the editor and save (§3.6).
@@ -475,7 +475,7 @@ If a mandatory gate fails → amend this PLAN with a fallback (layout, commit or
 
 **Edit text** — records with `displayType` `text`, `richText` or `url` (not images, PDFs, colors, files, mixed):
 
-- Editor: plain-text editor inside the window (⌘E / **Edit…**), same monospaced font as cards, standard undo while open. Its **Text** menu runs text actions (§3.9) on the selection or the whole text.
+- Editor: an overlay filling the window (⌘E / **Edit…**): an optional **title** field above the text (saved with it), a toolbar — Undo / Redo, *Change Case*, *Lines and Spaces*, *JSON*, *Encode and Decode* menus with the text actions (§3.9, on the selection or the whole text, undoable), *Wrap long lines*, *Find* (⌘F, system find bar) — a monospaced plain-text view, and a footer with live line and character counts, an *Edited* mark, Cancel / Save (⌘S) / Save & Copy (⌘↩). Esc or Cancel with unsaved changes asks *Discard your changes?* first; Esc in the find bar closes the find bar.
 - Records with rich formats (RTF, RTFD, HTML, web archive) show a warning: *Formatting will be removed*. Rich-text editing is deferred.
 - **Save** replaces the record's representations **in place** with one item holding `public.utf8-plain-text`. Recompute `contentHash`, `payloadSizeBytes`, `cardPreview`, `searchText`; `displayType` becomes `url` if the whole text is a single URL, else `text`. Keep favorite, collections, `copyCount`, timestamps, `customTitle`, source page; set `editedAt`. No version history.
 - **Save & Copy** (⌘↩ in the editor): save, then Restore.
@@ -529,7 +529,7 @@ Fixed v1 set (pure functions on `String`; off the main actor for text over 100 K
 | Base64 encode / decode | Decode: valid Base64 that decodes to UTF-8 text |
 
 - **Input:** the record's text via the decode helper (§7.4); formatting is not preserved (same as Copy as plain text).
-- **Where:** card context menu and ⌘K → **Copy As ▸ <action>** (§3.4 variant: result goes to the clipboard, not to history); editor (§3.6) → **Text** menu applies to the selection or whole text, undoable, then Save as usual.
+- **Where:** card context menu and ⌘K → **Duplicate As ▸** — Plain Text, No Formatting · Text from Image · each text action: the result becomes a **new card** at the top and is selected; the original stays (actions inside the manager change history, not the clipboard; copying the result is a normal ↩). Secret policy (§3.10) applies to the new card. Editor (§3.6) toolbar menus apply to the selection or whole text, undoable, then Save as usual. ⇧↩ still copies a record as plain text directly.
 - Unavailable actions are shown disabled with the reason in the tooltip.
 
 **Tests:** golden cases per action; invalid JSON / Base64 / percent-encoding → disabled; Copy As adds no record; editor apply + undo.
@@ -898,7 +898,7 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 
 - **Sidebar** (toggle button, ⌥⌘S as in Pasta; ⌃⌘S also works): **History**, **Favorites**; **Apps** — source apps with icons, most recent first (right-click → **<App> ▸** quick actions, §5.1); **Types** — only types present (Text, Rich text, URL, Image, PDF, Color, File); **Collections**; **+ New Collection** pinned at the bottom. No item counts (as in Pasta). A selection filters the grid; search applies inside it.
 - **Top bar** at the window's top edge (transparent title bar, no traffic lights): search field, then sidebar toggle, pin and a gear menu as in Pasta — Pause / Resume (⌘.), Skip Next Copy, Clear History…, Pin Window (⌘P), Hide Sidebar (⌥⌘S), Settings… (⌘,), Quit.
-- **Grid:** adaptive columns (3 at default width, cards at least 136 pt wide), cards ≈ 5:4 on a solid text-background color (darker than the panel in dark mode), selected card with an accent border. A custom title sits in its own tinted strip so it never reads as clipboard content. Hovering a card shows ♥ (favorite), 👁 (preview) and ⋯ (menu); after a copy with the window pinned the card shows a checkmark and the trackpad gives haptic feedback.
+- **Grid:** a fixed **columns × rows** grid that fills the visible area, as in Pasta — 3 × 3 by default, presets 2 × 2 … 6 × 5 in Settings → General and with ⌘+ / ⌘−; cards resize with the window; new and removed cards scale and fade in and out (store changes only, not searches); cards on a solid text-background color (darker than the panel in dark mode), selected card with an accent border. A custom title sits in its own tinted strip so it never reads as clipboard content. Hovering a card shows ♥ (favorite), 👁 (preview) and ⋯ (menu); after a copy with the window pinned the card shows a checkmark and the trackpad gives haptic feedback.
 - **Card content:**
   - Text — `customTitle` (if set) as a heading, then the first lines, monospaced (no syntax colors on cards).
   - URL — monospaced, link color.
@@ -930,6 +930,7 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 | ⌘F | Focus search |
 | ⌥⌘S (or ⌃⌘S) | Toggle sidebar |
 | ⌘P | Pin / unpin the window |
+| ⌘+ / ⌘− | Bigger / smaller cards (grid presets) |
 | ⌘. | Pause / resume capture |
 | Esc | Clear search → close |
 | ⌘, | Settings |
@@ -941,7 +942,7 @@ All actions come from `ActionRegistry`, so the context menu, the **⌘K panel** 
 Card context menu (also behind the card's **⋯** hover button). Actions that do not apply are left out rather than shown disabled, so the menu stays short (first-run feedback: four "Copy…" items side by side were confusing):
 
 - **Copy** (↩) · **Cut** (⌘X, copy then delete, as in Pasta) · Add to / Remove from Favorites (⌘D) · Add to Collection ▸
-- Preview (Space) · Edit… (text only) · Rename… · **Transform and Copy ▸** — Plain Text, No Formatting · Text from Image · text actions (§3.9); the result goes to the clipboard, not to history
+- Preview (Space) · Edit… (text only) · Rename… · **Duplicate As ▸** — Plain Text, No Formatting · Text from Image · text actions (§3.9); the result is a new card, the clipboard is untouched
 - Open Source Page (§5.2) · Reveal in Finder (files)
 - **Rules for <App> ▸** — the quick actions of §5.1 plus *Delete This and Stop Saving from <App>*
 - Delete (⌘⌫)

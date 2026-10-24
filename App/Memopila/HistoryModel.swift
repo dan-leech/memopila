@@ -2,6 +2,7 @@ import Foundation
 import MemopilaCore
 import MemopilaServices
 import Observation
+import SwiftUI
 
 /// Paged card DTOs for the grid, the sidebar lists and the selection (PLAN §7.1, §7.3, §8.2).
 /// Holds no payload bytes; the pages are dropped when the panel has been closed for a while.
@@ -101,7 +102,7 @@ final class HistoryModel {
             isStale = true
             return
         }
-        reload(selectFirst: false)
+        reload(selectFirst: false, animated: true)
         reloadSidebar(after: .milliseconds(300))
     }
 
@@ -124,7 +125,8 @@ final class HistoryModel {
 
     /// Cards and count for the current query. The sidebar lists scan the whole history, so they
     /// reload separately (on open and after store changes), never per keystroke (§8.6).
-    func reload(selectFirst: Bool) {
+    /// - Parameter animated: new and removed cards fade and scale in (store changes, not searches).
+    func reload(selectFirst: Bool, animated: Bool = false) {
         generation += 1
         let generation = generation
         let revision = selectionRevision
@@ -137,7 +139,7 @@ final class HistoryModel {
                 let (loaded, total) = try await (page, count)
                 let memberships = try await store.memberships(of: loaded.map(\.id))
                 guard generation == self.generation else { return }
-                cards = loaded
+                withAnimation(animated ? .spring(response: 0.35, dampingFraction: 0.82) : nil) { cards = loaded }
                 self.memberships = memberships
                 totalCount = total
                 loadError = nil
@@ -213,7 +215,7 @@ final class HistoryModel {
         let selected = selectedIndex
         let remaining = cards.enumerated().filter { !ids.contains($0.element.id) }
         let removed = cards.count - remaining.count
-        cards = remaining.map(\.element)
+        withAnimation(.easeOut(duration: 0.2)) { cards = remaining.map(\.element) }
         totalCount = max(0, totalCount - removed)
         if let selected, let id = selectedID, ids.contains(id) {
             let next = remaining.first { $0.offset > selected } ?? remaining.last

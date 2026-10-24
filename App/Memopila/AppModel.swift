@@ -21,6 +21,15 @@ enum RestoreVariant: Equatable {
     case plainText
     case textAction(TextAction)
     case recognizedText
+
+    var title: String {
+        switch self {
+        case .original: String(localized: "Original")
+        case .plainText: String(localized: "Plain Text")
+        case .textAction(let action): action.title
+        case .recognizedText: String(localized: "Text from Image")
+        }
+    }
 }
 
 enum SettingsTab: String, Hashable {
@@ -151,7 +160,7 @@ final class AppModel {
     }
 
     private func openEditor(_ card: HistoryCard) {
-        let state = EditorState(id: card.id, hasFormatting: card.displayType == .richText)
+        let state = EditorState(id: card.id, hasFormatting: card.displayType == .richText, title: card.customTitle)
         editorState = state
         Task {
             if let text = await editorText(card.id) {
@@ -170,9 +179,21 @@ final class AppModel {
         }
         state.isSaving = true
         Task {
+            // The title first: an edit that merges into another record keeps that record's title (§3.6).
+            if state.titleChanged { try? await store.rename(state.id, title: state.title) }
             let error = await saveEdit(state.id, text: text, thenCopy: thenCopy)
             state.isSaving = false
             state.error = error
+        }
+    }
+
+    /// Esc or Cancel in the editor: unsaved changes ask first.
+    func cancelEditor() {
+        guard let state = editorState else { return present(nil) }
+        if state.isDirty, !state.isConfirmingDiscard {
+            state.isConfirmingDiscard = true
+        } else {
+            present(nil)
         }
     }
 
@@ -295,45 +316,12 @@ final class AppModel {
     /// `true` when the clipboard now holds the item (or its variant).
     @discardableResult
     private func performRestore(_ id: UUID, variant: RestoreVariant) async -> Bool {
+        guard let content = await variantContent(id, variant: variant) else { return false }
+        let items = content.items
+        let sourceBundleID = content.sourceBundleID
         func fail(_ message: String) -> Bool {
             toasts.error(message)
             return false
-        }
-
-        let items: [CanonicalItem]
-        var sourceBundleID: String?
-        do {
-            switch variant {
-            case .original:
-                let payload = try await store.payload(for: id)
-                items = payload.items
-                sourceBundleID = payload.sourceBundleID
-            case .plainText:
-                let payload = try await store.payload(for: id)
-                guard let text = payload.text else { return fail(String(localized: "This item has no text.")) }
-                items = PasteboardWriter.plainTextItems(text)
-                sourceBundleID = payload.sourceBundleID
-            case .textAction(let action):
-                let payload = try await store.payload(for: id)
-                guard let text = payload.text else { return fail(String(localized: "This item has no text.")) }
-                let result = text.utf8.count > 100_000
-                    ? await Task.detached(priority: .userInitiated) { action.apply(to: text) }.value
-                    : action.apply(to: text)
-                guard let result else { return fail(action.unavailableReason) }
-                items = PasteboardWriter.plainTextItems(result)
-                sourceBundleID = payload.sourceBundleID
-            case .recognizedText:
-                guard let details = try await store.details(id, maxTextScalars: 0), let text = details.recognizedText else {
-                    return fail(String(localized: "No text was found in this image."))
-                }
-                items = PasteboardWriter.plainTextItems(text)
-                sourceBundleID = details.card.sourceAppBundleID
-            }
-        } catch StoreError.notFound {
-            history.storeDidChange()
-            return fail(String(localized: "The item no longer exists."))
-        } catch {
-            return fail(String(localized: "This item can't be restored: its stored data is damaged."))
         }
 
         switch monitor.write(items, sourceBundleID: sourceBundleID) {
@@ -358,12 +346,105 @@ final class AppModel {
         }
     }
 
+    /// The item, or a plain-text variant of it (§3.4). Reports problems as toasts and returns `nil`.
+    private func variantContent(_ id: UUID, variant: RestoreVariant) async -> (items: [CanonicalItem], sourceBundleID: String?)? {
+        func fail(_ message: String) -> (items: [CanonicalItem], sourceBundleID: String?)? {
+            toasts.error(message)
+            return nil
+        }
+        do {
+            switch variant {
+            case .original:
+                let payload = try await store.payload(for: id)
+                return (payload.items, payload.sourceBundleID)
+            case .plainText:
+                let payload = try await store.payload(for: id)
+                guard let text = payload.text else { return fail(String(localized: "This item has no text.")) }
+                return (PasteboardWriter.plainTextItems(text), payload.sourceBundleID)
+            case .textAction(let action):
+                let payload = try await store.payload(for: id)
+                guard let text = payload.text else { return fail(String(localized: "This item has no text.")) }
+                let result = text.utf8.count > 100_000
+                    ? await Task.detached(priority: .userInitiated) { action.apply(to: text) }.value
+                    : action.apply(to: text)
+                guard let result else { return fail(action.unavailableReason) }
+                return (PasteboardWriter.plainTextItems(result), payload.sourceBundleID)
+            case .recognizedText:
+                guard let details = try await store.details(id, maxTextScalars: 0), let text = details.recognizedText else {
+                    return fail(String(localized: "No text was found in this image."))
+                }
+                return (PasteboardWriter.plainTextItems(text), details.card.sourceAppBundleID)
+            }
+        } catch StoreError.notFound {
+            history.storeDidChange()
+            return fail(String(localized: "The item no longer exists."))
+        } catch {
+            return fail(String(localized: "This item can't be restored: its stored data is damaged."))
+        }
+    }
+
     private func showCopied(_ id: UUID) {
         copiedCardID = id
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(900))
             if self?.copiedCardID == id { self?.copiedCardID = nil }
+        }
+    }
+
+    /// ⌘+ / ⌘−: bigger or smaller cards through the grid presets.
+    func changeGridDensity(by step: Int) {
+        let presets = GridSize.presets
+        let current = presets.firstIndex(of: settings.gridSize) ?? presets.firstIndex(of: .default) ?? 0
+        let next = min(max(current + step, 0), presets.count - 1)
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { settings.gridSize = presets[next] }
+    }
+
+    /// *Duplicate As ▸* (§3.9): a transformed copy becomes a new card at the top and is selected;
+    /// the original stays as it is. Nothing touches the clipboard until the user copies it.
+    func duplicate(_ id: UUID, as variant: RestoreVariant) {
+        Task {
+            guard let content = await variantContent(id, variant: variant) else { return }
+            let original = history.cards.first { $0.id == id }
+            var appSettings = original?.sourceAppBundleID.map { settings.settings(for: $0) } ?? ResolvedAppSettings()
+            var sensitiveKind: SecretKind?
+            if let text = TextDecoding.plainText(of: content.items), settings.secretPolicy != .off,
+               let kind = SecretDetector.detect(text, kinds: settings.secretKinds) {
+                switch settings.secretPolicy {
+                case .off: break
+                case .dontSave:
+                    return toasts.error(String(localized: "Not duplicated: the text contains a secret and secrets are not saved."))
+                case .deleteAfter(let minutes):
+                    appSettings.captureMode = .deleteAfter(minutes: min(minutes, appSettings.retentionMinutes ?? minutes))
+                }
+                sensitiveKind = kind
+            }
+            let items = content.items
+            let snapshot = OwnedSnapshot(
+                changeCount: 0,
+                observedAt: Date(),
+                identity: AppIdentity(bundleID: original?.sourceAppBundleID, source: .frontmost),
+                settings: appSettings,
+                items: items,
+                contentHash: MCS1.contentHash(of: items),
+                payloadSizeBytes: MCS1.payloadSize(of: items),
+                displayType: DisplayType.classify(items),
+                skippedTypes: [],
+                sourceURL: original?.sourceURL,
+                sensitiveKind: sensitiveKind
+            )
+            let enrichment = IngestEnrichment.make(for: items, sourceAppName: original?.sourceAppName)
+            let result = await store.ingest(snapshot, readerSeq: monitor.coordinator.opSeq, enrichment: enrichment, limits: settings.retentionLimits)
+            switch result {
+            case .committed(let newID), .merged(let newID):
+                history.selectedID = newID
+                history.storeDidChange()
+                toasts.show(String(localized: "Duplicated as \(variant.title)"))
+            case .rejected(let message), .failed(let message):
+                toasts.error(message)
+            case .dropped:
+                break
+            }
         }
     }
 
