@@ -29,12 +29,12 @@
 ### Non-goals (v1)
 
 - Auto-rules (conditional transforms, auto-tagging), snippets. Per-app settings and format rules (§5.1, §3.2.2) are not auto-rules: they only decide what is stored and for how long.
-- Rich-text editing, image editing, edit history / versions.
+- Image editing, edit history / versions. (Formatted text is edited with its formatting, §3.6.)
 - Eyedropper-from-image, lock, export/import, iCloud sync.
-- System Quick Look panel (in-app preview instead, §8.5), text actions beyond the fixed set (§3.9), drag-out to other apps, undo-delete, paste stack.
-- Notarized / Mac App Store distribution; **App Sandbox off** for v1 source builds.
+- System Quick Look panel (an in-app preview instead, §8.5), text actions beyond the fixed set (§3.9), paste stack.
+- Mac App Store distribution; **App Sandbox off**. Releases are built by CI (`release.yml`): signed ad hoc, or with Developer ID and notarized once the owner adds the signing secrets.
 - Persisting file contents from disk (never — §3.3). Display-only QuickLook thumbnails of copied files are allowed.
-- Claiming complete automatic protection against secrets (absence of markers ≠ safe content); no automatic secret detection.
+- Claiming complete automatic protection against secrets (absence of markers ≠ safe content): the secret detection of §3.10 is pattern-based and says so.
 
 ---
 
@@ -1094,4 +1094,4 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 - App-level encryption at rest — decided against for now (owner: FileVault, secret detection and *Don't Save* cover what the history holds)
 - Eyedropper-from-image, lock, export/import, iCloud
 - Notarized binary / MAS
-- Not planned: link previews fetched from the network (privacy), automatic secret detection (false sense of safety)
+- Not planned: link previews fetched from the network (privacy)

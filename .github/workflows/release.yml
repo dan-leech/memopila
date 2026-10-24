@@ -10,8 +10,8 @@ name: Release
 # Signing: with the secrets MACOS_CERTIFICATE (base64 .p12 with a "Developer ID Application"
 # certificate and its private key), MACOS_CERTIFICATE_PASSWORD, APPLE_TEAM_ID, APPLE_ID and
 # APPLE_APP_PASSWORD (app-specific password), the app is signed with Developer ID and the
-# hardened runtime, notarized and stapled. Without them it is signed ad hoc and the release
-# is marked as a pre-release.
+# hardened runtime, notarized and stapled. Without them it is signed ad hoc; the release notes
+# say how to open it. Only versions with a suffix (0.2.0-beta.1) are pre-releases.
 
 on:
   push:
@@ -113,9 +113,9 @@ jobs:
           else
             echo "signed=false" >> "$GITHUB_OUTPUT"
             if [[ $present -gt 0 ]]; then
-              echo "::warning::Only $present of the 5 signing secrets are set. Building an ad-hoc signed pre-release."
+              echo "::warning::Only $present of the 5 signing secrets are set. Building an ad-hoc signed release."
             else
-              echo "::notice::No signing secrets. Building an ad-hoc signed pre-release."
+              echo "::notice::No signing secrets. Building an ad-hoc signed release."
             fi
           fi
 
@@ -333,7 +333,9 @@ jobs:
             --notes-file "$RUNNER_TEMP/release-notes.md"
             --generate-notes
           )
-          if [[ "$SIGNED" != "true" || "$RELEASE_VERSION" == *-* ]]; then
+          # Only versions like 0.2.0-beta.1 are pre-releases: an unsigned build is still the latest
+          # release, so the Download links (releases/latest) find it; its notes say how to open it.
+          if [[ "$RELEASE_VERSION" == *-* ]]; then
             args+=(--prerelease)
           fi
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then

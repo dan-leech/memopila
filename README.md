@@ -67,7 +67,7 @@ Memopila lives in the menu bar and keeps a history of what you copy: text, rich 
 
 1. Download `Memopila-<version>.zip` (or the `.dmg`) from the [latest release](https://github.com/dan-leech/memopila/releases/latest). Pre-releases are listed on the [Releases](https://github.com/dan-leech/memopila/releases) page.
 2. Unzip it and move **Memopila.app** to **/Applications**.
-3. **First launch of an unsigned build.** Releases built without a Developer ID certificate are marked *pre-release*, and Gatekeeper blocks them at first. Use either of these:
+3. **First launch of an unsigned build.** Releases built without a Developer ID certificate are signed ad hoc, and Gatekeeper blocks them at first. Use either of these:
    - In Finder, right-click **Memopila.app** → **Open** → **Open**. On macOS 15 and later the dialog may only offer *Done*. If so, go to **System Settings → Privacy & Security** and click **Open Anyway** next to the Memopila message.
    - Or clear the quarantine flag in Terminal:
 
@@ -152,3 +152,7 @@ The full keyboard map is in [PLAN §8.3](docs/PLAN.md#83-keyboard).
 ## Design
 
 The design, policies, contracts and v1 scope are in **[docs/PLAN.md](docs/PLAN.md)**.
+
+## License
+
+[MIT](LICENSE) © 2026 Daniil Kostin
