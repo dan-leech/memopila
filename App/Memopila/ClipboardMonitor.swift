@@ -92,6 +92,7 @@ final class ClipboardMonitor {
 
     private func tick() {
         refreshAccess()
+        frontmostTracker.sampleScreenshotAgents()
         let changeCount = NSPasteboard.general.changeCount
         if let current, changeCount != current.changeCount {
             self.current = nil

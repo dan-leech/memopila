@@ -6,20 +6,27 @@ import SwiftUI
 struct QuickLookView: NSViewRepresentable {
     let url: URL
 
-    func makeNSView(context: Context) -> QLPreviewView {
-        let view = (QLPreviewView(frame: .zero, style: .normal) as QLPreviewView?) ?? QLPreviewView(frame: .zero)
-        view.autostarts = true
-        view.previewItem = url as NSURL
-        return view
+    func makeNSView(context: Context) -> NSView {
+        let container = NSView()
+        // The initializer may fail; the container then stays empty.
+        if let preview = QLPreviewView(frame: .zero, style: .normal) {
+            preview.autostarts = true
+            preview.previewItem = url as NSURL
+            preview.frame = container.bounds
+            preview.autoresizingMask = [.width, .height]
+            container.addSubview(preview)
+        }
+        return container
     }
 
-    func updateNSView(_ view: QLPreviewView, context: Context) {
-        if (view.previewItem as? NSURL) as URL? != url {
-            view.previewItem = url as NSURL
+    func updateNSView(_ container: NSView, context: Context) {
+        guard let preview = container.subviews.first as? QLPreviewView else { return }
+        if (preview.previewItem as? NSURL) as URL? != url {
+            preview.previewItem = url as NSURL
         }
     }
 
-    static func dismantleNSView(_ view: QLPreviewView, coordinator: ()) {
-        view.close()
+    static func dismantleNSView(_ container: NSView, coordinator: ()) {
+        (container.subviews.first as? QLPreviewView)?.close()
     }
 }

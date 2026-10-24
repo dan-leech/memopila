@@ -619,7 +619,7 @@ Fields: `firstCopiedAt`, `lastCopiedAt`, `copyCount`, `lastSourceAppBundleID`, `
 
 1. `org.nspasteboard.source` yields a valid bundle ID (per-item algorithm below) → that ID (*marker*).
 2. Marker present but empty / invalid / unreadable / conflicting → **Unknown** (never frontmost).
-3. Marker absent → the frontmost application when the change was detected (*frontmost*, best effort); Memopila itself only while its panel is key. Not available → Unknown. Refinements: an app that stopped being frontmost since the previous poll is remembered, and the macOS screenshot agents (`com.apple.screencaptureui`, `com.apple.screenshot.launcher`) map to the Screenshot app. A screenshot is written by the agent while another app stays frontmost, so an **image-only** change (raster image, no text, link or file) without a marker goes to the Screenshot app whenever an agent was frontmost, launched, activated, deactivated or exited in the last 10 s (first-run feedback: screenshots were attributed to the app behind them) — and also, without any agent seen, whenever Memopila's panel is key or Memopila is frontmost: Memopila never puts an image-only copy of its own on the clipboard (its writes are recognised before any read), so such a change is a screenshot taken over it (first-run feedback: they were attributed to Memopila, which is open most of the time). A browser's *Copy Image* also carries the URL, so it keeps its app; the Diagnostics log names the source of every saved change; Memopila frontmost without its panel key (Settings window, launched from Xcode) → Unknown; the content already on the clipboard at launch → Unknown, also when the panel opened with the launch is key.
+3. Marker absent → the frontmost application when the change was detected (*frontmost*, best effort); Memopila itself only while its panel is key. Not available → Unknown. Refinements: an app that stopped being frontmost since the previous poll is remembered, and the macOS screenshot agents (`com.apple.screencaptureui`, `com.apple.screenshot.launcher`) map to the Screenshot app. A screenshot is written by the agent while another app stays frontmost, so an **image-only** change (raster image, no text, link or file) without a marker goes to the Screenshot app whenever an agent was frontmost, launched, activated, deactivated or exited in the last 10 s (first-run feedback: screenshots were attributed to the app behind them) — and whenever a running agent was seen working: it is not relaunched or activated for a screenshot taken with the keyboard, so on every 0.25 s poll its CPU time is read (`proc_pid_rusage`, one call per running agent) and 15 ms or more since the last poll counts as activity (first-run feedback: a screenshot taken over Finder was attributed to Finder). After reading, a PNG whose XMP says `exif:UserComment` = *Screenshot* (what macOS writes into screenshots; the first 64 KB are searched, `ScreenshotMark`) is the Screenshot app's whatever was in front, and that app's settings apply. And also, without any agent seen, whenever Memopila's panel is key or Memopila is frontmost: Memopila never puts an image-only copy of its own on the clipboard (its writes are recognised before any read), so such a change is a screenshot taken over it (first-run feedback: they were attributed to Memopila, which is open most of the time). A browser's *Copy Image* also carries the URL, so it keeps its app; the Diagnostics log names the source of every saved change; Memopila frontmost without its panel key (Settings window, launched from Xcode) → Unknown; the content already on the clipboard at launch → Unknown, also when the panel opened with the launch is key.
 
 Many apps (browsers, terminals, editors) do not write the marker **(spike: survey common apps)**, so frontmost is the usual source in practice. Neither is authenticated: an app can claim another bundle ID, and a background copy or a copy made just before switching apps (within one 250 ms poll) can be attributed to the wrong app.
 
@@ -705,7 +705,7 @@ Cards also get a top-level **Delete and Don't Save from <App>**. Every settings 
 | `maxCount` | **500** non-favorite records; range **1…10 000** (0 not allowed) |
 | `maxAge` | **30 days** from `lastCopiedAt` |
 | Short retention | Per app (§5.1): 15 min / 1 hour / 1 day / custom; none by default |
-| `maxStorageBytes` | **512 MiB** Σ `payloadSizeBytes` over all records (logical payload quota, not total disk usage; not a v1 setting) |
+| `maxStorageBytes` | **512 MiB** by default, Σ `payloadSizeBytes` over all records (logical payload quota, not total disk usage); Settings → History → *Storage limit* (256 MB … 8 GB, any value 64 MiB … 16 GiB kept). Lowering it deletes the oldest non-favorites at once (`planStorageShrink`; favorites count but stay) |
 | `maxSinglePayloadBytes` | **32 MiB**, Settings 4–256 MiB, per-app overrides, hard max 256 MiB (§3.2) |
 
 ### Rules
@@ -991,7 +991,7 @@ Opening Settings or Diagnostics hides the panel; closing them brings it back. Bo
 Five tabs (first-run feedback: seven, with Formats repeating Apps, were too many):
 
 - **General:** all three shortcuts (window, pause, skip), grid, clipboard access status (§3.1), launch at login, *After Copying: Also paste into the app you were in* (off by default) with Accessibility status, text recognition on/off and languages (§3.8).
-- **History:** *Keep up to* and *Delete items older than* as pickers (presets plus any current value), usage (items, favorites, stored data of 512 MB, location), Clear History (`.nonFavorites`) and Clear Everything (`.all`), both confirmed.
+- **History:** *Keep up to* and *Delete items older than* as pickers (presets plus any current value), *Storage limit*, usage (items, favorites, stored data of the limit, location), Clear History (`.nonFavorites`) and Clear Everything (`.all`), both confirmed.
 - **Privacy:** Secrets (§3.10), identity mode Standard / Strict with the trust-boundary note (§5), Ignore content from other devices, a plain list of what Memopila does with data (§9).
 - **Apps:** per-app settings (§5.1); **All Apps** at the top holds the size limit, the format rules for all apps and *Inspect Current Clipboard* (§3.2.2).
 - **About:** icon, version, links to the source and issues.
@@ -1089,7 +1089,7 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 - System Quick Look panel, text actions beyond the fixed set
 - Security-scoped bookmarks / App Sandbox
 - Custom blob store (only after a failed storage spike **and** a PLAN amendment)
-- App-level encryption at rest; user-facing `maxStorageBytes`
+- App-level encryption at rest
 - Eyedropper-from-image, lock, export/import, iCloud
 - Notarized binary / MAS
 - Not planned: link previews fetched from the network (privacy), automatic secret detection (false sense of safety)

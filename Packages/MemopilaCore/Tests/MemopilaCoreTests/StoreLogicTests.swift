@@ -41,6 +41,13 @@ struct RetentionTests {
         #expect(RetentionPlanner.planCountShrink(existing: existing, maxCount: 1) == [candidate(1).id, candidate(3).id])
     }
 
+    @Test func storageShrinkDeletesOldestNonFavoritesUntilItFits() {
+        let existing = [candidate(1, bytes: 40), candidate(2, favorite: true, bytes: 40), candidate(3, bytes: 40), candidate(4, bytes: 40)]
+        #expect(RetentionPlanner.planStorageShrink(existing: existing, maxStorageBytes: 100) == [candidate(1).id, candidate(3).id])
+        #expect(RetentionPlanner.planStorageShrink(existing: existing, maxStorageBytes: 200).isEmpty)
+        #expect(RetentionPlanner.planStorageShrink(existing: existing, maxStorageBytes: 10).count == 3, "favorites stay")
+    }
+
     @Test func unfavoriteKeepsTheUnfavoritedRecord() {
         // Record 1 was just unfavorited: oldest, but it must survive.
         let existing = [candidate(1), candidate(2), candidate(3)]

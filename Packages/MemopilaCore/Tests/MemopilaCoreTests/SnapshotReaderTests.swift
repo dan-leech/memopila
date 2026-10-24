@@ -153,6 +153,13 @@ struct SnapshotReaderTests {
         #expect(snapshot.identity == AppIdentity(bundleID: "com.example.editor", source: .frontmost))
     }
 
+    @Test func screenshotMarkInThePNGWinsOverTheFrontmostApp() throws {
+        let png = Data("PNG<exif:UserComment>Screenshot</exif:UserComment>".utf8)
+        let pasteboard = FakePasteboard(items: [[(.png, png)]])
+        let snapshot = try #require(reader(frontmost: "com.apple.finder").read(pasteboard).snapshot)
+        #expect(snapshot.identity == AppIdentity(bundleID: AppIdentity.screenshotApp, source: .frontmost))
+    }
+
     @Test func sourceMarkerWinsOverAScreenshotGuess() throws {
         let pasteboard = FakePasteboard(items: [[(.png, utf8("png")), (.source, utf8("com.example.paint"))]])
         let snapshot = try #require(reader(screenshot: "com.apple.screenshot.launcher").read(pasteboard).snapshot)

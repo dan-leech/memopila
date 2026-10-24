@@ -185,8 +185,18 @@ struct RecordView: View {
             .help(String(localized: "Fit the image in the window (⌘0)"))
         Button("Actual Size") { zoom.actualSize() }
             .help(String(localized: "One image pixel per screen pixel"))
-        Button { model.openInPreview(state.id) } label: { Label("Open in Preview", systemImage: "arrow.up.forward.app") }
-            .help(String(localized: "Open the image in Preview to mark it up, crop or export it"))
+        // Preview's own icon right next to the words: one button, not an icon and a label apart.
+        Button { model.openInPreview(state.id) } label: {
+            HStack(spacing: 4) {
+                if let icon = AppInfo.icon(for: "com.apple.Preview") {
+                    Image(nsImage: icon).resizable().frame(width: 16, height: 16)
+                } else {
+                    Image(systemName: "arrow.up.forward.app")
+                }
+                Text("Open in Preview")
+            }
+        }
+        .help(String(localized: "Open the image in Preview to mark it up, crop or export it"))
     }
 
     /// ‹ › and *3 of 120*: the records of the panel's current list. With unsaved text they ask to

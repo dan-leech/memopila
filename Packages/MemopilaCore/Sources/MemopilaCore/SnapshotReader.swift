@@ -201,7 +201,7 @@ public struct SnapshotReader: Sendable {
                 panelIsKey = false
             }
         }
-        let identity = AppIdentity.resolve(
+        var identity = AppIdentity.resolve(
             marker: marker,
             frontmostBundleID: frontmost,
             panelIsKey: panelIsKey,
@@ -252,6 +252,20 @@ public struct SnapshotReader: Sendable {
                 representations.append(representation)
             }
             items.append(CanonicalItem(representations))
+        }
+
+        // The image says it is a screenshot: the Screenshot app's, whichever app was in front
+        // (first-run feedback: one taken over Finder was attributed to Finder).
+        if marker == .absent, identity.bundleID != AppIdentity.screenshotApp, Self.isScreenshotImage(items) {
+            identity = AppIdentity(bundleID: AppIdentity.screenshotApp, source: .frontmost)
+            switch context.profiles.admission(for: identity) {
+            case .skipDontSave:
+                return finish { .skipped(changeCount: $0, reason: .dontSave) }
+            case .skipStrict:
+                return finish { .skipped(changeCount: $0, reason: .strictIdentity) }
+            case .capture(let resolved):
+                settings = resolved
+            }
         }
 
         let sourceURL = settings.recordSourcePage ? Self.sourceURL(itemTypes: itemTypes, items: items, pasteboard: pasteboard) : nil
@@ -325,6 +339,13 @@ public struct SnapshotReader: Sendable {
             if let data = representation.bytes, let url = SourcePage.url(fromWebArchive: data) { return url }
         }
         return nil
+    }
+
+    /// A PNG carrying the screenshot mark macOS writes (`ScreenshotMark`).
+    static func isScreenshotImage(_ items: [CanonicalItem]) -> Bool {
+        items.contains { item in
+            item.representations.contains { $0.type == .png && $0.bytes.map(ScreenshotMark.isScreenshot(png:)) == true }
+        }
     }
 
     /// Every item offers a raster image and none offers text, a link or a file: what a screenshot

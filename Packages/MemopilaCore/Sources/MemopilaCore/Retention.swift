@@ -31,6 +31,8 @@ public enum RetentionPlanner {
     public static let maxCountRange = 1...10_000
     public static let defaultMaxAge: TimeInterval = 30 * 24 * 60 * 60
     public static let defaultMaxStorageBytes = 512 * (1 << 20)
+    /// The storage limit in Settings, in MiB.
+    public static let maxStorageMiBRange = 64...16_384
 
     /// Storage preflight for a new unique non-favorite (§6 steps 3–8).
     public static func planIngest(
@@ -60,6 +62,18 @@ public enum RetentionPlanner {
     public static func planCountShrink(existing: [RetentionCandidate], maxCount: Int) -> [UUID] {
         let free = oldestFirst(existing.filter { !$0.isFavorite })
         return free.prefix(max(0, free.count - maxCount)).map(\.id)
+    }
+
+    /// Settings lowered the storage limit: oldest non-favorites until everything fits. Favorites
+    /// count but are never deleted, so with many of them the total may stay above the limit.
+    public static func planStorageShrink(existing: [RetentionCandidate], maxStorageBytes: Int) -> [UUID] {
+        var excess = existing.reduce(0) { $0 + $1.payloadSizeBytes } - maxStorageBytes
+        var victims: [UUID] = []
+        for candidate in oldestFirst(existing.filter { !$0.isFavorite }) where excess > 0 {
+            victims.append(candidate.id)
+            excess -= candidate.payloadSizeBytes
+        }
+        return victims
     }
 
     /// After unfavoriting `id` (already non-favorite in `existing`): evict oldest *other* non-favorites.

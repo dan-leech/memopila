@@ -31,6 +31,13 @@ final class SettingsStore {
             if maxAgeDays < oldValue { onRetentionChange?() }
         }
     }
+    /// All items together (§6); lowering it deletes the oldest non-favorites at once.
+    var maxStorageMiB: Int {
+        didSet {
+            defaults.set(maxStorageMiB, forKey: Key.maxStorageMiB)
+            if maxStorageMiB < oldValue { onRetentionChange?() }
+        }
+    }
     var ignoreRemoteClipboard: Bool { didSet { defaults.set(ignoreRemoteClipboard, forKey: Key.ignoreRemoteClipboard) } }
     /// After an item goes to the clipboard, also press ⌘V in the app behind the window (Accessibility).
     var pasteAfterCopy: Bool { didSet { defaults.set(pasteAfterCopy, forKey: Key.pasteAfterCopy) } }
@@ -65,6 +72,8 @@ final class SettingsStore {
         maxCount = (defaults.object(forKey: Key.maxCount) as? Int ?? RetentionPlanner.defaultMaxCount)
             .clamped(to: RetentionPlanner.maxCountRange)
         maxAgeDays = (defaults.object(forKey: Key.maxAgeDays) as? Int ?? 30).clamped(to: Self.maxAgeRange)
+        maxStorageMiB = (defaults.object(forKey: Key.maxStorageMiB) as? Int ?? RetentionPlanner.defaultMaxStorageBytes / FormatPolicy.mebibyte)
+            .clamped(to: RetentionPlanner.maxStorageMiBRange)
 
         ignoreRemoteClipboard = defaults.bool(forKey: Key.ignoreRemoteClipboard)
         pasteAfterCopy = defaults.bool(forKey: Key.pasteAfterCopy)
@@ -100,7 +109,11 @@ final class SettingsStore {
     }
 
     var retentionLimits: RetentionLimits {
-        RetentionLimits(maxCount: maxCount, maxAge: TimeInterval(maxAgeDays) * 86_400)
+        RetentionLimits(maxCount: maxCount, maxAge: TimeInterval(maxAgeDays) * 86_400, maxStorageBytes: maxStorageBytes)
+    }
+
+    var maxStorageBytes: Int {
+        maxStorageMiB * FormatPolicy.mebibyte
     }
 
     var effectiveRecognitionLanguages: [String] {
@@ -187,6 +200,7 @@ final class SettingsStore {
         static let maxItemMiB = "maxSinglePayloadMiB"
         static let maxCount = "maxCount"
         static let maxAgeDays = "maxAgeDays"
+        static let maxStorageMiB = "maxStorageMiB"
         static let ignoreRemoteClipboard = "ignoreRemoteClipboard"
         static let pasteAfterCopy = "pasteAfterCopy"
         static let recognizeText = "recognizeText"

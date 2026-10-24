@@ -221,6 +221,7 @@ private struct HistorySettings: View {
 
     private static let countOptions = [100, 250, 500, 1_000, 2_500, 5_000, 10_000]
     private static let ageOptions = [1, 7, 14, 30, 90, 180, 365]
+    private static let storageOptions = [256, 512, 1_024, 2_048, 4_096, 8_192]
 
     var body: some View {
         @Bindable var settings = model.settings
@@ -236,10 +237,15 @@ private struct HistorySettings: View {
                         Text(Self.ageTitle(days)).tag(days)
                     }
                 }
+                Picker("Storage limit", selection: $settings.maxStorageMiB) {
+                    ForEach(Self.options(Self.storageOptions, current: settings.maxStorageMiB), id: \.self) { mib in
+                        Text(ByteCount.string(mib * FormatPolicy.mebibyte)).tag(mib)
+                    }
+                }
             } header: {
                 Text("Retention")
             } footer: {
-                Text("Favorites are never deleted automatically. All items together are limited to 512 MB; when that is full, the oldest make room.")
+                Text("Favorites are never deleted automatically. When all items together reach the storage limit, the oldest make room; lowering it does that at once.")
             }
 
             Section {
@@ -247,7 +253,7 @@ private struct HistorySettings: View {
                 LabeledContent("Favorites", value: usage.map { "\($0.favorites)" } ?? "—")
                 LabeledContent("Stored data") {
                     if let usage {
-                        Text(String(localized: "\(ByteCount.string(usage.payloadBytes)) of \(ByteCount.string(RetentionPlanner.defaultMaxStorageBytes))"))
+                        Text(String(localized: "\(ByteCount.string(usage.payloadBytes)) of \(ByteCount.string(model.settings.maxStorageBytes))"))
                     } else {
                         Text("—")
                     }
@@ -279,6 +285,13 @@ private struct HistorySettings: View {
         }
         .formStyle(.grouped)
         .task { await refreshUsage() }
+        // A lower limit deletes old items; the usage shows the result.
+        .onChange(of: model.settings.maxStorageMiB) { _, _ in
+            Task {
+                try? await Task.sleep(for: .milliseconds(500))
+                await refreshUsage()
+            }
+        }
         .confirmationDialog(
             clearScope == .all ? String(localized: "Delete all items, including favorites?") : String(localized: "Delete all items except favorites?"),
             isPresented: $isConfirmingClear,

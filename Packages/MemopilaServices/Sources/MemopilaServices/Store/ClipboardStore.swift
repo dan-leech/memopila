@@ -384,6 +384,11 @@ public actor ClipboardStore {
         var victims = RetentionPlanner.planAge(existing: candidates, now: now, maxAge: limits.maxAge)
         victims += RetentionPlanner.planExpired(existing: candidates, now: now)
         victims += RetentionPlanner.planCountShrink(existing: candidates, maxCount: limits.maxCount)
+        let planned = Set(victims)
+        victims += RetentionPlanner.planStorageShrink(
+            existing: candidates.filter { !planned.contains($0.id) },
+            maxStorageBytes: limits.maxStorageBytes
+        )
         let unique = Array(Set(victims))
         if !unique.isEmpty {
             try saveOrRollback(context) { try deleteRecords(ids: unique, in: context) }

@@ -2215,12 +2215,12 @@
         }
       }
     },
-    "Favorites are never deleted automatically. All items together are limited to 512 MB; when that is full, the oldest make room.": {
+    "Favorites are never deleted automatically. When all items together reach the storage limit, the oldest make room; lowering it does that at once.": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Избранное никогда не удаляется автоматически. Все элементы вместе ограничены 512 МБ; когда место заканчивается, самые старые освобождают его."
+            "value": "Избранное никогда не удаляется автоматически. Когда все элементы вместе достигают лимита хранилища, самые старые освобождают место; при уменьшении лимита это происходит сразу."
           }
         }
       }
@@ -4921,6 +4921,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Хранилище"
+          }
+        }
+      }
+    },
+    "Storage limit": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Лимит хранилища"
           }
         }
       }
