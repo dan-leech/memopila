@@ -77,7 +77,11 @@ struct CardView: View {
         // Formatted text shows formatted, as in the record window (owner feedback).
         .task(id: card.displayType == .richText && secretKind == nil ? ThumbnailCache.richKey(for: card) : "") {
             guard card.displayType == .richText, secretKind == nil else { return richPreview = nil }
-            richPreview = thumbnails.cachedRichPreview(for: card) ?? (await thumbnails.richPreview(for: card))
+            if let cached = thumbnails.cachedRichPreview(for: card) {
+                richPreview = cached
+            } else {
+                richPreview = await thumbnails.richPreview(for: card)
+            }
         }
         .task(id: card.id) {
             image = thumbnails.cachedImage(for: card)
