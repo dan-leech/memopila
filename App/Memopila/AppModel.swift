@@ -245,7 +245,7 @@ final class AppModel {
         }
         if state.card.displayType == .richText, let rich = await editorRichText(state.id) {
             guard !Task.isCancelled, itemState === state else { return }
-            state.load(rich: rich)
+            state.load(rich: rich.text, background: rich.background)
         } else if let text = await editorText(state.id) {
             guard !Task.isCancelled, itemState === state else { return }
             state.load(text)
@@ -1070,7 +1070,7 @@ final class AppModel {
     /// The richest readable formatted text of a record: RTFD, RTF, HTML, then a web archive.
     /// Above 4 MB it opens as plain text, to stay light. HTML is read on the main thread, as
     /// AppKit requires.
-    func editorRichText(_ id: UUID) async -> NSAttributedString? {
+    func editorRichText(_ id: UUID) async -> (text: NSAttributedString, background: NSColor?)? {
         guard let payload = try? await store.payload(for: id) else { return nil }
         let representations = payload.items.flatMap(\.representations)
         let readable: [(PasteboardType, NSAttributedString.DocumentType)] = [
@@ -1078,32 +1078,38 @@ final class AppModel {
         ]
         for (type, documentType) in readable {
             guard let data = representations.first(where: { $0.type == type })?.bytes, data.count <= 4 * 1_048_576 else { continue }
-            if let text = await Self.attributedString(data, type: documentType), text.length > 0 { return text }
+            if let read = await Self.attributedString(data, type: documentType), read.text.length > 0 { return read }
         }
         return nil
     }
 
     /// RTF off the main thread; HTML through WebKit's asynchronous loader, which waits for
     /// remote images and styles without blocking the app (review finding: a copy from a browser
-    /// froze the app while it opened). Web archives stay small and wait two seconds at most.
-    private static func attributedString(_ data: Data, type: NSAttributedString.DocumentType) async -> NSAttributedString? {
+    /// froze the app while it opened). Web archives stay small and wait two seconds at most. The
+    /// document's background comes along: it decides the page (`RichPage`).
+    private static func attributedString(_ data: Data, type: NSAttributedString.DocumentType) async -> (text: NSAttributedString, background: NSColor?)? {
         switch type {
         case .html:
-            let result = await withCheckedContinuation { (continuation: CheckedContinuation<Transfer<NSAttributedString?>, Never>) in
-                NSAttributedString.loadFromHTML(data: data, options: [.characterEncoding: String.Encoding.utf8.rawValue, .timeout: 5]) { text, _, _ in
-                    continuation.resume(returning: Transfer(value: text))
+            let result = await withCheckedContinuation { (continuation: CheckedContinuation<Transfer<(NSAttributedString, NSColor?)?>, Never>) in
+                NSAttributedString.loadFromHTML(data: data, options: [.characterEncoding: String.Encoding.utf8.rawValue, .timeout: 5]) { text, attributes, _ in
+                    continuation.resume(returning: Transfer(value: text.map { ($0, attributes?[.backgroundColor] as? NSColor) }))
                 }
             }
-            return result.value
+            return result.value.map { (text: $0.0, background: $0.1) }
         case .webArchive:
             guard data.count <= 1_048_576 else { return nil }
-            return try? NSAttributedString(data: data, options: [.documentType: type, .timeout: 2], documentAttributes: nil)
+            var attributes: NSDictionary?
+            guard let text = try? NSAttributedString(data: data, options: [.documentType: type, .timeout: 2], documentAttributes: &attributes) else { return nil }
+            return (text, (attributes as? [NSAttributedString.DocumentAttributeKey: Any])?[.backgroundColor] as? NSColor)
         default:
             let raw = type.rawValue
-            return await Task.detached(priority: .userInitiated) { () -> Transfer<NSAttributedString?> in
+            return await Task.detached(priority: .userInitiated) { () -> Transfer<(text: NSAttributedString, background: NSColor?)>? in
                 let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [.documentType: NSAttributedString.DocumentType(rawValue: raw)]
-                return Transfer(value: try? NSAttributedString(data: data, options: options, documentAttributes: nil))
-            }.value.value
+                var attributes: NSDictionary?
+                guard let text = try? NSAttributedString(data: data, options: options, documentAttributes: &attributes) else { return nil }
+                let background = (attributes as? [NSAttributedString.DocumentAttributeKey: Any])?[.backgroundColor] as? NSColor
+                return Transfer(value: (text, background))
+            }.value?.value
         }
     }
 

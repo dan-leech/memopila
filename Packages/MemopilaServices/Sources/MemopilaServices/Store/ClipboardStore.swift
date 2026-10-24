@@ -242,6 +242,20 @@ public actor ClipboardStore {
         return try context.fetchCount(FetchDescriptor<ClipboardRecord>(predicate: #Predicate { !$0.isFavorite && $0.lastCopiedAt < date }))
     }
 
+    /// The formatted text of a record's first item for its card (§8.2): RTF, else HTML, else flat
+    /// RTFD, and only when small enough for a preview; only that row is read.
+    public func richPreviewSource(for id: UUID, maxBytes: Int = 512 * 1_024) throws -> (type: PasteboardType, data: Data)? {
+        let context = makeContext()
+        guard let record = try fetchRecord(id, in: context) else { return nil }
+        let rows = record.representations.filter { $0.itemIndex == 0 }
+        for type in [PasteboardType.rtf, .html, .flatRTFD] {
+            guard let row = rows.first(where: { $0.uti == type.rawValue }) else { continue }
+            guard row.byteCount <= maxBytes, let data = row.bytes else { return nil }
+            return (type, data)
+        }
+        return nil
+    }
+
     /// How many pasteboard items the record holds (several bookmarks or notes in one copy).
     public func itemCount(_ id: UUID) throws -> Int {
         let context = makeContext()

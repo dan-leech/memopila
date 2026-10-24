@@ -13,6 +13,8 @@ struct CardView: View {
     let hasCursor: Bool
     let model: AppModel
     @State private var image: NSImage?
+    @State private var richPreview: RichPreview?
+    @Environment(\.colorScheme) private var colorScheme
     @State private var fileStatus: ThumbnailCache.FileStatus?
     @State private var isHovered = false
 
@@ -72,6 +74,11 @@ struct CardView: View {
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: model.copiedCardID)
         .help(card.sourceURL.map { String(localized: "Copied from \($0)") } ?? "")
+        // Formatted text shows formatted, as in the record window (owner feedback).
+        .task(id: card.displayType == .richText && secretKind == nil ? ThumbnailCache.richKey(for: card) : "") {
+            guard card.displayType == .richText, secretKind == nil else { return richPreview = nil }
+            richPreview = thumbnails.cachedRichPreview(for: card) ?? (await thumbnails.richPreview(for: card))
+        }
         .task(id: card.id) {
             image = thumbnails.cachedImage(for: card)
             if card.displayType == .file { fileStatus = await thumbnails.fileStatus(for: card) }
@@ -201,6 +208,8 @@ struct CardView: View {
                 .font(.system(size: 11.5, design: .monospaced))
                 .foregroundStyle(Color(nsColor: .linkColor))
                 .lineLimit(6)
+        case .richText where richPreview.map({ $0.text.length > 0 }) ?? false:
+            if let richPreview { formatted(richPreview) }
         case .text, .richText, .mixed:
             if card.preview.isEmpty {
                 placeholder(card.displayType.systemImage)
@@ -210,6 +219,21 @@ struct CardView: View {
                     .lineLimit(8)
             }
         }
+    }
+
+    /// On the page the record window shows it on: the copy's own background, a dark page for light
+    /// text, else the card's, with the colours inverted in Dark Mode (§8.5).
+    private func formatted(_ preview: RichPreview) -> some View {
+        let page = preview.page.color
+        return Text(mark(preview.cardText(dark: colorScheme == .dark)))
+            .lineLimit(8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(page == nil ? 0 : 6)
+            .background {
+                if let page {
+                    RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: page))
+                }
+            }
     }
 
     private func placeholder(_ systemImage: String) -> some View {
@@ -289,7 +313,13 @@ struct CardView: View {
 
     /// The search words marked in the text the card shows.
     private func highlighted(_ text: String) -> AttributedString {
-        var result = AttributedString(text)
+        mark(AttributedString(text))
+    }
+
+    private func mark(_ base: AttributedString) -> AttributedString {
+        guard !searchWords.isEmpty else { return base }
+        var result = base
+        let text = String(base.characters)
         for word in searchWords {
             var searchRange = text.startIndex..<text.endIndex
             while let range = text.range(of: word, options: [.caseInsensitive, .diacriticInsensitive], range: searchRange) {

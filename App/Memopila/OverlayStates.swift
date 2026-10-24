@@ -129,6 +129,8 @@ final class ItemState {
     /// The record has formatted text that could be read.
     private(set) var hasRichSource = false
     @ObservationIgnored private var richSource: NSAttributedString?
+    /// The background the copy's document names, if any (§8.5).
+    @ObservationIgnored private var richBackground: NSColor?
     /// The formatted text as the text view holds it after loading or saving: *Edited* compares
     /// with it, so a change of formatting alone counts too.
     @ObservationIgnored private var initialRich: NSAttributedString?
@@ -303,8 +305,9 @@ final class ItemState {
     }
 
     /// Formatted text: shown with its formatting, editable as rich text.
-    func load(rich: NSAttributedString) {
+    func load(rich: NSAttributedString, background: NSColor? = nil) {
         richSource = rich
+        richBackground = background
         hasRichSource = true
         isRich = true
         initialText = rich.string
@@ -320,17 +323,19 @@ final class ItemState {
     private func showRich(in textView: NSTextView) {
         guard let richSource, let storage = textView.textStorage else { return }
         textView.isRichText = true
-        // On the page it was made for, in its own colours — a white page, or a dark one for light
-        // text such as code copied from a dark editor theme — as a document, not recoloured for the
-        // window (first-run feedback: mapped colours and small sizes were hard to read).
-        let isDarkPage = Self.isWrittenForDarkPage(richSource)
-        let page = isDarkPage ? NSColor(white: 0.13, alpha: 1) : NSColor.white
-        textView.usesAdaptiveColorMappingForDarkAppearance = false
-        textView.appearance = NSAppearance(named: isDarkPage ? .darkAqua : .aqua)
+        // On the page it names, or a dark one for light text such as code from a dark editor
+        // theme; with no background of its own it follows the window, in inverted colours in Dark
+        // Mode (owner feedback: black on a white page was not expected there). The cards follow
+        // the same rule (`RichPage`).
+        let page = RichPage.of(richSource, documentBackground: richBackground)
+        // Adaptive mapping maps the background too: a white page reads dark in Dark Mode, as in
+        // TextEdit.
+        textView.usesAdaptiveColorMappingForDarkAppearance = page == .adaptive
+        textView.appearance = page == .adaptive ? nil : NSAppearance(named: page.isDark ? .darkAqua : .aqua)
         textView.drawsBackground = true
-        textView.backgroundColor = page
+        textView.backgroundColor = page.color ?? .white
         textView.enclosingScrollView?.drawsBackground = true
-        textView.enclosingScrollView?.backgroundColor = page
+        textView.enclosingScrollView?.backgroundColor = page.color ?? .textBackgroundColor
         textView.textContainerInset = NSSize(width: 22, height: 18)
         richScale = Self.readableScale(for: richSource)
         storage.setAttributedString(richSource)
@@ -355,6 +360,7 @@ final class ItemState {
         } else {
             let text = storage.string
             textView.isRichText = false
+            textView.usesAdaptiveColorMappingForDarkAppearance = false
             textView.appearance = nil
             textView.drawsBackground = false
             textView.enclosingScrollView?.drawsBackground = false
@@ -369,22 +375,6 @@ final class ItemState {
             applyFont()
         }
         textDidChange()
-    }
-
-    /// Most of the text is light: it was written for a dark page.
-    private static func isWrittenForDarkPage(_ text: NSAttributedString) -> Bool {
-        var light = 0
-        var dark = 0
-        text.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: min(text.length, 100_000)), options: []) { value, range, _ in
-            // No colour of its own: black.
-            guard let color = (value as? NSColor)?.usingColorSpace(.sRGB) else {
-                dark += range.length
-                return
-            }
-            let luminance = 0.2126 * color.redComponent + 0.7152 * color.greenComponent + 0.0722 * color.blueComponent
-            if luminance > 0.6 { light += range.length } else { dark += range.length }
-        }
-        return light > dark
     }
 
     /// The zoom at which the size most of the text has reads as 14 pt; never below 1 (large text

@@ -223,9 +223,11 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
         window.level = .floating
         // The window stays above other apps, so its tooltips must work while they are active.
         window.allowsToolTipsWhenApplicationIsInactive = true
-        // Over a full-screen app it opens in that Space instead of switching to a desktop
-        // (review finding).
-        window.collectionBehavior.formUnion([.moveToActiveSpace, .fullScreenAuxiliary])
+        // On every Space, also over full-screen apps, as the panel: a link opened from it in a
+        // browser on another Space no longer leaves the window behind on the old one, where it
+        // vanished on the way back (owner feedback; before, it moved to whichever Space was active).
+        window.collectionBehavior.remove(.moveToActiveSpace)
+        window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
         window.isReleasedWhenClosed = false
         window.delegate = self
         let restored = window.setFrameUsingName(frameName)
