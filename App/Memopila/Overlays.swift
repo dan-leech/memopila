@@ -90,22 +90,13 @@ struct RecordView: View {
                 ToolbarIcon(systemImage: "arrow.uturn.backward", help: String(localized: "Undo (⌘Z)")) { state.undo() }
                 ToolbarIcon(systemImage: "arrow.uturn.forward", help: String(localized: "Redo (⇧⌘Z)")) { state.redo() }
                 Divider().frame(height: 18).padding(.horizontal, 4)
-                actionMenu(String(localized: "Case"), systemImage: "textformat.size", actions: [.uppercase, .lowercase, .titleCase])
-                actionMenu(
-                    String(localized: "Lines"),
-                    systemImage: "line.3.horizontal.decrease",
-                    actions: [.trimWhitespace, .removeLineBreaks, .sortLines, .removeDuplicateLines]
-                )
-                actionMenu("JSON", systemImage: "curlybraces", actions: [.formatJSON, .minifyJSON])
-                actionMenu(
-                    String(localized: "Encode"),
-                    systemImage: "percent",
-                    actions: [.urlEncode, .urlDecode, .base64Encode, .base64Decode]
-                )
+                transformMenu
             }
             if state.hasText {
                 Button { state.showFind() } label: { Label("Find", systemImage: "magnifyingglass") }
-                    .help(String(localized: "Find in the text (⌘F)"))
+                    .help(state.isEditable
+                        ? String(localized: "Find in the text (⌘F); Find and Replace (⌥⌘F)")
+                        : String(localized: "Find in the text (⌘F)"))
             }
             if isImage { imageControls }
             Spacer(minLength: 8)
@@ -179,27 +170,36 @@ struct RecordView: View {
         }
     }
 
-    /// Text actions on the selection, or on all text when nothing is selected (§3.9). One that does
-    /// not apply is disabled and says why, as in ⌘K; a menu with none that apply is disabled.
-    private func actionMenu(_ title: String, systemImage: String, actions: [TextAction]) -> some View {
-        let available = actions.filter { state.availableActions.contains($0) }
+    /// Text actions on the selection, or on all text when nothing is selected (§3.9), in one menu
+    /// grouped as Case, Lines, JSON, Encode (first-run feedback: four menus took the toolbar). One that
+    /// does not apply is disabled and says why, as in ⌘K.
+    private var transformMenu: some View {
         let scope = state.selectedCharacters > 0 ? String(localized: "the selected text") : String(localized: "all of the text")
+        let groups: [(String, [TextAction])] = [
+            (String(localized: "Case"), [.uppercase, .lowercase, .titleCase]),
+            (String(localized: "Lines"), [.trimWhitespace, .removeLineBreaks, .sortLines, .removeDuplicateLines]),
+            ("JSON", [.formatJSON, .minifyJSON]),
+            (String(localized: "Encode"), [.urlEncode, .urlDecode, .base64Encode, .base64Decode]),
+        ]
+        let anyAvailable = !state.availableActions.isEmpty
         return Menu {
-            ForEach(actions, id: \.self) { action in
-                let isAvailable = available.contains(action)
-                Button(action.title) { state.apply(action) }
-                    .disabled(!isAvailable)
-                    .help(isAvailable ? String(localized: "Applies to \(scope)") : action.unavailableReason)
+            ForEach(groups.indices, id: \.self) { index in
+                Section(groups[index].0) {
+                    ForEach(groups[index].1, id: \.self) { action in
+                        let isAvailable = state.availableActions.contains(action)
+                        Button(action.title) { state.apply(action) }
+                            .disabled(!isAvailable)
+                            .help(isAvailable ? String(localized: "Applies to \(scope)") : action.unavailableReason)
+                    }
+                }
             }
         } label: {
-            Label(title, systemImage: systemImage)
+            Label("Transform", systemImage: "wand.and.stars")
         }
         .menuStyle(.button)
         .fixedSize()
-        .disabled(available.isEmpty)
-        .help(available.isEmpty
-            ? String(localized: "\(title): nothing here applies to \(scope)")
-            : String(localized: "\(title): applies to \(scope)"))
+        .disabled(!anyAvailable)
+        .help(String(localized: "Change case, lines, JSON or encoding; applies to \(scope); ⌘Z undoes it"))
     }
 
     // MARK: Content
@@ -262,6 +262,12 @@ struct RecordView: View {
                         .focused($titleFocused)
                         .onSubmit { model.saveTitle() }
                         .onChange(of: titleFocused) { _, focused in if !focused { model.saveTitle() } }
+                        // Tab goes on to the text, the usual next step after naming it.
+                        .onKeyPress(.tab) {
+                            guard state.hasText else { return .ignored }
+                            state.focus()
+                            return .handled
+                        }
                         .help(String(localized: "Shown on the card and found by search; saved when you leave the field"))
                 }
                 inspectorSection(String(localized: "Source")) { source }
@@ -424,6 +430,12 @@ struct RecordView: View {
             }
             Spacer(minLength: 8)
             if state.hasText {
+                if let bytes = state.byteCount, state.isNearSizeLimit {
+                    Text(String(localized: "\(ByteCount.string(bytes)) of \(ByteCount.string(state.maxBytes))"))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(state.isOverSizeLimit ? Color.red : Color.orange)
+                        .help(String(localized: "Size of the text against the “Largest item” limit (Settings → Apps → All Apps)"))
+                }
                 Text(stats).font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
                 viewMenu
             }
@@ -448,6 +460,9 @@ struct RecordView: View {
         if state.isSaving { return String(localized: "Saving…") }
         if !state.isLoaded { return String(localized: "The text is still loading") }
         if state.characterCount == 0 { return String(localized: "A record can’t be empty: type some text, or Revert") }
+        if state.isOverSizeLimit {
+            return String(localized: "Larger than the “Largest item” limit (\(ByteCount.string(state.maxBytes)), Settings → Apps → All Apps)")
+        }
         return nil
     }
 
@@ -463,6 +478,7 @@ struct RecordView: View {
             }
             .pickerStyle(.menu)
             Toggle("Show Invisible Characters", isOn: $state.showsInvisibles)
+            Toggle("Monospaced Font", isOn: $state.usesMonospacedFont)
             Divider()
             Button("Larger Text (⌘+)") { state.changeFontSize(by: 1) }
             Button("Smaller Text (⌘−)") { state.changeFontSize(by: -1) }
@@ -473,7 +489,7 @@ struct RecordView: View {
         .menuStyle(.button)
         .buttonStyle(.borderless)
         .fixedSize()
-        .help(String(localized: "Wrap lines, line numbers, invisible characters (spaces, tabs, line breaks) and text size"))
+        .help(String(localized: "Wrap lines, line numbers, invisible characters (spaces, tabs, line breaks), font and text size"))
     }
 
     /// What the keys do right now.

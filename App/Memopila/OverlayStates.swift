@@ -55,6 +55,10 @@ final class ItemState {
     private(set) var isTextDirty = false
     private(set) var lineCount = 1
     private(set) var characterCount = 0
+    /// The record size limit for saving (*Largest item*, §3.6) and the text's UTF-8 size once it
+    /// gets close to it; `nil` while the text cannot be within 80 % of the limit.
+    let maxBytes: Int
+    private(set) var byteCount: Int?
     var isSaving = false
     var error: String?
     /// The selection, for the status bar: characters and lines (0 = nothing selected).
@@ -101,8 +105,9 @@ final class ItemState {
     /// Highlighting stops above this many UTF-16 units: colouring that much text costs more than it helps.
     private static let highlightLimit = 200_000
 
-    init(card: HistoryCard, focusOnLoad: Bool) {
+    init(card: HistoryCard, focusOnLoad: Bool, maxBytes: Int) {
         id = card.id
+        self.maxBytes = maxBytes
         self.card = card
         isEditable = AppModel.isEditable(card)
         hasFormatting = card.displayType == .richText
@@ -122,12 +127,25 @@ final class ItemState {
     var fontSize: CGFloat = ItemState.storedFontSize {
         didSet {
             UserDefaults.standard.set(Double(fontSize), forKey: Self.fontSizeKey)
-            textView?.font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
+            applyFont()
         }
     }
 
+    /// Monospaced (logs, JSON, code) or the system font (prose), whatever the highlighting.
+    var usesMonospacedFont = UserDefaults.standard.object(forKey: ItemState.monospacedKey) as? Bool ?? true {
+        didSet {
+            UserDefaults.standard.set(usesMonospacedFont, forKey: Self.monospacedKey)
+            applyFont()
+        }
+    }
+
+    /// Within 80 % of the size limit: the status bar shows the size.
+    var isNearSizeLimit: Bool { byteCount.map { $0 >= maxBytes / 5 * 4 } ?? false }
+    var isOverSizeLimit: Bool { byteCount.map { $0 > maxBytes } ?? false }
+
     static let defaultFontSize: CGFloat = 12.5
     private static let fontSizeKey = "recordFontSize"
+    private static let monospacedKey = "recordMonospacedFont"
     private static let lineNumbersKey = "recordLineNumbers"
     private static let invisiblesKey = "recordShowsInvisibles"
     private static var storedLineNumbers: Bool? { UserDefaults.standard.object(forKey: lineNumbersKey) as? Bool }
@@ -138,6 +156,13 @@ final class ItemState {
         guard let scrollView = textView?.enclosingScrollView, scrollView.verticalRulerView != nil else { return }
         if scrollView.rulersVisible != showsLineNumbers { scrollView.rulersVisible = showsLineNumbers }
         (scrollView.verticalRulerView as? LineNumberRuler)?.textDidChange()
+    }
+
+    private func applyFont() {
+        guard let textView else { return }
+        textView.font = usesMonospacedFont ? .monospacedSystemFont(ofSize: fontSize, weight: .regular) : .systemFont(ofSize: fontSize)
+        // Line heights changed: the numbers move with them.
+        textView.enclosingScrollView?.verticalRulerView?.needsDisplay = true
     }
 
     private func applyInvisibles() {
@@ -216,7 +241,7 @@ final class ItemState {
     func attach(_ textView: NSTextView) {
         self.textView = textView
         textView.isEditable = isEditable
-        textView.font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        applyFont()
         applyInvisibles()
         if isLoaded, textView.string.isEmpty { textView.string = initialText }
         applyWrapping()
@@ -242,6 +267,9 @@ final class ItemState {
         let length = (text as NSString).length
         characterCount = length < 200_000 ? text.count : length
         lineCount = TextStats.lineCount(text)
+        // UTF-8 takes at most 3 bytes per UTF-16 unit: far from the limit there is nothing to count.
+        let bytes: Int? = length * 3 < maxBytes / 5 * 4 ? nil : text.utf8.count
+        if bytes != byteCount { byteCount = bytes }
         updateDirty()
         (textView?.enclosingScrollView?.verticalRulerView as? LineNumberRuler)?.textDidChange()
         scheduleAvailability()
@@ -251,6 +279,8 @@ final class ItemState {
     private func updateDirty() {
         let textChanged = isLoaded && (textView?.string ?? initialText) != initialText
         if textChanged != isTextDirty { isTextDirty = textChanged }
+        // The dot in the close button, as in any Mac editor.
+        if let window = textView?.window, window.isDocumentEdited != textChanged { window.isDocumentEdited = textChanged }
     }
 
     /// Back to the stored text and title, as one change ⌘Z undoes.
@@ -291,11 +321,11 @@ final class ItemState {
         manager.redo()
     }
 
-    /// The text view's find bar (⌘F).
-    func showFind() {
+    /// The text view's find bar (⌘F), with Replace (⌥⌘F) when the text is editable.
+    func showFind(replace: Bool = false) {
         guard let textView else { return }
         let item = NSMenuItem()
-        item.tag = NSTextFinder.Action.showFindInterface.rawValue
+        item.tag = (replace && isEditable ? NSTextFinder.Action.showReplaceInterface : .showFindInterface).rawValue
         textView.performFindPanelAction(item)
     }
 

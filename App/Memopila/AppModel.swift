@@ -173,7 +173,7 @@ final class AppModel {
             return
         }
         guard let card = history.cards.first(where: { $0.id == id }) else { return }
-        let state = ItemState(card: card, focusOnLoad: focusText && Self.isEditable(card))
+        let state = ItemState(card: card, focusOnLoad: focusText && Self.isEditable(card), maxBytes: settings.maxItemBytes)
         itemState = state
         if history.selectedID != id { history.selectedID = id }
         hidePanelForWindow()
@@ -851,7 +851,7 @@ final class AppModel {
         var card = history.cards.first { $0.id == id }
         if card == nil { card = await details(id, maxTextScalars: 0)?.card }
         guard let card else { return closeRecord() }
-        let state = ItemState(card: card, focusOnLoad: false)
+        let state = ItemState(card: card, focusOnLoad: false, maxBytes: settings.maxItemBytes)
         itemState = state
         windows.showRecord(focusText: false)
         if let text = await editorText(id) { state.load(text) }

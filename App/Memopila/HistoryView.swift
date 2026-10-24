@@ -18,7 +18,7 @@ struct HistoryView: View {
                 VStack(spacing: 0) {
                     topBar
                     BannerStack(model: model)
-                    FilterBar(history: model.history)
+                    FilterBar(model: model)
                     HistoryGrid(model: model)
                 }
             }
@@ -61,11 +61,6 @@ struct HistoryView: View {
                 .accessibilityLabel(Text("Clear the search"))
             }
 
-            if model.monitor.isPaused || model.monitor.skipArmed {
-                Image(systemName: model.monitor.isPaused ? "pause.circle.fill" : "forward.end.circle.fill")
-                    .foregroundStyle(.orange)
-                    .help(model.monitor.isPaused ? String(localized: "Capture is paused") : String(localized: "The next copy will be skipped"))
-            }
 
             Button {
                 model.settings.showSidebar.toggle()
@@ -214,7 +209,9 @@ private struct ScopeChip: View {
 
 /// Kind and period above the grid; they combine with the sidebar and the search.
 private struct FilterBar: View {
-    let history: HistoryModel
+    let model: AppModel
+
+    private var history: HistoryModel { model.history }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -236,6 +233,7 @@ private struct FilterBar: View {
                 .help(kind == .all ? String(localized: "Every kind of item") : String(localized: "Only \(kind.title.lowercased())"))
             }
             Spacer(minLength: 8)
+            PanelStatus(model: model)
             Menu {
                 ForEach(PeriodFilter.allCases, id: \.self) { period in
                     Button {
@@ -266,6 +264,62 @@ private struct FilterBar: View {
     /// Colours only when there are any; the rest always, so the bar does not jump.
     private var visibleKinds: [KindFilter] {
         KindFilter.allCases.filter { $0 != .colors || history.types.contains(.color) || history.kindFilter == .colors }
+    }
+}
+
+/// How many records the panel shows and whether capture runs (§8.2). First-run feedback: the
+/// panel showed neither; problems also have a banner, this is the state at a glance.
+private struct PanelStatus: View {
+    let model: AppModel
+
+    var body: some View {
+        let status = captureStatus
+        // A narrow panel keeps the number, then only the dot.
+        ViewThatFits(in: .horizontal) {
+            label(status, countText)
+            label(status, "\(model.history.totalCount)")
+            label(status, nil)
+        }
+        .font(.system(size: 11).monospacedDigit())
+        .help(status.help + " · " + countText)
+        .accessibilityElement(children: .combine)
+    }
+
+    private func label(_ status: (symbol: String, tint: Color, help: String), _ text: String?) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: status.symbol)
+                .foregroundStyle(status.tint)
+                .imageScale(.small)
+            if let text {
+                Text(verbatim: text)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+        }
+    }
+
+    private var countText: String {
+        let history = model.history
+        let count = String(localized: "\(history.totalCount) items")
+        if !history.markedIDs.isEmpty {
+            return String(localized: "\(history.selection.count) selected") + " · " + count
+        }
+        if !history.search.isEmpty || history.isFiltered {
+            return String(localized: "\(history.totalCount) found")
+        }
+        return count
+    }
+
+    private var captureStatus: (symbol: String, tint: Color, help: String) {
+        let monitor = model.monitor
+        if monitor.storageError != nil || monitor.access != .allowed || monitor.isPaused {
+            return ("pause.circle.fill", .orange, String(localized: "Capture is paused: new copies are not added to history"))
+        }
+        if monitor.skipArmed {
+            return ("forward.end.circle.fill", .orange, String(localized: "The next copy will be skipped"))
+        }
+        return ("circle.fill", .green, String(localized: "Capturing: every copy is added to history"))
     }
 }
 

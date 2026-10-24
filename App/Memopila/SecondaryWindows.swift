@@ -36,6 +36,8 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
     func showRecord(focusText: Bool) {
         let window = record ?? makeRecord()
         record = window
+        // A record opens saved; its text view sets the dot again once edited.
+        window.isDocumentEdited = false
         if let card = model.itemState?.card {
             // The record's name and where it came from, so the window says what it shows.
             window.title = card.customTitle ?? card.displayType.title

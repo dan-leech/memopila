@@ -277,6 +277,16 @@
         }
       }
     },
+    "%lld found": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найдено: %lld"
+          }
+        }
+      }
+    },
     "%lld items": {
       "localizations": {
         "en": {
@@ -407,6 +417,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Выделено символов: %1$lld из %2$lld"
+          }
+        }
+      }
+    },
+    "%lld selected": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрано: %lld"
           }
         }
       }
@@ -1113,6 +1133,16 @@
         }
       }
     },
+    "Capture is paused: new copies are not added to history": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запись приостановлена: новые копии не попадают в историю"
+          }
+        }
+      }
+    },
     "Capture paused until %@.": {
       "localizations": {
         "ru": {
@@ -1153,6 +1183,16 @@
         }
       }
     },
+    "Capturing: every copy is added to history": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запись идёт: каждая копия попадает в историю"
+          }
+        }
+      }
+    },
     "Card number": {
       "localizations": {
         "ru": {
@@ -1179,6 +1219,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Регистр"
+          }
+        }
+      }
+    },
+    "Change case, lines, JSON or encoding; applies to %@; ⌘Z undoes it": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Регистр, строки, JSON или кодирование; применяется к %@; ⌘Z отменяет"
           }
         }
       }
@@ -2135,6 +2185,16 @@
         }
       }
     },
+    "Find in the text (⌘F); Find and Replace (⌥⌘F)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найти в тексте (⌘F); найти и заменить (⌥⌘F)"
+          }
+        }
+      }
+    },
     "First copied": {
       "localizations": {
         "ru": {
@@ -2725,6 +2785,16 @@
         }
       }
     },
+    "Larger than the “Largest item” limit (%@, Settings → Apps → All Apps)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Больше лимита «Наибольший элемент» (%@, Настройки → Приложения → Все приложения)"
+          }
+        }
+      }
+    },
     "Largest item": {
       "localizations": {
         "ru": {
@@ -2921,6 +2991,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Смешанное"
+          }
+        }
+      }
+    },
+    "Monospaced Font": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Моноширинный шрифт"
           }
         }
       }
@@ -4395,6 +4475,16 @@
         }
       }
     },
+    "Size of the text against the “Largest item” limit (Settings → Apps → All Apps)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Размер текста относительно лимита «Наибольший элемент» (Настройки → Приложения → Все приложения)"
+          }
+        }
+      }
+    },
     "Skip": {
       "localizations": {
         "ru": {
@@ -4905,6 +4995,16 @@
         }
       }
     },
+    "Transform": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Преобразовать"
+          }
+        }
+      }
+    },
     "Trim Whitespace": {
       "localizations": {
         "ru": {
@@ -5185,12 +5285,12 @@
         }
       }
     },
-    "Wrap lines, line numbers, invisible characters (spaces, tabs, line breaks) and text size": {
+    "Wrap lines, line numbers, invisible characters (spaces, tabs, line breaks), font and text size": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Перенос строк, номера строк, невидимые символы (пробелы, табуляции, переносы строк) и размер текста"
+            "value": "Перенос строк, номера строк, невидимые символы (пробелы, табуляции, переносы строк), шрифт и размер текста"
           }
         }
       }

@@ -53,12 +53,21 @@ enum RecordKeys {
                let scrollView = textView.enclosingScrollView, responder.isDescendant(of: scrollView) {
                 return false
             }
+            // The title or the new-collection field: Esc only leaves it (the title saves itself).
+            if let field = responder as? NSTextView, field.isFieldEditor {
+                window.makeFirstResponder(nil)
+                return true
+            }
             if state.isDirty || !(responder is NSTextView) {
                 model.dismissRecord()
             } else {
                 // Editing without changes: the first Esc only leaves the text.
                 window.makeFirstResponder(nil)
             }
+            return true
+        }
+        if flags == [.option, .command], key.letter == "f", state.hasText {
+            state.showFind(replace: true)
             return true
         }
         if flags == [.option, .command], key.letter == "i" {
