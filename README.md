@@ -16,7 +16,7 @@ All v1 features of the plan are implemented and build in CI; they have not yet b
 - Pause capture, *Skip next copy* (menu, optional hotkeys).
 - *Edit Record*: one window to look at and edit a record — syntax highlighting while you type, *Copied from <page>*, text recognized in images (Vision, on device), copied as a new card.
 - Text actions, titles, favorites, collections; *Duplicate As*; ⌘K actions panel; full keyboard map (PLAN §8.3).
-- The card the clipboard holds has a green edge (over the blue selection border when it is also selected); a double-click makes another record the clipboard content and takes you back to your app. Optional paste after copying (Accessibility), launch at login, tooltips on every control, English and Russian.
+- The card the clipboard holds has a thin green line (inside the blue selection border when it is also selected); a double-click makes another record the clipboard content and takes you back to your app. Optional paste after copying (Accessibility), launch at login, tooltips on every control, English and Russian.
 
 ## Build and run
 
