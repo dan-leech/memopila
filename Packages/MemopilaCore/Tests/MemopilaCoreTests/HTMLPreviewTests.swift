@@ -37,7 +37,7 @@ struct HTMLPreviewTests {
     }
 
     @Test func bodyBackgroundIsThePage() {
-        let preview = HTMLPreview.preview(of: #"<body bgcolor="#000000"><p>Hi</p></body>"#)
+        let preview = HTMLPreview.preview(of: ##"<body bgcolor="#000000"><p>Hi</p></body>"##)
         #expect(preview.pageBackground == HTMLPreview.Color(red: 0, green: 0, blue: 0))
         #expect(HTMLPreview.preview(of: "<p>Hi</p>").pageBackground == nil)
     }
