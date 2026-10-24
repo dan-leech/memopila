@@ -117,6 +117,9 @@ final class ItemState {
     /// The formatted text as the text view holds it after loading or saving: *Edited* compares
     /// with it, so a change of formatting alone counts too.
     @ObservationIgnored private var initialRich: NSAttributedString?
+    /// Formatted text is zoomed so most of it reads at about 14 pt (first-run feedback: web and
+    /// app text often comes in at 9–11 pt and was too small to read).
+    @ObservationIgnored private var richScale: CGFloat = 1
 
     /// Highlighting stops above this many UTF-16 units: colouring that much text costs more than it helps.
     private static let highlightLimit = 200_000
@@ -180,7 +183,7 @@ final class ItemState {
             // Formatted text keeps its own fonts: the size controls zoom it instead.
             if let scrollView = textView.enclosingScrollView {
                 scrollView.allowsMagnification = true
-                scrollView.magnification = fontSize / Self.defaultFontSize
+                scrollView.magnification = richScale * fontSize / Self.defaultFontSize
             }
         } else {
             textView.enclosingScrollView?.magnification = 1
@@ -274,8 +277,19 @@ final class ItemState {
     private func showRich(in textView: NSTextView) {
         guard let richSource, let storage = textView.textStorage else { return }
         textView.isRichText = true
-        // Colours chosen for a white page stay readable in Dark Mode, as in Mail and Notes.
-        textView.usesAdaptiveColorMappingForDarkAppearance = true
+        // On the page it was made for, in its own colours — a white page, or a dark one for light
+        // text such as code copied from a dark editor theme — as a document, not recoloured for the
+        // window (first-run feedback: mapped colours and small sizes were hard to read).
+        let isDarkPage = Self.isWrittenForDarkPage(richSource)
+        let page = isDarkPage ? NSColor(white: 0.13, alpha: 1) : NSColor.white
+        textView.usesAdaptiveColorMappingForDarkAppearance = false
+        textView.appearance = NSAppearance(named: isDarkPage ? .darkAqua : .aqua)
+        textView.drawsBackground = true
+        textView.backgroundColor = page
+        textView.enclosingScrollView?.drawsBackground = true
+        textView.enclosingScrollView?.backgroundColor = page
+        textView.textContainerInset = NSSize(width: 22, height: 18)
+        richScale = Self.readableScale(for: richSource)
         storage.setAttributedString(richSource)
         textView.undoManager?.removeAllActions()
         // As the text view holds it: loading may have fixed fonts or attributes.
@@ -297,8 +311,11 @@ final class ItemState {
             showRich(in: textView)
         } else {
             let text = storage.string
-            textView.usesAdaptiveColorMappingForDarkAppearance = false
             textView.isRichText = false
+            textView.appearance = nil
+            textView.drawsBackground = false
+            textView.enclosingScrollView?.drawsBackground = false
+            textView.textContainerInset = NSSize(width: 10, height: 10)
             storage.setAttributedString(NSAttributedString(string: text, attributes: [
                 .foregroundColor: NSColor.labelColor,
                 .paragraphStyle: textView.defaultParagraphStyle ?? .default,
@@ -309,6 +326,33 @@ final class ItemState {
             applyFont()
         }
         textDidChange()
+    }
+
+    /// Most of the text is light: it was written for a dark page.
+    private static func isWrittenForDarkPage(_ text: NSAttributedString) -> Bool {
+        var light = 0
+        var dark = 0
+        text.enumerateAttribute(.foregroundColor, in: NSRange(location: 0, length: min(text.length, 100_000)), options: []) { value, range, _ in
+            // No colour of its own: black.
+            guard let color = (value as? NSColor)?.usingColorSpace(.sRGB) else {
+                dark += range.length
+                return
+            }
+            let luminance = 0.2126 * color.redComponent + 0.7152 * color.greenComponent + 0.0722 * color.blueComponent
+            if luminance > 0.6 { light += range.length } else { dark += range.length }
+        }
+        return light > dark
+    }
+
+    /// The zoom at which the size most of the text has reads as 14 pt; never below 1 (large text
+    /// stays as it is) and at most 2.5.
+    private static func readableScale(for text: NSAttributedString) -> CGFloat {
+        var characters: [CGFloat: Int] = [:]
+        text.enumerateAttribute(.font, in: NSRange(location: 0, length: min(text.length, 100_000)), options: []) { value, range, _ in
+            characters[((value as? NSFont)?.pointSize ?? 12).rounded(), default: 0] += range.length
+        }
+        guard let common = characters.max(by: { $0.value < $1.value })?.key, common > 0 else { return 1 }
+        return min(max(14 / common, 1), 2.5)
     }
 
     /// RTF (flat RTFD with attachments) and HTML of the formatted text, for saving.
