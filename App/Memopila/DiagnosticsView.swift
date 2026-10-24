@@ -5,8 +5,6 @@ import SwiftUI
 /// Phase 1 spike instrument (PLAN §3.1 spike questions): shows the access policy and capture state,
 /// and lets you try single pasteboard calls to see which ones raise the system alert.
 struct DiagnosticsView: View {
-    static let windowID = "diagnostics"
-
     let model: AppModel
     @State private var probes: [String] = []
     @State private var recordCount: Int?
@@ -66,7 +64,7 @@ struct DiagnosticsView: View {
             }
         }
         .padding()
-        .background(FloatingWindow { model.secondaryWindowDidClose() })
+        .frame(minWidth: 560, minHeight: 440)
         .task { recordCount = try? await model.store.count(HistoryQuery()) }
     }
 

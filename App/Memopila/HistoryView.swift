@@ -6,7 +6,6 @@ import SwiftUI
 struct HistoryView: View {
     let model: AppModel
     @FocusState private var searchFocused: Bool
-    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         ZStack {
@@ -31,10 +30,7 @@ struct HistoryView: View {
         .ignoresSafeArea()
         .frame(minWidth: 520, minHeight: 360)
         .background(.regularMaterial)
-        .onAppear {
-            model.openSettingsAction = openSettings
-            searchFocused = true
-        }
+        .onAppear { searchFocused = true }
         .onChange(of: model.focusSearchToken) { _, _ in searchFocused = true }
     }
 

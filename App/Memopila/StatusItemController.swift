@@ -1,6 +1,5 @@
 import AppKit
 import Observation
-import SwiftUI
 
 /// The menu bar icon (PLAN §8.8). A click opens the panel, as in Pasta; the gear menu in the panel
 /// holds the commands. Right-click or ⌃-click shows a short menu, so Quit and Resume stay reachable
@@ -21,11 +20,6 @@ final class StatusItemController: NSObject {
         button.action = #selector(clicked)
         _ = button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         button.setAccessibilityLabel(String(localized: "Memopila"))
-        // A zero-size SwiftUI view in the always-visible status button hands over the Settings and
-        // window actions, so they work before the panel has ever been shown.
-        let capture = NSHostingView(rootView: EnvironmentCapture(model: model))
-        capture.frame = NSRect(x: 0, y: 0, width: 1, height: 1)
-        button.addSubview(capture)
         trackIcon()
     }
 
@@ -101,29 +95,13 @@ final class StatusItemController: NSObject {
     }
 }
 
-/// Captures SwiftUI window actions for AppKit callers.
-private struct EnvironmentCapture: View {
-    let model: AppModel
-    @Environment(\.openSettings) private var openSettings
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Color.clear
-            .frame(width: 1, height: 1)
-            .onAppear {
-                model.openSettingsAction = openSettings
-                model.openWindowAction = openWindow
-            }
-    }
-}
-
 /// `NSMenuItem` that runs a closure.
 final class ClosureMenuItem: NSMenuItem {
     private let handler: @MainActor () -> Void
 
-    init(_ title: String, handler: @escaping @MainActor () -> Void) {
+    init(_ title: String, key: String = "", handler: @escaping @MainActor () -> Void) {
         self.handler = handler
-        super.init(title: title, action: #selector(run), keyEquivalent: "")
+        super.init(title: title, action: #selector(run), keyEquivalent: key)
         target = self
     }
 

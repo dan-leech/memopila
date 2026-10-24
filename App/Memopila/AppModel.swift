@@ -32,7 +32,7 @@ enum RestoreVariant: Equatable {
     }
 }
 
-enum SettingsTab: String, Hashable {
+enum SettingsTab: String, Hashable, CaseIterable {
     case general, history, privacy, apps, formats, recognition, about
 }
 
@@ -52,6 +52,7 @@ final class AppModel {
     let toasts = ToastCenter()
     let thumbnails: ThumbnailCache
     @ObservationIgnored private(set) var panel: PanelController!
+    @ObservationIgnored private(set) var windows: SecondaryWindows!
     private let recognition: RecognitionService
     /// The history file could not be opened; history is kept in memory until relaunch.
     let storeOpenError: String?
@@ -69,7 +70,6 @@ final class AppModel {
     /// Bumped whenever search should take focus (open, ⌘F, overlay closed).
     private(set) var focusSearchToken = 0
     private(set) var hotKeyErrors: [HotKeyRole: String] = [:]
-    var settingsTab: SettingsTab = .general
     var settingsApp: String?
 
     @ObservationIgnored private var hotKeyIDs: [HotKeyRole: UInt32] = [:]
@@ -79,8 +79,6 @@ final class AppModel {
     @ObservationIgnored private var retentionTask: Task<Void, Never>?
     @ObservationIgnored private var purgeTask: Task<Void, Never>?
     @ObservationIgnored private var memoryPressure: DispatchSourceMemoryPressure?
-    @ObservationIgnored var openSettingsAction: OpenSettingsAction?
-    @ObservationIgnored var openWindowAction: OpenWindowAction?
     /// Where the menu bar icon is, for Diagnostics (a crowded menu bar hides it under the notch).
     @ObservationIgnored var statusItemDescription: (() -> String)?
     /// Settings or Diagnostics hid the panel; it comes back when that window closes (as in Pasta).
@@ -109,6 +107,7 @@ final class AppModel {
         thumbnails = ThumbnailCache(store: store)
         recognition = RecognitionService(store: store, settings: settings)
         panel = PanelController(model: self)
+        windows = SecondaryWindows(model: self)
 
         monitor.panelIsKey = { [weak self] in self?.panel.isKey ?? false }
         monitor.onSaved = { [weak self] _ in self?.didSave() }
@@ -710,28 +709,28 @@ final class AppModel {
     /// Other windows never open under the floating panel: it hides first, pinned or not, as Pasta does,
     /// and returns when the window closes.
     func openSettings(_ tab: SettingsTab? = nil, app: String? = nil) {
-        if let tab { settingsTab = tab }
         if let app { settingsApp = app }
         hidePanelForWindow()
-        NSApp.activate()
-        if let openSettingsAction { openSettingsAction() }
+        windows.showSettings(tab: tab)
     }
 
     func openDiagnostics() {
         hidePanelForWindow()
-        NSApp.activate()
-        if let openWindowAction { openWindowAction(id: DiagnosticsView.windowID) }
+        windows.showDiagnostics()
     }
 
     private func hidePanelForWindow() {
         if panel.isVisible { panelHiddenForWindow = true }
-        panel.close()
+        // The window that replaces the panel takes the focus.
+        panel.close(returningFocus: false)
     }
 
-    func secondaryWindowDidClose() {
-        guard panelHiddenForWindow else { return }
+    /// The last of Settings and Diagnostics closed; `true` when the panel they replaced came back.
+    func secondaryWindowDidClose() -> Bool {
+        guard panelHiddenForWindow else { return false }
         panelHiddenForWindow = false
         panel.show()
+        return true
     }
 
     func dismissStoreRecovery() {

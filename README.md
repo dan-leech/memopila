@@ -15,8 +15,8 @@ All v1 features of the plan are implemented and build in CI; they have not yet b
 - Per-app settings: *Don't save*, *Delete after*, size limit, text recognition, source page; quick actions on every card and app with Undo.
 - Pause capture, *Skip next copy* (menu, optional hotkeys).
 - Preview with syntax highlighting, *Copied from <page>*, text recognized in images (Vision, on device).
-- Edit text with text actions, rename, favorites, collections; *Copy As* text actions; ⌘K actions panel; full keyboard map (PLAN §8.3).
-- Launch at login, optional Dock icon, *Paste after restore* (Accessibility), English and Russian.
+- Edit text with text actions, rename, favorites, collections; *Duplicate As* text actions; ⌘K actions panel; full keyboard map (PLAN §8.3).
+- Launch at login, *Paste after restore* (Accessibility), English and Russian.
 
 ## Build and run
 
@@ -24,13 +24,13 @@ Requirements: macOS 15.4 or later, Xcode 26 or later.
 
 1. Open `App/Memopila.xcodeproj`.
 2. Target **Memopila** → *Signing & Capabilities* → choose your **Team** (a free Apple ID personal team is enough). Use a stable Apple Development identity rather than *Sign to Run Locally*: macOS ties the clipboard access choice to the app's signature.
-3. Run. Memopila appears in the menu bar.
+3. Run. The panel opens and Memopila appears in the menu bar. A click on the icon opens the panel; right-click shows a short menu. If the icon is missing, the menu bar is full: on a Mac with a notch the icons that do not fit are hidden. ⌥⌘V and opening Memopila again from Finder or Spotlight still open the panel; Diagnostics shows where the icon is.
 4. Quit Pasta first, or pick another shortcut in Settings — only one app can hold ⌥⌘V.
 5. On first launch choose **Enable capture** (menu bar menu or the panel banner). If macOS asks about clipboard access, allow it; if capture stays paused, open System Settings → Privacy & Security and set Memopila to *Always Allow*.
 
-Settings → **Apps** and the **<App> ▸** submenu on each card hold per-app settings; Settings → **Formats** has the size limit, global format rules and **Inspect** for the current clipboard.
+Settings → **Apps** and the **Rules for <App> ▸** submenu on each card hold per-app settings; Settings → **Formats** has the size limit, global format rules and **Inspect** for the current clipboard.
 
-Menu bar → **Diagnostics…** shows the clipboard access state and lets you probe single pasteboard calls (`changeCount`, `types`, content read) to see which ones trigger the system alert — the Phase 1 spike questions in PLAN §3.1. **Copy report** puts the results on the clipboard.
+Gear menu (or right-click on the menu bar icon) → **Diagnostics…** shows the clipboard access state and lets you probe single pasteboard calls (`changeCount`, `types`, content read) to see which ones trigger the system alert — the Phase 1 spike questions in PLAN §3.1. **Copy report** puts the results on the clipboard.
 
 ## Tests
 

@@ -1103,6 +1103,16 @@
         }
       }
     },
+    "Close": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Закрыть"
+          }
+        }
+      }
+    },
     "Close preview": {
       "localizations": {
         "ru": {
@@ -1249,6 +1259,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Скопировать текст с изображения"
+          }
+        }
+      }
+    },
+    "Copy and Delete": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать и удалить"
           }
         }
       }
@@ -1671,6 +1691,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Создан дубликат: %@"
+          }
+        }
+      }
+    },
+    "Edit": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Правка"
           }
         }
       }
@@ -2705,6 +2735,16 @@
         }
       }
     },
+    "Paste": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вставить"
+          }
+        }
+      }
+    },
     "Paste After Restore": {
       "localizations": {
         "ru": {
@@ -3011,6 +3051,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Запоминать исходную страницу и заголовок окна"
+          }
+        }
+      }
+    },
+    "Redo": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Повторить"
           }
         }
       }
@@ -3421,6 +3471,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Секреты"
+          }
+        }
+      }
+    },
+    "Select All": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать всё"
           }
         }
       }

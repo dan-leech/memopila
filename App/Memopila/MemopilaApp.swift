@@ -1,24 +1,17 @@
+import AppKit
 import Carbon
-import SwiftUI
 
+/// AppKit app lifecycle: every window opens only when Memopila asks for it. With SwiftUI scenes the
+/// system decided when to show the Settings scene — it appeared at launch and after the panel
+/// closed, with no way to suppress it (PLAN §8.7).
 @main
-struct MemopilaApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-
-    var body: some Scene {
-        // The menu bar icon is an AppKit status item (StatusItemController): a click opens the panel.
-        Settings {
-            SettingsView(model: appDelegate.model)
-        }
-        // No window comes back by itself at launch; the panel is the only thing that opens then.
-        .restorationBehavior(.disabled)
-
-        Window("Diagnostics", id: DiagnosticsView.windowID) {
-            DiagnosticsView(model: appDelegate.model)
-        }
-        .defaultSize(width: 640, height: 520)
-        .defaultLaunchBehavior(.suppressed)
-        .restorationBehavior(.disabled)
+@MainActor
+enum MemopilaMain {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.delegate = delegate
+        withExtendedLifetime(delegate) { app.run() }
     }
 }
 
@@ -28,6 +21,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: StatusItemController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // A menu bar app has no window most of the time: the system must not quit it for that.
+        ProcessInfo.processInfo.disableAutomaticTermination("Memopila watches the clipboard")
+        NSApp.mainMenu = MainMenu.make(model: model)
         let statusItem = StatusItemController(model: model)
         self.statusItem = statusItem
         model.statusItemDescription = { [weak statusItem] in statusItem?.placementDescription ?? "—" }
@@ -37,15 +33,67 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if !Self.launchedAsLoginItem { model.panel.show() }
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        model.monitor.record("quitting")
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
     private static var launchedAsLoginItem: Bool {
         guard let event = NSAppleEventManager.shared().currentAppleEvent,
               event.eventID == AEEventID(kAEOpenApplication) else { return false }
         return event.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == OSType(keyAELaunchedAsLogInItem)
     }
 
-    /// Dock icon click or relaunch while running: open the panel.
+    /// Opened again while running (Finder, Spotlight): open the panel.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         model.panel.show()
         return false
+    }
+}
+
+/// Memopila has no menu bar of its own (it is an agent app), but the main menu still delivers
+/// ⌘C, ⌘V, ⌘Z… to text fields in Settings, ⌘W to close a window and ⌘Q to quit.
+@MainActor
+enum MainMenu {
+    static func make(model: AppModel) -> NSMenu {
+        let main = NSMenu()
+
+        let app = NSMenu()
+        app.addItem(ClosureMenuItem(String(localized: "About Memopila")) { model.openSettings(.about) })
+        app.addItem(.separator())
+        app.addItem(ClosureMenuItem(String(localized: "Settings…"), key: ",") { model.openSettings() })
+        app.addItem(.separator())
+        app.addItem(item(String(localized: "Quit Memopila"), #selector(NSApplication.terminate(_:)), "q"))
+        main.addItem(submenu(app, title: "Memopila"))
+
+        let edit = NSMenu(title: String(localized: "Edit"))
+        edit.addItem(item(String(localized: "Undo"), Selector(("undo:")), "z"))
+        edit.addItem(item(String(localized: "Redo"), Selector(("redo:")), "z", [.command, .shift]))
+        edit.addItem(.separator())
+        edit.addItem(item(String(localized: "Cut"), #selector(NSText.cut(_:)), "x"))
+        edit.addItem(item(String(localized: "Copy"), #selector(NSText.copy(_:)), "c"))
+        edit.addItem(item(String(localized: "Paste"), #selector(NSText.paste(_:)), "v"))
+        edit.addItem(item(String(localized: "Select All"), #selector(NSText.selectAll(_:)), "a"))
+        main.addItem(submenu(edit, title: edit.title))
+
+        let window = NSMenu(title: String(localized: "Window"))
+        window.addItem(item(String(localized: "Close"), #selector(NSWindow.performClose(_:)), "w"))
+        main.addItem(submenu(window, title: window.title))
+        return main
+    }
+
+    private static func item(_ title: String, _ action: Selector, _ key: String, _ modifiers: NSEvent.ModifierFlags = .command) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        item.keyEquivalentModifierMask = modifiers
+        return item
+    }
+
+    private static func submenu(_ menu: NSMenu, title: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        item.submenu = menu
+        return item
     }
 }

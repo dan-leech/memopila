@@ -3,36 +3,54 @@ import MemopilaCore
 import MemopilaServices
 import SwiftUI
 
-/// Settings window (PLAN §8.7). Floats above other apps until closed: Memopila has no Dock icon.
-struct SettingsView: View {
-    @Bindable var model: AppModel
+/// One Settings tab (PLAN §8.7); `SecondaryWindows` puts them in a window with toolbar tabs.
+struct SettingsPage: View {
+    static let size = CGSize(width: 700, height: 540)
+
+    let model: AppModel
+    let tab: SettingsTab
 
     var body: some View {
-        TabView(selection: $model.settingsTab) {
-            GeneralSettings(model: model)
-                .tabItem { Label("General", systemImage: "gearshape") }
-                .tag(SettingsTab.general)
-            HistorySettings(model: model)
-                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
-                .tag(SettingsTab.history)
-            PrivacySettings(model: model)
-                .tabItem { Label("Privacy", systemImage: "hand.raised") }
-                .tag(SettingsTab.privacy)
-            AppsSettings(model: model)
-                .tabItem { Label("Apps", systemImage: "square.grid.2x2") }
-                .tag(SettingsTab.apps)
-            FormatsSettings(model: model)
-                .tabItem { Label("Formats", systemImage: "doc.on.doc") }
-                .tag(SettingsTab.formats)
-            RecognitionSettings(settings: model.settings)
-                .tabItem { Label("Text Recognition", systemImage: "text.viewfinder") }
-                .tag(SettingsTab.recognition)
-            AboutSettings()
-                .tabItem { Label("About", systemImage: "info.circle") }
-                .tag(SettingsTab.about)
+        page.frame(width: Self.size.width, height: Self.size.height)
+    }
+
+    @ViewBuilder
+    private var page: some View {
+        switch tab {
+        case .general: GeneralSettings(model: model)
+        case .history: HistorySettings(model: model)
+        case .privacy: PrivacySettings(model: model)
+        case .apps: AppsSettings(model: model)
+        case .formats: FormatsSettings(model: model)
+        case .recognition: RecognitionSettings(settings: model.settings)
+        case .about: AboutSettings()
         }
-        .frame(width: 700, height: 540)
-        .background(FloatingWindow { model.secondaryWindowDidClose() })
+    }
+}
+
+extension SettingsTab {
+    var title: String {
+        switch self {
+        case .general: String(localized: "General")
+        case .history: String(localized: "History")
+        case .privacy: String(localized: "Privacy")
+        case .apps: String(localized: "Apps")
+        case .formats: String(localized: "Formats")
+        case .recognition: String(localized: "Text Recognition")
+        case .about: String(localized: "About")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .general: "gearshape"
+        case .history: "clock.arrow.circlepath"
+        case .privacy: "hand.raised"
+        case .apps: "square.grid.2x2"
+        case .formats: "doc.on.doc"
+        case .recognition: "text.viewfinder"
+        case .about: "info.circle"
+        }
     }
 }
 

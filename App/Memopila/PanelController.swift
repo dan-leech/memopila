@@ -80,10 +80,15 @@ final class PanelController: NSObject, NSWindowDelegate {
         panel.makeKeyAndOrderFront(nil)
     }
 
-    func close() {
+    /// Memopila is the active app after a launch by hand or after Settings: closing the panel then
+    /// hands the keyboard back to the app behind it instead of leaving it with no window.
+    func close(returningFocus: Bool = true) {
         guard let panel, panel.isVisible else { return }
         panel.orderOut(nil)
         model.panelDidClose()
+        if returningFocus, NSApp.isActive, !model.windows.isAnyVisible {
+            _ = model.previousApp?.activate()
+        }
     }
 
     /// Esc: close an overlay, clear a non-empty search, otherwise close (§3.4).

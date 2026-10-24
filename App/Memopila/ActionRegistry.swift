@@ -48,7 +48,7 @@ enum ActionRegistry {
             ActionItem(id: "copy", title: String(localized: "Copy"), systemImage: "doc.on.doc", shortcut: "↩") {
                 model.restore(id)
             },
-            ActionItem(id: "cut", title: String(localized: "Cut"), systemImage: "scissors", shortcut: "⌘X") {
+            ActionItem(id: "cut", title: String(localized: "Copy and Delete"), systemImage: "scissors", shortcut: "⌘X") {
                 model.cut(id)
             },
             ActionItem(
