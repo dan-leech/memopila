@@ -3,7 +3,7 @@ import MemopilaCore
 import MemopilaServices
 import SwiftUI
 
-/// Settings window (PLAN §8.7).
+/// Settings window (PLAN §8.7). Floats above other apps until closed: Memopila has no Dock icon.
 struct SettingsView: View {
     @Bindable var model: AppModel
 
@@ -12,9 +12,12 @@ struct SettingsView: View {
             GeneralSettings(model: model)
                 .tabItem { Label("General", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
-            CaptureSettings(model: model)
-                .tabItem { Label("Capture", systemImage: "list.clipboard") }
-                .tag(SettingsTab.capture)
+            HistorySettings(model: model)
+                .tabItem { Label("History", systemImage: "clock.arrow.circlepath") }
+                .tag(SettingsTab.history)
+            PrivacySettings(model: model)
+                .tabItem { Label("Privacy", systemImage: "hand.raised") }
+                .tag(SettingsTab.privacy)
             AppsSettings(model: model)
                 .tabItem { Label("Apps", systemImage: "square.grid.2x2") }
                 .tag(SettingsTab.apps)
@@ -24,14 +27,12 @@ struct SettingsView: View {
             RecognitionSettings(settings: model.settings)
                 .tabItem { Label("Text Recognition", systemImage: "text.viewfinder") }
                 .tag(SettingsTab.recognition)
-            StorageSettings(model: model)
-                .tabItem { Label("Storage", systemImage: "internaldrive") }
-                .tag(SettingsTab.storage)
             AboutSettings()
                 .tabItem { Label("About", systemImage: "info.circle") }
                 .tag(SettingsTab.about)
         }
-        .frame(width: 680, height: 500)
+        .frame(width: 700, height: 540)
+        .background(FloatingWindow())
     }
 }
 
@@ -45,48 +46,85 @@ private struct GeneralSettings: View {
         return Form {
             Section {
                 LabeledContent("Open Memopila") { ShortcutRecorder(model: model, role: .window) }
-                Text("The shortcut needs ⌘ or ⌃. While Memopila holds ⌥⌘V it replaces Finder's Move Item Here.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                LabeledContent("Pause or resume capture") { ShortcutRecorder(model: model, role: .pause) }
+                LabeledContent("Skip next copy") { ShortcutRecorder(model: model, role: .skip) }
+            } header: {
+                Text("Shortcuts")
+            } footer: {
+                Text("A shortcut needs ⌘ or ⌃. Only one app can hold ⌥⌘V: quit Pasta or choose another shortcut.")
             }
+
+            Section {
+                AccessStatusRow(monitor: model.monitor)
+            } header: {
+                Text("Clipboard Access")
+            } footer: {
+                Text("macOS asks before apps read the clipboard in the background. Choose Always Allow for Memopila.")
+            }
+
             Section {
                 Toggle("Launch at login", isOn: $settings.launchAtLogin)
                 if let error = settings.launchAtLoginError {
-                    Text(error).font(.caption).foregroundStyle(.red)
+                    Text(error).foregroundStyle(.red)
                 }
-                Toggle("Show Dock icon", isOn: $settings.showDockIcon)
-                    .onChange(of: settings.showDockIcon) { _, _ in model.applyActivationPolicy() }
+            } header: {
+                Text("Startup")
             }
-            Section("Paste After Restore") {
-                Toggle("Paste into the previous app after restoring", isOn: $settings.pasteAfterRestore)
+
+            Section {
+                Toggle("Paste into the previous app after copying", isOn: $settings.pasteAfterRestore)
                     .onChange(of: settings.pasteAfterRestore) { _, enabled in
                         if enabled, !AccessibilityBridge.isTrusted { AccessibilityBridge.requestTrust() }
                     }
                 TimelineView(.periodic(from: .now, by: 2)) { _ in
                     let trusted = AccessibilityBridge.isTrusted
-                    HStack {
-                        Label(
-                            trusted ? String(localized: "Accessibility access is allowed.") : String(localized: "Pasting needs Accessibility access."),
-                            systemImage: trusted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-                        )
-                        .foregroundStyle(trusted ? Color.green : Color.orange)
-                        Spacer()
-                        if !trusted {
-                            Button("Open Accessibility Settings") { AccessibilityBridge.openSettings() }
+                    LabeledContent("Accessibility") {
+                        if trusted {
+                            Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                        } else {
+                            Button("Allow in System Settings…") { AccessibilityBridge.openSettings() }
                         }
                     }
-                    .font(.callout)
                 }
-                Text("Restore still works without it. When allowed, Memopila also records the title of the window you copied from.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            } header: {
+                Text("Paste After Restore")
+            } footer: {
+                Text("Copying works without Accessibility. When allowed, Memopila also remembers the title of the window you copied from.")
             }
         }
         .formStyle(.grouped)
     }
 }
 
-/// Records the next key press with ⌘ or ⌃; Esc cancels (§2).
+private struct AccessStatusRow: View {
+    let monitor: ClipboardMonitor
+
+    var body: some View {
+        LabeledContent("Status") {
+            HStack(spacing: 8) {
+                switch monitor.access {
+                case .allowed:
+                    Label("Allowed", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                case .needsEnable:
+                    Text("Not enabled yet").foregroundStyle(.secondary)
+                    Button("Enable Capture") { monitor.enableCapture() }
+                case .ask:
+                    Text("Asks every time").foregroundStyle(.orange)
+                    Button("Open System Settings") { PasteboardAccess.openSystemSettings() }
+                    Button("Check Again") { monitor.refreshAccess() }
+                case .denied:
+                    Text("Denied").foregroundStyle(.red)
+                    Button("Open System Settings") { PasteboardAccess.openSystemSettings() }
+                    Button("Check Again") { monitor.refreshAccess() }
+                }
+            }
+        }
+        if let hint = monitor.enableHint, monitor.access == .needsEnable {
+            Text(hint).foregroundStyle(.secondary)
+        }
+    }
+}
+
 struct ShortcutRecorder: View {
     let model: AppModel
     let role: HotKeyRole
@@ -147,71 +185,147 @@ struct ShortcutRecorder: View {
     }
 }
 
-// MARK: - Capture
+// MARK: - History (§6)
 
-private struct CaptureSettings: View {
+private struct HistorySettings: View {
     let model: AppModel
+    @State private var usage: HistoryUsage?
+    @State private var isConfirmingClear = false
+    @State private var clearScope: ClearScope = .nonFavorites
 
-    private var monitor: ClipboardMonitor { model.monitor }
+    private static let countOptions = [100, 250, 500, 1_000, 2_500, 5_000, 10_000]
+    private static let ageOptions = [1, 7, 14, 30, 90, 180, 365]
 
     var body: some View {
         @Bindable var settings = model.settings
         return Form {
-            Section("Clipboard Access") {
-                LabeledContent("Status") {
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Text(accessDescription)
-                        switch monitor.access {
-                        case .needsEnable:
-                            Button("Enable Capture") { monitor.enableCapture() }
-                            if let hint = monitor.enableHint { Text(hint).font(.caption).foregroundStyle(.secondary) }
-                        case .ask, .denied:
-                            HStack {
-                                Button("Open System Settings") { PasteboardAccess.openSystemSettings() }
-                                Button("Check Again") { monitor.refreshAccess() }
-                            }
-                        case .allowed:
-                            EmptyView()
-                        }
+            Section {
+                Picker("Keep up to", selection: $settings.maxCount) {
+                    ForEach(Self.options(Self.countOptions, current: settings.maxCount), id: \.self) { count in
+                        Text(String(localized: "\(count) items")).tag(count)
                     }
                 }
-                Text("macOS asks before apps read the clipboard in the background. Choose Always Allow for Memopila; other clipboard managers can compete for the same access.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Section("Pause and Skip") {
-                LabeledContent("Pause or resume capture") { ShortcutRecorder(model: model, role: .pause) }
-                LabeledContent("Skip next copy") { ShortcutRecorder(model: model, role: .skip) }
-                Text("Content copied while capture is paused or skipped is never read.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Section("Source App") {
-                Picker("Identify the source app", selection: $settings.identityMode) {
-                    Text("Standard: marker or frontmost app").tag(IdentityMode.standard)
-                    Text("Strict: marker only").tag(IdentityMode.strict)
+                Picker("Delete items older than", selection: $settings.maxAgeDays) {
+                    ForEach(Self.options(Self.ageOptions, current: settings.maxAgeDays), id: \.self) { days in
+                        Text(Self.ageTitle(days)).tag(days)
+                    }
                 }
-                Text("Standard uses the source marker some apps add, else the frontmost app. Strict trusts only the marker: while any app is set to Don't Save, copies without a marker are skipped. Neither is a security boundary.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Toggle("Ignore content from other devices (Universal Clipboard)", isOn: $settings.ignoreRemoteClipboard)
+            } header: {
+                Text("Retention")
+            } footer: {
+                Text("Favorites are never deleted automatically. All items together are limited to 512 MB; when that is full, the oldest make room.")
             }
-            SecretsSection(settings: model.settings)
+
+            Section {
+                LabeledContent("Items", value: usage.map { "\($0.count)" } ?? "—")
+                LabeledContent("Favorites", value: usage.map { "\($0.favorites)" } ?? "—")
+                LabeledContent("Stored data") {
+                    if let usage {
+                        Text(String(localized: "\(ByteCount.string(usage.payloadBytes)) of \(ByteCount.string(RetentionPlanner.defaultMaxStorageBytes))"))
+                    } else {
+                        Text("—")
+                    }
+                }
+                LabeledContent("Location") {
+                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([ClipboardStore.defaultURL]) }
+                }
+            } header: {
+                Text("Usage")
+            }
+
+            Section {
+                HStack {
+                    Button("Clear History…") {
+                        clearScope = .nonFavorites
+                        isConfirmingClear = true
+                    }
+                    Button("Clear Everything…", role: .destructive) {
+                        clearScope = .all
+                        isConfirmingClear = true
+                    }
+                }
+                .disabled(model.monitor.isBusy)
+            } header: {
+                Text("Clear")
+            } footer: {
+                Text("Clear History keeps favorites. Clear Everything removes them too.")
+            }
         }
         .formStyle(.grouped)
+        .task { await refreshUsage() }
+        .confirmationDialog(
+            clearScope == .all ? String(localized: "Delete all items, including favorites?") : String(localized: "Delete all items except favorites?"),
+            isPresented: $isConfirmingClear,
+            titleVisibility: .visible
+        ) {
+            Button(clearScope == .all ? String(localized: "Delete Everything") : String(localized: "Clear History"), role: .destructive) {
+                model.clear(clearScope)
+                Task {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    await refreshUsage()
+                }
+            }
+        } message: {
+            Text("This can't be undone.")
+        }
     }
 
-    private var accessDescription: String {
-        switch monitor.access {
-        case .allowed: String(localized: "Allowed")
-        case .needsEnable: String(localized: "Not enabled yet")
-        case .ask: String(localized: "Asks every time — choose Always Allow in System Settings")
-        case .denied: String(localized: "Denied in System Settings")
+    private func refreshUsage() async {
+        usage = try? await model.store.usage()
+    }
+
+    /// The presets plus the current value when it was set elsewhere.
+    private static func options(_ presets: [Int], current: Int) -> [Int] {
+        presets.contains(current) ? presets : (presets + [current]).sorted()
+    }
+
+    private static func ageTitle(_ days: Int) -> String {
+        switch days {
+        case 1: String(localized: "1 day")
+        case 7: String(localized: "1 week")
+        case 14: String(localized: "2 weeks")
+        case 90: String(localized: "3 months")
+        case 180: String(localized: "6 months")
+        case 365: String(localized: "1 year")
+        default: String(localized: "\(days) days")
         }
     }
 }
 
-// MARK: - Secrets (§3.10)
+// MARK: - Privacy (§3.10, §5, §9)
+
+private struct PrivacySettings: View {
+    let model: AppModel
+
+    var body: some View {
+        @Bindable var settings = model.settings
+        return Form {
+            SecretsSection(settings: model.settings)
+
+            Section {
+                Picker("Identify the source app", selection: $settings.identityMode) {
+                    Text("Standard: marker or frontmost app").tag(IdentityMode.standard)
+                    Text("Strict: marker only").tag(IdentityMode.strict)
+                }
+                Toggle("Ignore content from other devices (Universal Clipboard)", isOn: $settings.ignoreRemoteClipboard)
+            } header: {
+                Text("Source App")
+            } footer: {
+                Text("Standard uses the marker some apps add, else the frontmost app. Strict trusts only the marker: while any app is set to Don't Save, unmarked copies are skipped. Neither is a security boundary.")
+            }
+
+            Section {
+                Label("History stays on this Mac and is never sent anywhere.", systemImage: "laptopcomputer")
+                Label("It is not encrypted on disk.", systemImage: "lock.open")
+                Label("Copies that apps mark as concealed, such as passwords from a password manager, are always skipped.", systemImage: "key")
+                Label("For anything else, use Pause, Skip Next Copy, or set the app to Don't Save.", systemImage: "hand.raised")
+            } header: {
+                Text("Your Data")
+            }
+        }
+        .formStyle(.grouped)
+    }
+}
 
 private struct SecretsSection: View {
     let settings: SettingsStore
@@ -220,7 +334,7 @@ private struct SecretsSection: View {
     var body: some View {
         @Bindable var bindable = settings
         let store = settings
-        return Section("Secrets") {
+        return Section {
             Picker("When a copy contains a secret", selection: $bindable.secretPolicy) {
                 Text("Save as usual").tag(SecretPolicy.off)
                 Text("Don't save").tag(SecretPolicy.dontSave)
@@ -242,9 +356,6 @@ private struct SecretsSection: View {
                     LabeledContent("Delete after", value: RetentionText.duration(minutes: minutes))
                 }
             }
-            Text("Tokens, keys, JWTs and card numbers are recognized on this Mac. Saved secrets are masked on cards (open the preview to see one) and deleted on time; ⌘D keeps one for good.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
             DisclosureGroup("Recognized types") {
                 ForEach(SecretKind.allCases, id: \.self) { kind in
                     Toggle(kind.title, isOn: Binding.main(
@@ -256,6 +367,10 @@ private struct SecretsSection: View {
                 }
             }
             .disabled(settings.secretPolicy == .off)
+        } header: {
+            Text("Secrets")
+        } footer: {
+            Text("Tokens, keys, JWTs and card numbers are recognized on this Mac. Saved secrets are masked on cards (open the preview to see one) and deleted on time; ⌘D keeps one for good.")
         }
     }
 }
@@ -309,13 +424,11 @@ private struct RecognitionSettings: View {
         return Form {
             Section {
                 Toggle("Recognize text in images and scanned PDFs", isOn: $bindable.recognizeText)
-                Text("Runs on this Mac only, one image at a time in the background. Found text is searchable and can be copied from the preview.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            } footer: {
+                Text("Runs on this Mac, one image at a time in the background. Found text is searchable and can be copied from the preview.")
             }
-            Section("Languages") {
-                Text(String(localized: "Used: \(settings.effectiveRecognitionLanguages.map(Self.languageName).joined(separator: ", "))"))
-                    .font(.callout)
+            Section {
+                LabeledContent("In use", value: settings.effectiveRecognitionLanguages.map(Self.languageName).joined(separator: ", "))
                 Toggle("Use my preferred languages", isOn: .main(
                     get: { settings.recognitionLanguages.isEmpty },
                     set: { useDefault in settings.recognitionLanguages = useDefault ? [] : settings.effectiveRecognitionLanguages }
@@ -334,6 +447,8 @@ private struct RecognitionSettings: View {
                         ))
                     }
                 }
+            } header: {
+                Text("Languages")
             }
             .disabled(!settings.recognizeText)
         }
@@ -346,80 +461,29 @@ private struct RecognitionSettings: View {
     }
 }
 
-// MARK: - Storage (§6)
-
-private struct StorageSettings: View {
-    let model: AppModel
-    @State private var isConfirmingClear = false
-    @State private var clearScope: ClearScope = .nonFavorites
-    @State private var count: Int?
-
-    var body: some View {
-        @Bindable var settings = model.settings
-        return Form {
-            Section("History") {
-                Stepper(value: $settings.maxCount, in: RetentionPlanner.maxCountRange, step: 50) {
-                    LabeledContent("Keep up to", value: String(localized: "\(settings.maxCount) items"))
-                }
-                Stepper(value: $settings.maxAgeDays, in: SettingsStore.maxAgeRange) {
-                    LabeledContent("Delete items older than", value: String(localized: "\(settings.maxAgeDays) days"))
-                }
-                Text("Favorites are never deleted automatically. Total stored size is limited to 512 MB; when it is full, the oldest items make room.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                if let count {
-                    LabeledContent("Items in history", value: "\(count)")
-                }
-            }
-            Section("Clear History") {
-                HStack {
-                    Button("Clear History…") {
-                        clearScope = .nonFavorites
-                        isConfirmingClear = true
-                    }
-                    Button("Clear Everything, Including Favorites…", role: .destructive) {
-                        clearScope = .all
-                        isConfirmingClear = true
-                    }
-                }
-                .disabled(model.monitor.isBusy)
-            }
-        }
-        .formStyle(.grouped)
-        .task { count = try? await model.store.count(HistoryQuery()) }
-        .confirmationDialog(
-            clearScope == .all ? String(localized: "Delete all items, including favorites?") : String(localized: "Delete all items except favorites?"),
-            isPresented: $isConfirmingClear,
-            titleVisibility: .visible
-        ) {
-            Button(clearScope == .all ? String(localized: "Delete Everything") : String(localized: "Clear History"), role: .destructive) {
-                model.clear(clearScope)
-                Task {
-                    try? await Task.sleep(for: .milliseconds(300))
-                    count = try? await model.store.count(HistoryQuery())
-                }
-            }
-        } message: {
-            Text("This can't be undone.")
-        }
-    }
-}
-
-// MARK: - About (§8.7, §9)
+// MARK: - About
 
 private struct AboutSettings: View {
+    private static let repository = URL(string: "https://github.com/dan-leech/memopila")
+    private static let issues = URL(string: "https://github.com/dan-leech/memopila/issues")
+
     var body: some View {
-        Form {
-            Section {
-                LabeledContent("Version", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")
+        VStack(spacing: 10) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 96, height: 96)
+            Text("Memopila").font(.largeTitle.bold())
+            Text(String(localized: "Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")"))
+                .foregroundStyle(.secondary)
+            Text("Clipboard history that stays on your Mac.")
+                .padding(.top, 4)
+            HStack(spacing: 16) {
+                if let repository = Self.repository { Link("Source on GitHub", destination: repository) }
+                if let issues = Self.issues { Link("Report an Issue", destination: issues) }
             }
-            Section("Privacy") {
-                Text("History stays on this Mac, in ~/Library/Application Support/Memopila. It is not encrypted and is never sent anywhere.")
-                Text("Apps that mark passwords and other secrets as concealed or transient are skipped. Apps that don't are not filtered: use Pause or Skip Next Copy, or set the app to Don't Save.")
-                Text("Text recognition runs on this Mac. Files are stored as references, not copies.")
-            }
-            .font(.callout)
+            .padding(.top, 8)
         }
-        .formStyle(.grouped)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding()
     }
 }

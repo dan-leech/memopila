@@ -250,6 +250,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         case ",": model.openSettings()
         case "w": close()
         case "c": model.restoreSelected()
+        case "x": if let id = history.selectedID { model.cut(id) }
         case "p": model.isPinned.toggle()
         case ".": model.monitor.togglePause()
         default: return false
@@ -311,7 +312,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
         let selector: Selector
         switch (key.letter, flags) {
-        case ("x", .command): selector = #selector(NSText.cut(_:))
+        case ("x", .command):
+            // Without a text selection ⌘X cuts the selected card, as in Pasta.
+            guard textView.selectedRange().length > 0 else { return nil }
+            selector = #selector(NSText.cut(_:))
         case ("c", .command):
             guard textView.selectedRange().length > 0 else { return nil }
             selector = #selector(NSText.copy(_:))

@@ -21,6 +21,16 @@
         }
       }
     },
+    "%@ of %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@ из %2$@"
+          }
+        }
+      }
+    },
     "%@: delete after %@": {
       "localizations": {
         "ru": {
@@ -391,12 +401,42 @@
         }
       }
     },
+    "1 day": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 день"
+          }
+        }
+      }
+    },
     "1 file": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "1 файл"
+          }
+        }
+      }
+    },
+    "1 week": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 неделя"
+          }
+        }
+      }
+    },
+    "1 year": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 год"
           }
         }
       }
@@ -411,6 +451,26 @@
         }
       }
     },
+    "2 weeks": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2 недели"
+          }
+        }
+      }
+    },
+    "3 months": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3 месяца"
+          }
+        }
+      }
+    },
     "5 Minutes": {
       "localizations": {
         "ru": {
@@ -421,12 +481,32 @@
         }
       }
     },
+    "6 months": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "6 месяцев"
+          }
+        }
+      }
+    },
     "A rule for an app and a type wins over a rule for the app, which wins over a rule for a type. Prefix matches every type that starts with the text.": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Правило для приложения и типа важнее правила для приложения, а оно важнее правила для типа. «Префикс» подходит ко всем типам, которые начинаются с этого текста."
+          }
+        }
+      }
+    },
+    "A shortcut needs ⌘ or ⌃. Only one app can hold ⌥⌘V: quit Pasta or choose another shortcut.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сочетание должно включать ⌘ или ⌃. ⌥⌘V может занимать только одно приложение: закройте Pasta или выберите другое сочетание."
           }
         }
       }
@@ -467,6 +547,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "О Memopila"
+          }
+        }
+      }
+    },
+    "Accessibility": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Универсальный доступ"
           }
         }
       }
@@ -517,6 +607,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Добавить в коллекцию"
+          }
+        }
+      }
+    },
+    "Add to Favorites": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить в избранное"
+          }
+        }
+      }
+    },
+    "Add to Favorites (⌘D)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить в избранное (⌘D)"
+          }
+        }
+      }
+    },
+    "Allow in System Settings…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешить в Системных настройках…"
           }
         }
       }
@@ -723,6 +843,16 @@
         }
       }
     },
+    "Asks every time": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Спрашивает каждый раз"
+          }
+        }
+      }
+    },
     "Asks every time — choose Always Allow in System Settings": {
       "localizations": {
         "ru": {
@@ -903,12 +1033,32 @@
         }
       }
     },
+    "Clear Everything…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очистить всё…"
+          }
+        }
+      }
+    },
     "Clear History": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Очистить историю"
+          }
+        }
+      }
+    },
+    "Clear History keeps favorites. Clear Everything removes them too.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«Очистить историю» сохраняет избранное. «Очистить всё» удаляет и его."
           }
         }
       }
@@ -939,6 +1089,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Доступ к буферу обмена"
+          }
+        }
+      }
+    },
+    "Clipboard history that stays on your Mac.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "История буфера обмена, которая остаётся на вашем Mac."
           }
         }
       }
@@ -993,6 +1153,16 @@
         }
       }
     },
+    "Copied": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировано"
+          }
+        }
+      }
+    },
     "Copied from %@": {
       "localizations": {
         "ru": {
@@ -1029,6 +1199,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Копирования из этого приложения"
+          }
+        }
+      }
+    },
+    "Copies that apps mark as concealed, such as passwords from a password manager, are always skipped.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Копирования, которые приложения помечают как скрытые (например, пароли из менеджера паролей), всегда пропускаются."
           }
         }
       }
@@ -1103,6 +1283,16 @@
         }
       }
     },
+    "Copying works without Accessibility. When allowed, Memopila also remembers the title of the window you copied from.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Копирование работает и без универсального доступа. Если он разрешён, Memopila также запоминает заголовок окна, из которого вы копировали."
+          }
+        }
+      }
+    },
     "Could not write to the clipboard.": {
       "localizations": {
         "ru": {
@@ -1149,6 +1339,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Свой лимит размера"
+          }
+        }
+      }
+    },
+    "Cut": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вырезать"
           }
         }
       }
@@ -1241,6 +1441,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Удалить всё"
+          }
+        }
+      }
+    },
+    "Delete This and Stop Saving from %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить и больше не сохранять из «%@»"
           }
         }
       }
@@ -1341,6 +1551,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Удалено элементов из «%2$@»: %1$lld"
+          }
+        }
+      }
+    },
+    "Denied": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запрещено"
           }
         }
       }
@@ -1475,6 +1695,16 @@
         }
       }
     },
+    "Favorites are never deleted automatically. All items together are limited to 512 MB; when that is full, the oldest make room.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Избранное никогда не удаляется автоматически. Все элементы вместе ограничены 512 МБ; когда место заканчивается, самые старые освобождают его."
+          }
+        }
+      }
+    },
     "Favorites are never deleted automatically. Total stored size is limited to 512 MB; when it is full, the oldest items make room.": {
       "localizations": {
         "ru": {
@@ -1511,6 +1741,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Впервые скопировано"
+          }
+        }
+      }
+    },
+    "For anything else, use Pause, Skip Next Copy, or set the app to Don't Save.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Для всего остального используйте паузу, «Пропустить следующее копирование» или задайте приложению «Не сохранять»."
           }
         }
       }
@@ -1695,6 +1935,16 @@
         }
       }
     },
+    "History stays on this Mac and is never sent anywhere.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "История хранится только на этом Mac и никуда не отправляется."
+          }
+        }
+      }
+    },
     "History stays on this Mac, in ~/Library/Application Support/Memopila. It is not encrypted and is never sent anywhere.": {
       "localizations": {
         "ru": {
@@ -1735,6 +1985,16 @@
         }
       }
     },
+    "In use": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Используются"
+          }
+        }
+      }
+    },
     "Inspect": {
       "localizations": {
         "ru": {
@@ -1751,6 +2011,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Проверить текущий буфер обмена"
+          }
+        }
+      }
+    },
+    "It is not encrypted on disk.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "На диске она не шифруется."
+          }
+        }
+      }
+    },
+    "Items": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Элементы"
           }
         }
       }
@@ -1925,6 +2205,16 @@
         }
       }
     },
+    "Location": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Расположение"
+          }
+        }
+      }
+    },
     "Memopila": {
       "localizations": {
         "ru": {
@@ -1991,6 +2281,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Смешанное"
+          }
+        }
+      }
+    },
+    "More": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ещё"
           }
         }
       }
@@ -2295,6 +2595,16 @@
         }
       }
     },
+    "Paste into the previous app after copying": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вставлять в предыдущее приложение после копирования"
+          }
+        }
+      }
+    },
     "Paste into the previous app after restoring": {
       "localizations": {
         "ru": {
@@ -2415,6 +2725,16 @@
         }
       }
     },
+    "Plain Text, No Formatting": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Простой текст без форматирования"
+          }
+        }
+      }
+    },
     "Prefix": {
       "localizations": {
         "ru": {
@@ -2441,6 +2761,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Просмотр"
+          }
+        }
+      }
+    },
+    "Preview (Space)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Просмотр (пробел)"
           }
         }
       }
@@ -2595,6 +2925,26 @@
         }
       }
     },
+    "Remove from Favorites": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из избранного"
+          }
+        }
+      }
+    },
+    "Remove from Favorites (⌘D)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из избранного (⌘D)"
+          }
+        }
+      }
+    },
     "Remove rule": {
       "localizations": {
         "ru": {
@@ -2631,6 +2981,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Переименовать…"
+          }
+        }
+      }
+    },
+    "Report an Issue": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сообщить о проблеме"
           }
         }
       }
@@ -2685,6 +3045,16 @@
         }
       }
     },
+    "Retention": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Хранение"
+          }
+        }
+      }
+    },
     "Reveal in Finder": {
       "localizations": {
         "ru": {
@@ -2705,6 +3075,16 @@
         }
       }
     },
+    "Rules for %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Правила для «%@»"
+          }
+        }
+      }
+    },
     "Rules for All Apps": {
       "localizations": {
         "ru": {
@@ -2721,6 +3101,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Работает только на этом Mac, по одному изображению в фоне. По найденному тексту можно искать, а в просмотре его можно скопировать."
+          }
+        }
+      }
+    },
+    "Runs on this Mac, one image at a time in the background. Found text is searchable and can be copied from the preview.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Работает на этом Mac, по одному изображению в фоне. По найденному тексту можно искать, а в просмотре его можно скопировать."
           }
         }
       }
@@ -2935,12 +3325,12 @@
         }
       }
     },
-    "Show Dock icon": {
+    "Shortcuts": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Показывать значок в Dock"
+            "value": "Сочетания клавиш"
           }
         }
       }
@@ -3085,6 +3475,26 @@
         }
       }
     },
+    "Source on GitHub": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Исходный код на GitHub"
+          }
+        }
+      }
+    },
+    "Standard uses the marker some apps add, else the frontmost app. Strict trusts only the marker: while any app is set to Don't Save, unmarked copies are skipped. Neither is a security boundary.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«Стандартно» использует метку, которую добавляют некоторые приложения, а без неё — активное приложение. «Строго» доверяет только метке: пока хотя бы одному приложению задано «Не сохранять», копирования без метки пропускаются. Ни один режим не является защитой."
+          }
+        }
+      }
+    },
     "Standard uses the source marker some apps add, else the frontmost app. Strict trusts only the marker: while any app is set to Don't Save, copies without a marker are skipped. Neither is a security boundary.": {
       "localizations": {
         "ru": {
@@ -3105,6 +3515,16 @@
         }
       }
     },
+    "Startup": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запуск"
+          }
+        }
+      }
+    },
     "Status": {
       "localizations": {
         "ru": {
@@ -3121,6 +3541,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Хранилище"
+          }
+        }
+      }
+    },
+    "Stored data": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Данные"
           }
         }
       }
@@ -3181,6 +3611,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "На изображении найден текст"
+          }
+        }
+      }
+    },
+    "Text from Image": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст с изображения"
           }
         }
       }
@@ -3385,6 +3825,16 @@
         }
       }
     },
+    "Transform and Copy": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Преобразовать и скопировать"
+          }
+        }
+      }
+    },
     "Trim Whitespace": {
       "localizations": {
         "ru": {
@@ -3535,6 +3985,16 @@
         }
       }
     },
+    "Usage": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Использование"
+          }
+        }
+      }
+    },
     "Use my preferred languages": {
       "localizations": {
         "ru": {
@@ -3565,6 +4025,16 @@
         }
       }
     },
+    "Version %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Версия %@"
+          }
+        }
+      }
+    },
     "When a copy contains a secret": {
       "localizations": {
         "ru": {
@@ -3581,6 +4051,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Не сохраняем из «%@»"
+          }
+        }
+      }
+    },
+    "Your Data": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ваши данные"
           }
         }
       }
@@ -3611,6 +4091,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "нижний регистр"
+          }
+        }
+      }
+    },
+    "macOS asks before apps read the clipboard in the background. Choose Always Allow for Memopila.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS спрашивает разрешение, прежде чем приложения читают буфер обмена в фоне. Выберите для Memopila «Всегда разрешать»."
           }
         }
       }

@@ -898,7 +898,7 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 
 - **Sidebar** (toggle button, ⌥⌘S as in Pasta; ⌃⌘S also works): **History**, **Favorites**; **Apps** — source apps with icons, most recent first (right-click → **<App> ▸** quick actions, §5.1); **Types** — only types present (Text, Rich text, URL, Image, PDF, Color, File); **Collections**; **+ New Collection** pinned at the bottom. No item counts (as in Pasta). A selection filters the grid; search applies inside it.
 - **Top bar** at the window's top edge (transparent title bar, no traffic lights): search field, then sidebar toggle, pin and a gear menu as in Pasta — Pause / Resume (⌘.), Skip Next Copy, Clear History…, Pin Window (⌘P), Hide Sidebar (⌥⌘S), Settings… (⌘,), Quit.
-- **Grid:** adaptive columns (3 at default width), cards ≈ 4:3, selected card with a 3 pt accent border.
+- **Grid:** adaptive columns (3 at default width, cards at least 136 pt wide), cards ≈ 5:4 on a solid text-background color (darker than the panel in dark mode), selected card with an accent border. A custom title sits in its own tinted strip so it never reads as clipboard content. Hovering a card shows ♥ (favorite), 👁 (preview) and ⋯ (menu); after a copy with the window pinned the card shows a checkmark and the trackpad gives haptic feedback.
 - **Card content:**
   - Text — `customTitle` (if set) as a heading, then the first lines, monospaced (no syntax colors on cards).
   - URL — monospaced, link color.
@@ -938,13 +938,15 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 
 All actions come from `ActionRegistry`, so the context menu, the **⌘K panel** (searchable list for the selected card: type to filter, ↩ runs) and the Apps sidebar menu always match. Unavailable actions are disabled with a reason.
 
-Card context menu:
+Card context menu (also behind the card's **⋯** hover button). Actions that do not apply are left out rather than shown disabled, so the menu stays short (first-run feedback: four "Copy…" items side by side were confusing):
 
-- Copy to Clipboard · Copy as Plain Text · **Copy As ▸** *text actions* (§3.9) · **Copy Text from Image** (images, PDFs)
-- Edit… · Rename… · Favorite / Unfavorite · Add to Collection ▸
+- **Copy** (↩) · **Cut** (⌘X, copy then delete, as in Pasta) · Add to / Remove from Favorites (⌘D) · Add to Collection ▸
+- Preview (Space) · Edit… (text only) · Rename… · **Transform and Copy ▸** — Plain Text, No Formatting · Text from Image · text actions (§3.9); the result goes to the clipboard, not to history
 - Open Source Page (§5.2) · Reveal in Finder (files)
-- **<App> ▸** quick actions (§5.1) · **Delete and Don't Save from <App>**
-- Delete
+- **Rules for <App> ▸** — the quick actions of §5.1 plus *Delete This and Stop Saving from <App>*
+- Delete (⌘⌫)
+
+Gear menu: Pause Capture ▸ 5 / 15 min · 1 hour · Until I Resume (⌘.) — or Resume · Skip Next Copy · Clear History… · Pin Window (⌘P) · Hide Sidebar (⌥⌘S) · Settings… · About · Diagnostics… · Quit.
 
 ### 8.5 Preview
 
@@ -964,13 +966,15 @@ In-window overlay (not the system Quick Look panel), with metadata: source app, 
 
 ### 8.7 Settings
 
-- **General:** window hotkey, launch at login, Dock icon, Paste after restore (Accessibility status + guidance).
-- **Capture:** pasteboard access status and guidance (§3.1), Pause and Skip next copy hotkeys (§3.7), identity mode Standard / Strict with the trust-boundary note (§5), Ignore content from other devices.
+The Settings window (and Diagnostics) floats above other apps until closed: Memopila has no Dock icon and no ⌘Tab entry, so a window that fell behind another app could not be found again. There is no Dock icon option (switching the activation policy hid open windows). Explanations sit in section footers.
+
+- **General:** all three shortcuts (window, pause, skip), clipboard access status (§3.1), launch at login, Paste after restore with Accessibility status.
+- **History:** *Keep up to* and *Delete items older than* as pickers (presets plus any current value), usage (items, favorites, stored data of 512 MB, location), Clear History (`.nonFavorites`) and Clear Everything (`.all`), both confirmed.
+- **Privacy:** Secrets (§3.10), identity mode Standard / Strict with the trust-boundary note (§5), Ignore content from other devices, a plain list of what Memopila does with data (§9).
 - **Apps:** per-app settings (§5.1).
 - **Formats:** size limit, format rules for all apps, Inspect current clipboard (§3.2.2).
 - **Text recognition:** on/off, languages (§3.8).
-- **Storage:** `maxCount`, `maxAge`, Clear History — **Clear non-favorites** (default, `.nonFavorites`) and **Clear everything including favorites** (`.all`, extra confirmation).
-- **About / privacy:** local-only, not encrypted, markers ≠ full secret protection; other clipboard managers may compete for the hotkey and pasteboard access.
+- **About:** icon, version, links to the source and issues.
 
 ### 8.8 Menu bar
 

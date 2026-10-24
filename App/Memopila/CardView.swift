@@ -3,50 +3,58 @@ import MemopilaCore
 import MemopilaServices
 import SwiftUI
 
-/// One history card (PLAN §8.2): content preview, footer with source app, metric, badges and time.
+/// One history card (PLAN §8.2): content, footer with source app, metric, badges and time.
+/// Hovering shows quick controls (favorite, preview, menu); a title sits in its own tinted strip so
+/// it never reads as clipboard content.
 struct CardView: View {
     let card: HistoryCard
     let index: Int
     let isSelected: Bool
-    /// ⌘ is held: show the card's ⌘1…⌘9 shortcut (§8.3).
-    let showsShortcut: Bool
-    let thumbnails: ThumbnailCache
+    let model: AppModel
     @State private var image: NSImage?
     @State private var fileStatus: ThumbnailCache.FileStatus?
+    @State private var isHovered = false
 
+    private static let radius: CGFloat = 9
+
+    private var thumbnails: ThumbnailCache { model.thumbnails }
     private var isUnavailable: Bool { fileStatus?.allMissing ?? false }
+    private var isMedia: Bool { secretKind == nil && (card.displayType == .image || card.displayType == .pdf) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let title = card.customTitle {
-                Text(title).font(.headline).lineLimit(1)
-            }
+        VStack(alignment: .leading, spacing: 0) {
+            if let title = card.customTitle { titleStrip(title) }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .clipped()
+                .padding(.horizontal, isMedia ? 6 : 10)
+                .padding(.top, isMedia ? 6 : 9)
             footer
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
         }
-        .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
+        .background(RoundedRectangle(cornerRadius: Self.radius, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
+        .clipShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
         .overlay {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 10).strokeBorder(Color.accentColor, lineWidth: 3)
-            }
+            RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
+                .strokeBorder(
+                    isSelected ? Color.accentColor : Color.primary.opacity(isHovered ? 0.2 : 0.08),
+                    lineWidth: isSelected ? 2.5 : 1
+                )
         }
-        .overlay(alignment: .topTrailing) {
-            if showsShortcut, index < 9 {
-                Text("⌘\(index + 1)")
-                    .font(.caption.monospaced().bold())
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(.thickMaterial, in: Capsule())
-                    .padding(6)
-                    .accessibilityHidden(true)
+        .overlay(alignment: .topTrailing) { cornerControls }
+        .overlay {
+            if model.copiedCardID == card.id {
+                CopiedBadge().transition(.scale(scale: 0.6).combined(with: .opacity))
             }
         }
         .opacity(isUnavailable ? 0.55 : 1)
-        .contentShape(Rectangle())
+        .contentShape(RoundedRectangle(cornerRadius: Self.radius))
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) { isHovered = hovering }
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: model.copiedCardID)
         .help(card.sourceURL.map { String(localized: "Copied from \($0)") } ?? "")
         .task(id: card.id) {
             image = thumbnails.cachedImage(for: card)
@@ -60,6 +68,62 @@ struct CardView: View {
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
+    private func titleStrip(_ title: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: "tag.fill").font(.system(size: 9, weight: .semibold))
+            Text(title).font(.system(size: 11.5, weight: .semibold)).lineLimit(1)
+        }
+        .foregroundStyle(Color.accentColor)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.accentColor.opacity(0.12))
+    }
+
+    /// ⌘1…⌘9 while ⌘ is held; otherwise favorite, preview and menu on hover.
+    @ViewBuilder
+    private var cornerControls: some View {
+        if model.isCommandHeld, index < 9 {
+            Text("⌘\(index + 1)")
+                .font(.caption.monospaced().bold())
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(.thickMaterial, in: Capsule())
+                .padding(6)
+                .accessibilityHidden(true)
+        } else if isHovered {
+            HStack(spacing: 0) {
+                CardIconButton(
+                    systemImage: card.isFavorite ? "heart.fill" : "heart",
+                    tint: card.isFavorite ? .pink : .secondary,
+                    help: card.isFavorite ? String(localized: "Remove from Favorites (⌘D)") : String(localized: "Add to Favorites (⌘D)")
+                ) { model.toggleFavorite(card.id) }
+                .symbolEffect(.bounce, value: card.isFavorite)
+                CardIconButton(systemImage: "eye", help: String(localized: "Preview (Space)")) {
+                    model.history.selectedID = card.id
+                    model.present(.preview(card.id))
+                }
+                Menu {
+                    CardContextMenu(card: card, model: model)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 11, weight: .semibold))
+                        .frame(width: 22, height: 20)
+                }
+                .menuStyle(.button)
+                .menuIndicator(.hidden)
+                .buttonStyle(.borderless)
+                .fixedSize()
+                .help(String(localized: "More"))
+            }
+            .padding(2)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1)))
+            .padding(6)
+            .transition(.opacity)
+        }
+    }
+
     /// A credential (§3.10): the card shows its kind and first characters only.
     private var secretKind: SecretKind? {
         card.sensitiveKind.flatMap(SecretKind.init(rawValue:))
@@ -70,10 +134,10 @@ struct CardView: View {
         if let secretKind {
             VStack(alignment: .leading, spacing: 6) {
                 Label(secretKind.cardTitle, systemImage: "key.fill")
-                    .font(.callout.weight(.semibold))
+                    .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(.orange)
                 Text(SecretDetector.maskedPreview(of: card.preview))
-                    .font(.system(size: 13, design: .monospaced))
+                    .font(.system(size: 11.5, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -91,7 +155,8 @@ struct CardView: View {
                     .resizable()
                     .scaledToFit()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Checkerboard().opacity(0.2))
+                    .background(Checkerboard().opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 5))
             } else {
                 placeholder(card.displayType.systemImage)
             }
@@ -100,18 +165,18 @@ struct CardView: View {
                 RoundedRectangle(cornerRadius: 8)
                     .fill(card.colorHex.flatMap(Color.init(hex:)) ?? .clear)
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
-                    .frame(width: 56, height: 56)
-                Text(card.colorHex ?? "").font(.title3.monospaced())
+                    .frame(width: 40, height: 40)
+                Text(card.colorHex ?? "").font(.system(size: 13, design: .monospaced))
             }
         case .file:
             VStack(alignment: .leading, spacing: 6) {
                 if let image {
-                    Image(nsImage: image).resizable().scaledToFit().frame(maxHeight: 64)
+                    Image(nsImage: image).resizable().scaledToFit().frame(maxHeight: 48)
                 } else {
-                    Image(systemName: "doc").font(.largeTitle).foregroundStyle(.secondary)
+                    Image(systemName: "doc").font(.title).foregroundStyle(.secondary)
                 }
                 Text(card.filePaths.map { URL(fileURLWithPath: $0).lastPathComponent }.joined(separator: ", "))
-                    .font(.callout)
+                    .font(.system(size: 11.5))
                     .lineLimit(2)
                 if isUnavailable {
                     Text("Unavailable").font(.caption.bold()).foregroundStyle(.secondary)
@@ -119,7 +184,7 @@ struct CardView: View {
             }
         case .url:
             Text(card.preview)
-                .font(.system(size: 13, design: .monospaced))
+                .font(.system(size: 11.5, design: .monospaced))
                 .foregroundStyle(Color.accentColor)
                 .lineLimit(6)
         case .text, .richText, .mixed:
@@ -127,7 +192,7 @@ struct CardView: View {
                 placeholder(card.displayType.systemImage)
             } else {
                 Text(card.preview)
-                    .font(.system(size: 13, design: .monospaced))
+                    .font(.system(size: 11.5, design: .monospaced))
                     .lineLimit(8)
             }
         }
@@ -143,9 +208,9 @@ struct CardView: View {
     private var footer: some View {
         HStack(spacing: 5) {
             if let icon = AppInfo.icon(for: card.sourceAppBundleID) {
-                Image(nsImage: icon).resizable().frame(width: 16, height: 16)
+                Image(nsImage: icon).resizable().frame(width: 14, height: 14)
             } else {
-                Image(systemName: card.displayType.systemImage).frame(width: 16, height: 16)
+                Image(systemName: card.displayType.systemImage).frame(width: 14, height: 14)
             }
             Text(metric).lineLimit(1)
             Spacer(minLength: 2)
@@ -154,7 +219,7 @@ struct CardView: View {
                 Text(RelativeTime.short(card.lastCopiedAt, now: context.date))
             }
         }
-        .font(.caption)
+        .font(.system(size: 10.5))
         .foregroundStyle(.secondary)
     }
 
@@ -167,7 +232,7 @@ struct CardView: View {
             Image(systemName: "pencil").help(String(localized: "Edited"))
         }
         if card.hasRecognizedText {
-            Text("T").font(.caption.bold()).help(String(localized: "Text found in this image"))
+            Image(systemName: "text.viewfinder").help(String(localized: "Text found in this image"))
         }
         if let expires = card.expiresAt, expires.timeIntervalSinceNow < 3_600 {
             Image(systemName: "clock").help(String(localized: "Deleted \(expires.formatted(.relative(presentation: .named)))"))
@@ -210,6 +275,42 @@ struct CardView: View {
         if card.isFavorite { parts.append(String(localized: "Favorite")) }
         parts.append(card.lastCopiedAt.formatted(.relative(presentation: .named)))
         return parts.joined(separator: ", ")
+    }
+}
+
+
+private struct CardIconButton: View {
+    let systemImage: String
+    var tint: Color = .secondary
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 22, height: 20)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .help(help)
+        .accessibilityLabel(Text(help))
+    }
+}
+
+/// Shown on a card for a moment after it was copied while the window is pinned.
+private struct CopiedBadge: View {
+    var body: some View {
+        VStack(spacing: 4) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 26, weight: .semibold))
+                .foregroundStyle(.green)
+            Text("Copied").font(.caption.bold())
+        }
+        .padding(12)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityHidden(true)
     }
 }
 

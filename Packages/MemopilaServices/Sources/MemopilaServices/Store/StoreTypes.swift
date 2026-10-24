@@ -85,6 +85,14 @@ public struct AppSummary: Sendable, Identifiable, Equatable {
     public let lastCopiedAt: Date
 }
 
+/// Settings → History (§8.7): metadata only, no payload bytes are read.
+public struct HistoryUsage: Sendable, Equatable {
+    public let count: Int
+    public let favorites: Int
+    /// Σ `payloadSizeBytes`: the logical quota of §6, not the size on disk.
+    public let payloadBytes: Int
+}
+
 public struct CollectionSummary: Sendable, Identifiable, Equatable {
     public let id: UUID
     public let name: String

@@ -24,7 +24,7 @@ enum RestoreVariant: Equatable {
 }
 
 enum SettingsTab: String, Hashable {
-    case general, capture, apps, formats, recognition, storage, about
+    case general, history, privacy, apps, formats, recognition, about
 }
 
 enum HotKeyRole: CaseIterable {
@@ -55,6 +55,8 @@ final class AppModel {
     var isPinned = false
     /// ⌘ is held in the panel: cards show their ⌘1…⌘9 shortcuts.
     var isCommandHeld = false
+    /// The card just copied while the window is pinned; it shows a checkmark for a moment.
+    private(set) var copiedCardID: UUID?
     /// Bumped whenever search should take focus (open, ⌘F, overlay closed).
     private(set) var focusSearchToken = 0
     private(set) var hotKeyErrors: [HotKeyRole: String] = [:]
@@ -103,7 +105,6 @@ final class AppModel {
     }
 
     func start() {
-        applyActivationPolicy()
         for role in HotKeyRole.allCases {
             if let shortcut = shortcut(for: role) { register(shortcut, for: role) }
         }
@@ -291,7 +292,14 @@ final class AppModel {
         Task { await performRestore(id, variant: variant) }
     }
 
-    private func performRestore(_ id: UUID, variant: RestoreVariant) async {
+    /// `true` when the clipboard now holds the item (or its variant).
+    @discardableResult
+    private func performRestore(_ id: UUID, variant: RestoreVariant) async -> Bool {
+        func fail(_ message: String) -> Bool {
+            toasts.error(message)
+            return false
+        }
+
         let items: [CanonicalItem]
         var sourceBundleID: String?
         do {
@@ -302,38 +310,39 @@ final class AppModel {
                 sourceBundleID = payload.sourceBundleID
             case .plainText:
                 let payload = try await store.payload(for: id)
-                guard let text = payload.text else { return toasts.error(String(localized: "This item has no text.")) }
+                guard let text = payload.text else { return fail(String(localized: "This item has no text.")) }
                 items = PasteboardWriter.plainTextItems(text)
                 sourceBundleID = payload.sourceBundleID
             case .textAction(let action):
                 let payload = try await store.payload(for: id)
-                guard let text = payload.text else { return toasts.error(String(localized: "This item has no text.")) }
+                guard let text = payload.text else { return fail(String(localized: "This item has no text.")) }
                 let result = text.utf8.count > 100_000
                     ? await Task.detached(priority: .userInitiated) { action.apply(to: text) }.value
                     : action.apply(to: text)
-                guard let result else { return toasts.error(action.unavailableReason) }
+                guard let result else { return fail(action.unavailableReason) }
                 items = PasteboardWriter.plainTextItems(result)
                 sourceBundleID = payload.sourceBundleID
             case .recognizedText:
                 guard let details = try await store.details(id, maxTextScalars: 0), let text = details.recognizedText else {
-                    return toasts.error(String(localized: "No text was found in this image."))
+                    return fail(String(localized: "No text was found in this image."))
                 }
                 items = PasteboardWriter.plainTextItems(text)
                 sourceBundleID = details.card.sourceAppBundleID
             }
         } catch StoreError.notFound {
             history.storeDidChange()
-            return toasts.error(String(localized: "The item no longer exists."))
+            return fail(String(localized: "The item no longer exists."))
         } catch {
-            return toasts.error(String(localized: "This item can't be restored: its stored data is damaged."))
+            return fail(String(localized: "This item can't be restored: its stored data is damaged."))
         }
 
         switch monitor.write(items, sourceBundleID: sourceBundleID) {
         case .failed(let message):
-            toasts.error(message)
+            return fail(message)
         case .written:
             let target = previousApp
             if isPinned {
+                showCopied(id)
                 // Pinned: the panel stays visible but gives the key focus back to the target app.
                 if settings.pasteAfterRestore { _ = target?.activate() }
             } else {
@@ -345,6 +354,24 @@ final class AppModel {
             }
             try? await store.markUsed(id, at: Date())
             history.storeDidChange()
+            return true
+        }
+    }
+
+    private func showCopied(_ id: UUID) {
+        copiedCardID = id
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(900))
+            if self?.copiedCardID == id { self?.copiedCardID = nil }
+        }
+    }
+
+    /// Copy, then delete (⌘X, as in Pasta).
+    func cut(_ id: UUID) {
+        Task {
+            guard await performRestore(id, variant: .original) else { return }
+            delete([id], confirmed: true)
         }
     }
 
@@ -614,9 +641,6 @@ final class AppModel {
         storeMovedAside = nil
     }
 
-    func applyActivationPolicy() {
-        NSApp.setActivationPolicy(settings.showDockIcon ? .regular : .accessory)
-    }
 
     // MARK: Hotkeys (§2): the new combination registers while the old one stays active.
 

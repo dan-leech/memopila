@@ -65,6 +65,7 @@ struct DiagnosticsView: View {
             }
         }
         .padding()
+        .background(FloatingWindow())
         .task { recordCount = try? await model.store.count(HistoryQuery()) }
     }
 

@@ -40,63 +40,49 @@ struct ActionItem: Identifiable {
 enum ActionRegistry {
     // MARK: Card (§8.4)
 
+    /// The card menu, also used by the ⌘K panel: actions that do not apply are left out, not
+    /// shown disabled, so the menu stays short.
     static func cardActions(_ card: HistoryCard, model: AppModel) -> [ActionItem] {
         let id = card.id
-        let noText = card.hasText ? nil : String(localized: "This item has no text.")
         var items: [ActionItem] = [
-            ActionItem(id: "copy", title: String(localized: "Copy to Clipboard"), systemImage: "doc.on.clipboard", shortcut: "↩") {
+            ActionItem(id: "copy", title: String(localized: "Copy"), systemImage: "doc.on.doc", shortcut: "↩") {
                 model.restore(id)
             },
-            ActionItem(id: "plain", title: String(localized: "Copy as Plain Text"), systemImage: "textformat", shortcut: "⇧↩", disabledReason: noText) {
-                model.restore(id, variant: .plainText)
+            ActionItem(id: "cut", title: String(localized: "Cut"), systemImage: "scissors", shortcut: "⌘X") {
+                model.cut(id)
             },
             ActionItem(
-                id: "copyAs",
-                title: String(localized: "Copy As"),
-                systemImage: "wand.and.stars",
-                disabledReason: noText,
-                children: textActions(for: card) { action in model.restore(id, variant: .textAction(action)) }
-            ),
+                id: "favorite",
+                title: card.isFavorite ? String(localized: "Remove from Favorites") : String(localized: "Add to Favorites"),
+                systemImage: card.isFavorite ? "heart.slash" : "heart",
+                shortcut: "⌘D"
+            ) { model.toggleFavorite(id) },
+            collectionsMenu(for: card, model: model),
+            .divider("view"),
+            ActionItem(id: "preview", title: String(localized: "Preview"), systemImage: "eye", shortcut: "Space") {
+                model.present(.preview(id))
+            },
         ]
-        if card.displayType == .image || card.displayType == .pdf {
-            items.append(ActionItem(
-                id: "ocr",
-                title: String(localized: "Copy Text from Image"),
-                systemImage: "text.viewfinder",
-                disabledReason: card.hasRecognizedText ? nil : String(localized: "No text was found in this image.")
-            ) { model.restore(id, variant: .recognizedText) })
+        if AppModel.isEditable(card) {
+            items.append(ActionItem(id: "edit", title: String(localized: "Edit…"), systemImage: "pencil", shortcut: "⌘E") {
+                model.present(.editor(id))
+            })
         }
-        items.append(.divider("edit"))
-        items.append(ActionItem(id: "preview", title: String(localized: "Preview"), systemImage: "eye", shortcut: "⌘Y") {
-            model.present(.preview(id))
-        })
-        items.append(ActionItem(
-            id: "edit",
-            title: String(localized: "Edit…"),
-            systemImage: "pencil",
-            shortcut: "⌘E",
-            disabledReason: AppModel.isEditable(card) ? nil : String(localized: "Only text, rich text and links can be edited.")
-        ) { model.present(.editor(id)) })
-        items.append(ActionItem(id: "rename", title: String(localized: "Rename…"), systemImage: "character.cursor.ibeam", shortcut: "⌘R") {
+        items.append(ActionItem(id: "rename", title: String(localized: "Rename…"), systemImage: "tag", shortcut: "⌘R") {
             model.present(.rename(id))
         })
-        items.append(ActionItem(
-            id: "favorite",
-            title: card.isFavorite ? String(localized: "Unfavorite") : String(localized: "Favorite"),
-            systemImage: card.isFavorite ? "heart.slash" : "heart",
-            shortcut: "⌘D"
-        ) { model.toggleFavorite(id) })
-        items.append(collectionsMenu(for: card, model: model))
-        items.append(.divider("open"))
+        if let transform = transformMenu(for: card, model: model) { items.append(transform) }
+
+        var open: [ActionItem] = []
         if let url = card.sourceURL.flatMap(URL.init(string:)) {
-            items.append(ActionItem(id: "source", title: String(localized: "Open Source Page"), systemImage: "safari") {
+            open.append(ActionItem(id: "source", title: String(localized: "Open Source Page"), systemImage: "safari") {
                 NSWorkspace.shared.open(url)
             })
         }
-        if card.displayType == .file || !card.filePaths.isEmpty {
+        if !card.filePaths.isEmpty {
             // Existence is checked when the action runs, not while every card's menu is built.
             let paths = card.filePaths
-            items.append(ActionItem(id: "reveal", title: String(localized: "Reveal in Finder"), systemImage: "folder") {
+            open.append(ActionItem(id: "reveal", title: String(localized: "Reveal in Finder"), systemImage: "folder") {
                 let existing = paths.filter { FileManager.default.fileExists(atPath: $0) }.map { URL(fileURLWithPath: $0) }
                 if existing.isEmpty {
                     model.toasts.error(String(localized: "The file is no longer available."))
@@ -105,27 +91,47 @@ enum ActionRegistry {
                 }
             })
         }
-        items.append(.divider("app"))
-        items.append(appMenu(
-            bundleID: card.sourceAppBundleID,
-            fallbackName: card.sourceAppName,
-            storedTypes: card.storedTypes,
-            skippedTypes: card.skippedTypes,
-            model: model
-        ))
+        if !open.isEmpty { items += [.divider("open")] + open }
+
         if let bundleID = card.sourceAppBundleID {
-            let name = AppInfo.displayName(for: bundleID, fallback: card.sourceAppName)
-            items.append(ActionItem(
-                id: "deleteDontSave",
-                title: String(localized: "Delete and Don't Save from \(name)"),
-                systemImage: "hand.raised",
-                isDestructive: true
-            ) { model.deleteAndDontSave(id, bundleID: bundleID) })
+            items.append(.divider("app"))
+            items.append(appMenu(
+                bundleID: bundleID,
+                fallbackName: card.sourceAppName,
+                storedTypes: card.storedTypes,
+                skippedTypes: card.skippedTypes,
+                deleting: id,
+                model: model
+            ))
         }
+        items.append(.divider("delete"))
         items.append(ActionItem(id: "delete", title: String(localized: "Delete"), systemImage: "trash", shortcut: "⌘⌫", isDestructive: true) {
             model.delete([id])
         })
         return items
+    }
+
+    /// Every way to copy something other than the item itself, in one place: the result goes to the
+    /// clipboard and is not added to history (§3.4).
+    private static func transformMenu(for card: HistoryCard, model: AppModel) -> ActionItem? {
+        let id = card.id
+        var children: [ActionItem] = []
+        if card.hasText, card.displayType != .text {
+            children.append(ActionItem(id: "transform.plain", title: String(localized: "Plain Text, No Formatting"), systemImage: "textformat", shortcut: "⇧↩") {
+                model.restore(id, variant: .plainText)
+            })
+        }
+        if card.hasRecognizedText {
+            children.append(ActionItem(id: "transform.ocr", title: String(localized: "Text from Image"), systemImage: "text.viewfinder") {
+                model.restore(id, variant: .recognizedText)
+            })
+        }
+        if card.hasText {
+            if !children.isEmpty { children.append(.divider("transform.text")) }
+            children += textActions(for: card) { action in model.restore(id, variant: .textAction(action)) }
+        }
+        guard !children.isEmpty else { return nil }
+        return ActionItem(id: "transform", title: String(localized: "Transform and Copy"), systemImage: "wand.and.stars", children: children)
     }
 
     static func textActions(for card: HistoryCard, run: @escaping @MainActor (TextAction) -> Void) -> [ActionItem] {
@@ -162,26 +168,32 @@ enum ActionRegistry {
 
     // MARK: <App> ▸ quick actions (§5.1)
 
+    /// *Rules for <App> ▸* (§5.1).
     static func appMenu(
-        bundleID: String?,
+        bundleID: String,
         fallbackName: String?,
         storedTypes: [String],
         skippedTypes: [String],
+        deleting recordID: UUID? = nil,
         model: AppModel
     ) -> ActionItem {
-        guard let bundleID else {
-            return ActionItem(id: "app", title: String(localized: "App"), systemImage: "app.dashed", disabledReason: String(localized: "App unknown"))
-        }
         let name = AppInfo.displayName(for: bundleID, fallback: fallbackName)
         return ActionItem(
             id: "app",
-            title: name,
-            systemImage: "app.badge",
-            children: appActions(bundleID: bundleID, name: name, storedTypes: storedTypes, skippedTypes: skippedTypes, model: model)
+            title: String(localized: "Rules for \(name)"),
+            systemImage: "slider.horizontal.3",
+            children: appActions(bundleID: bundleID, name: name, storedTypes: storedTypes, skippedTypes: skippedTypes, deleting: recordID, model: model)
         )
     }
 
-    static func appActions(bundleID: String, name: String, storedTypes: [String], skippedTypes: [String], model: AppModel) -> [ActionItem] {
+    static func appActions(
+        bundleID: String,
+        name: String,
+        storedTypes: [String],
+        skippedTypes: [String],
+        deleting recordID: UUID? = nil,
+        model: AppModel
+    ) -> [ActionItem] {
         let settings = model.settings.settings(for: bundleID)
         var items: [ActionItem] = [
             ActionItem(
@@ -232,6 +244,15 @@ enum ActionRegistry {
             title: String(localized: "Recognize Text in Images from \(name)"),
             systemImage: settings.recognizeText ? "checkmark" : "text.viewfinder"
         ) { model.setRecognition(!settings.recognizeText, for: bundleID, name: name) })
+        if let recordID {
+            items.append(.divider("app.delete"))
+            items.append(ActionItem(
+                id: "app.deleteDontSave",
+                title: String(localized: "Delete This and Stop Saving from \(name)"),
+                systemImage: "hand.raised",
+                isDestructive: true
+            ) { model.deleteAndDontSave(recordID, bundleID: bundleID) })
+        }
         items.append(.divider("app.settings"))
         if settings.captureMode != .save {
             items.append(ActionItem(id: "app.save", title: String(localized: "Save from \(name) Again"), systemImage: "arrow.uturn.backward") {

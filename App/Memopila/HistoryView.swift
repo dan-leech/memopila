@@ -100,8 +100,13 @@ private struct PanelMenu: View {
             Button("Resume Capture") { monitor.resume() }
                 .keyboardShortcut(".")
         } else {
-            Button("Pause Capture") { monitor.pauseIndefinitely() }
-                .keyboardShortcut(".")
+            Menu("Pause Capture") {
+                Button("5 Minutes") { monitor.pause(minutes: 5) }
+                Button("15 Minutes") { monitor.pause(minutes: 15) }
+                Button("1 Hour") { monitor.pause(minutes: 60) }
+                Button("Until I Resume") { monitor.pauseIndefinitely() }
+                    .keyboardShortcut(".")
+            }
         }
         if monitor.skipArmed {
             Button("Cancel Skip") { monitor.toggleSkip() }
@@ -324,15 +329,16 @@ extension Banner where Actions == EmptyView {
 private struct HistoryGrid: View {
     let model: AppModel
 
-    private static let spacing: CGFloat = 12
-    private static let minimumCardWidth: CGFloat = 190
+    private static let spacing: CGFloat = 10
+    /// Three cards per row at the default window size, as in Pasta.
+    private static let minimumCardWidth: CGFloat = 136
 
     var body: some View {
         GeometryReader { geometry in
             let available = geometry.size.width - Self.spacing * 2
             let columns = max(1, Int((available + Self.spacing) / (Self.minimumCardWidth + Self.spacing)))
             let cardWidth = (available - Self.spacing * CGFloat(columns - 1)) / CGFloat(columns)
-            let cardHeight = min(max(cardWidth * 0.75, 120), 240)
+            let cardHeight = min(max(cardWidth * 0.8, 100), 200)
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVGrid(
@@ -348,8 +354,7 @@ private struct HistoryGrid: View {
                                 card: card,
                                 index: index,
                                 isSelected: card.id == model.history.selectedID,
-                                showsShortcut: model.isCommandHeld,
-                                thumbnails: model.thumbnails
+                                model: model
                             )
                             .frame(height: cardHeight)
                             .id(card.id)

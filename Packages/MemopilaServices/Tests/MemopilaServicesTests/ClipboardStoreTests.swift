@@ -178,6 +178,10 @@ struct ClipboardStoreTests {
         #expect(try await store.page(HistoryQuery(scope: .collection(collection)), offset: 0, limit: 10).map(\.id) == [b])
         #expect(try await store.collections().first?.count == 1)
         #expect(try await store.memberships(of: [a, b]) == [b: [collection]])
+        let usage = try await store.usage()
+        #expect(usage.count == 2)
+        #expect(usage.favorites == 1)
+        #expect(usage.payloadBytes == 1 + "https://example.com".utf8.count)
         #expect(try await store.apps().map(\.bundleID) == ["com.b.app", "com.a.app"])
         #expect(try await store.displayTypes() == [.text, .url])
 

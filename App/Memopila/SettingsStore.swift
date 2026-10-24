@@ -33,7 +33,6 @@ final class SettingsStore {
     }
     var ignoreRemoteClipboard: Bool { didSet { defaults.set(ignoreRemoteClipboard, forKey: Key.ignoreRemoteClipboard) } }
     var pasteAfterRestore: Bool { didSet { defaults.set(pasteAfterRestore, forKey: Key.pasteAfterRestore) } }
-    var showDockIcon: Bool { didSet { defaults.set(showDockIcon, forKey: Key.showDockIcon) } }
     var recognizeText: Bool {
         didSet {
             defaults.set(recognizeText, forKey: Key.recognizeText)
@@ -66,7 +65,6 @@ final class SettingsStore {
 
         ignoreRemoteClipboard = defaults.bool(forKey: Key.ignoreRemoteClipboard)
         pasteAfterRestore = defaults.bool(forKey: Key.pasteAfterRestore)
-        showDockIcon = defaults.bool(forKey: Key.showDockIcon)
         recognizeText = defaults.object(forKey: Key.recognizeText) as? Bool ?? true
         recognitionLanguages = defaults.stringArray(forKey: Key.recognitionLanguages) ?? []
         appProfiles = Self.load([AppProfile].self, Key.appProfiles, defaults) ?? []
@@ -187,7 +185,6 @@ final class SettingsStore {
         static let maxAgeDays = "maxAgeDays"
         static let ignoreRemoteClipboard = "ignoreRemoteClipboard"
         static let pasteAfterRestore = "pasteAfterRestore"
-        static let showDockIcon = "showDockIcon"
         static let recognizeText = "recognizeText"
         static let recognitionLanguages = "recognitionLanguages"
         static let appProfiles = "appProfiles"

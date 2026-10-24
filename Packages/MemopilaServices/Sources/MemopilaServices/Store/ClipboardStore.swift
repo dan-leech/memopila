@@ -228,6 +228,16 @@ public actor ClipboardStore {
         return order.compactMap { summaries[$0] }
     }
 
+    public func usage() throws -> HistoryUsage {
+        let context = makeContext()
+        let candidates = try retentionCandidates(in: context)
+        return HistoryUsage(
+            count: candidates.count,
+            favorites: candidates.filter(\.isFavorite).count,
+            payloadBytes: candidates.reduce(0) { $0 + $1.payloadSizeBytes }
+        )
+    }
+
     public func displayTypes() throws -> [DisplayType] {
         let context = makeContext()
         var descriptor = FetchDescriptor<ClipboardRecord>()
