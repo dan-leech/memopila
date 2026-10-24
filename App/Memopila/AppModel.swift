@@ -11,6 +11,7 @@ enum PanelOverlay: Equatable {
     case newCollection(addingRecord: UUID?)
     case renameCollection(UUID)
     case confirmDelete([UUID])
+    case confirmDeleteCollection(UUID)
     case confirmClear
 }
 
@@ -696,14 +697,18 @@ final class AppModel {
     func createCollection(named name: String, adding recordID: UUID?) {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        present(nil)
+        if case .newCollection? = overlay { present(nil) }
         Task {
             do {
                 let id = try await store.createCollection(named: trimmed)
-                if let recordID { try await store.setMembership(record: recordID, collection: id, isMember: true) }
+                if let recordID {
+                    try await store.setMembership(record: recordID, collection: id, isMember: true)
+                    history.setMembershipLocally(record: recordID, collection: id, isMember: true)
+                }
             } catch {
                 toasts.error(error.localizedDescription)
             }
+            history.refreshCollections()
             history.storeDidChange()
         }
     }
@@ -714,23 +719,51 @@ final class AppModel {
         present(nil)
         Task {
             try? await store.renameCollection(id, to: trimmed)
-            history.storeDidChange()
+            history.refreshCollections()
         }
     }
 
+    /// After *Delete Collection?* — the records stay in history.
     func deleteCollection(_ id: UUID) {
+        present(nil)
         Task {
             try? await store.deleteCollection(id)
             if history.scope == .collection(id) { history.scope = .all }
+            history.refreshCollections()
             history.storeDidChange()
         }
     }
 
     func setMembership(_ recordID: UUID, collection: UUID, isMember: Bool) {
+        history.setMembershipLocally(record: recordID, collection: collection, isMember: isMember)
         Task {
             try? await store.setMembership(record: recordID, collection: collection, isMember: isMember)
+            history.refreshCollections()
             history.storeDidChange()
         }
+    }
+
+    // MARK: Drag a card onto a collection
+
+    /// The card being dragged, for a drop on a sidebar collection. Its data may be text, an image or
+    /// a file, so the drop is matched by this rather than by type; a drag that ended elsewhere
+    /// goes stale after a minute.
+    @ObservationIgnored private var draggedRecord: (id: UUID, at: Date)?
+
+    func cardDragStarted(_ id: UUID) {
+        draggedRecord = (id, Date())
+    }
+
+    /// `false` when no card of this panel is being dragged (a file from Finder, say).
+    func dropDraggedCard(on collection: UUID) -> Bool {
+        guard let dragged = draggedRecord, Date().timeIntervalSince(dragged.at) < 60 else { return false }
+        draggedRecord = nil
+        let name = history.collections.first { $0.id == collection }?.name ?? ""
+        if history.memberships[dragged.id]?.contains(collection) != true {
+            setMembership(dragged.id, collection: collection, isMember: true)
+            toasts.show(String(localized: "Added to “\(name)”"))
+        }
+        return true
     }
 
     // MARK: Per-app quick actions (§5.1)

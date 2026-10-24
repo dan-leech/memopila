@@ -661,6 +661,16 @@
         }
       }
     },
+    "Added to “%@”": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавлено в «%@»"
+          }
+        }
+      }
+    },
     "After Copying": {
       "localizations": {
         "ru": {
@@ -1163,6 +1173,16 @@
         }
       }
     },
+    "Collections: %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Коллекции: %@"
+          }
+        }
+      }
+    },
     "Color": {
       "localizations": {
         "ru": {
@@ -1435,6 +1455,16 @@
         }
       }
     },
+    "Delete Collection…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить коллекцию…"
+          }
+        }
+      }
+    },
     "Delete Everything": {
       "localizations": {
         "ru": {
@@ -1511,6 +1541,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Удалять элементы старше"
+          }
+        }
+      }
+    },
+    "Delete the collection “%@”?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить коллекцию «%@»?"
           }
         }
       }
@@ -1641,6 +1681,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Не сохранять"
+          }
+        }
+      }
+    },
+    "Drop a card here to add it": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перетащите сюда карточку, чтобы добавить её"
           }
         }
       }
@@ -2105,6 +2155,16 @@
         }
       }
     },
+    "In collections: %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В коллекциях: %@"
+          }
+        }
+      }
+    },
     "In use": {
       "localizations": {
         "ru": {
@@ -2161,6 +2221,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Элементы"
+          }
+        }
+      }
+    },
+    "Its items stay in history and in other collections.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Её записи останутся в истории и в других коллекциях."
           }
         }
       }
@@ -2486,6 +2556,16 @@
       }
     },
     "New Collection…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Новая коллекция…"
+          }
+        }
+      }
+    },
+    "New collection…": {
       "localizations": {
         "ru": {
           "stringUnit": {
@@ -3101,6 +3181,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Убрать из избранного (⌘D)"
+          }
+        }
+      }
+    },
+    "Remove from “%@”": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из «%@»"
           }
         }
       }
@@ -4051,6 +4141,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Убрать пробелы по краям"
+          }
+        }
+      }
+    },
+    "Type a name and press Return: the collection is created with this record in it": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Введите название и нажмите Return: коллекция будет создана, и запись окажется в ней"
           }
         }
       }

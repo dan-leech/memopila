@@ -196,6 +196,10 @@ final class PanelController: NSObject, NSWindowDelegate {
             if key.code == kVK_Escape { model.present(nil); return true }
             if key.isReturn { model.delete(ids, confirmed: true); return true }
             return false
+        case .confirmDeleteCollection(let id):
+            if key.code == kVK_Escape { model.present(nil); return true }
+            if key.isReturn { model.deleteCollection(id); return true }
+            return false
         case .confirmClear:
             if key.code == kVK_Escape { model.present(nil); return true }
             if key.isReturn {

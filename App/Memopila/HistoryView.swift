@@ -143,6 +143,29 @@ private struct PanelMenu: View {
 
 // MARK: - Sidebar
 
+/// A collection in the sidebar: a card dropped on it joins it (§3.5).
+private struct CollectionRow: View {
+    let collection: CollectionSummary
+    let model: AppModel
+    @State private var isTargeted = false
+
+    var body: some View {
+        Label {
+            Text(collection.name)
+        } icon: {
+            Image(systemName: isTargeted ? "folder.fill.badge.plus" : "folder")
+        }
+        .padding(.vertical, 1)
+        .background(isTargeted ? Color.accentColor.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 5))
+        .onDrop(of: [.item], isTargeted: $isTargeted) { _ in model.dropDraggedCard(on: collection.id) }
+        .help(String(localized: "Drop a card here to add it"))
+        .contextMenu {
+            Button("Rename…") { model.present(.renameCollection(collection.id)) }
+            Button("Delete Collection…", role: .destructive) { model.present(.confirmDeleteCollection(collection.id)) }
+        }
+    }
+}
+
 private struct SidebarView: View {
     let model: AppModel
 
@@ -171,16 +194,8 @@ private struct SidebarView: View {
             }
             Section("Collections") {
                 ForEach(history.collections) { collection in
-                    Label {
-                        Text(collection.name)
-                    } icon: {
-                        Image(systemName: "folder")
-                    }
-                    .tag(HistoryScope.collection(collection.id))
-                    .contextMenu {
-                        Button("Rename…") { model.present(.renameCollection(collection.id)) }
-                        Button("Delete Collection", role: .destructive) { model.deleteCollection(collection.id) }
-                    }
+                    CollectionRow(collection: collection, model: model)
+                        .tag(HistoryScope.collection(collection.id))
                 }
             }
         }
@@ -361,7 +376,10 @@ private struct HistoryGrid: View {
                             .onTapGesture(count: 2) { model.restore(card.id) }
                             .simultaneousGesture(TapGesture().onEnded { model.history.selectedID = card.id })
                             .contextMenu { CardContextMenu(card: card, model: model) }
-                            .onDrag { DragSupport.provider(for: card, store: model.store) }
+                            .onDrag {
+                                model.cardDragStarted(card.id)
+                                return DragSupport.provider(for: card, store: model.store)
+                            }
                             .transition(.asymmetric(
                                 insertion: .scale(scale: 0.85).combined(with: .opacity),
                                 removal: .opacity
@@ -464,6 +482,12 @@ private struct OverlayHost: View {
             } cancel: {
                 model.present(nil)
             }
+        case .confirmDeleteCollection(let id):
+            ConfirmDeleteCollectionOverlay(name: model.history.collections.first { $0.id == id }?.name ?? "") {
+                model.deleteCollection(id)
+            } cancel: {
+                model.present(nil)
+            }
         case .confirmClear:
             ConfirmClearOverlay {
                 model.present(nil)
@@ -546,6 +570,29 @@ private struct ConfirmClearOverlay: View {
                 Spacer()
                 Button("Cancel", action: cancel)
                 Button("Clear History", role: .destructive, action: confirm)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(18)
+        .frame(width: 360)
+    }
+}
+
+private struct ConfirmDeleteCollectionOverlay: View {
+    let name: String
+    let confirm: () -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(String(localized: "Delete the collection “\(name)”?")).font(.headline)
+            Text("Its items stay in history and in other collections.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            HStack {
+                Spacer()
+                Button("Cancel", action: cancel)
+                Button("Delete Collection", role: .destructive, action: confirm)
                     .keyboardShortcut(.defaultAction)
             }
         }

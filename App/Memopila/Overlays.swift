@@ -45,6 +45,7 @@ struct RecordView: View {
     @State private var details: RecordDetails?
     @State private var image: NSImage?
     @State private var recognizedText = TextSelection()
+    @State private var newCollectionName = ""
     @AppStorage(RecordView.inspectorKey) private var showsInspector = true
 
     static let inspectorKey = "recordInspectorShown"
@@ -227,6 +228,7 @@ struct RecordView: View {
                         .help(String(localized: "A title is shown on the card and found by search"))
                 }
                 inspectorSection(String(localized: "Source")) { source }
+                inspectorSection(String(localized: "Collections")) { collections }
                 if state.hasText, card.displayType != .url {
                     inspectorSection(String(localized: "Highlighting")) { languagePicker }
                 }
@@ -288,6 +290,33 @@ struct RecordView: View {
             if let title = details?.sourceWindowTitle {
                 Text(String(localized: "Window: “\(title)”")).foregroundStyle(.secondary).lineLimit(2)
             }
+        }
+        .font(.callout)
+    }
+
+    /// Every collection with a checkbox: membership is seen and changed in one place.
+    private var collections: some View {
+        let history = model.history
+        let members = history.memberships[state.id] ?? []
+        return VStack(alignment: .leading, spacing: 4) {
+            ForEach(history.collections) { collection in
+                let recordID = state.id
+                let collectionID = collection.id
+                Toggle(collection.name, isOn: Binding.main(
+                    get: { members.contains(collectionID) },
+                    set: { [model] isMember in model.setMembership(recordID, collection: collectionID, isMember: isMember) }
+                ))
+                .toggleStyle(.checkbox)
+                .lineLimit(1)
+            }
+            TextField("New Collection", text: $newCollectionName, prompt: Text("New collection…"))
+                .textFieldStyle(.roundedBorder)
+                .labelsHidden()
+                .onSubmit {
+                    model.createCollection(named: newCollectionName, adding: state.id)
+                    newCollectionName = ""
+                }
+                .help(String(localized: "Type a name and press Return: the collection is created with this record in it"))
         }
         .font(.callout)
     }

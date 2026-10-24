@@ -236,6 +236,33 @@ final class HistoryModel {
         }
     }
 
+    // MARK: Collections (§3.5)
+
+    /// Names of the collections a loaded card is in, in sidebar order.
+    func collectionNames(of recordID: UUID) -> [String] {
+        guard let ids = memberships[recordID], !ids.isEmpty else { return [] }
+        return collections.filter { ids.contains($0.id) }.map(\.name)
+    }
+
+    /// Shows a membership change at once, also while the panel is hidden behind a record window.
+    func setMembershipLocally(record: UUID, collection: UUID, isMember: Bool) {
+        var ids = memberships[record] ?? []
+        if isMember { ids.insert(collection) } else { ids.remove(collection) }
+        memberships[record] = ids
+    }
+
+    /// Collections and the memberships of the loaded cards, even while the panel is closed (the
+    /// record window shows them).
+    func refreshCollections() {
+        reloadSidebar()
+        let ids = cards.map(\.id)
+        Task {
+            guard let loaded = try? await store.memberships(of: ids) else { return }
+            memberships.merge(loaded) { _, new in new }
+            for id in ids where loaded[id] == nil { memberships[id] = nil }
+        }
+    }
+
     // MARK: Local updates after a command
 
     /// Removes deleted cards right away; the selection moves to the next card (§8.3 ⌘⌫).

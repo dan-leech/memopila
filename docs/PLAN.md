@@ -898,7 +898,7 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 
 ### 8.2 Layout
 
-- **Sidebar** (toggle button, ⌥⌘S as in Pasta; ⌃⌘S also works): **History**, **Favorites**; **Apps** — source apps with icons, most recent first (right-click → **<App> ▸** quick actions, §5.1); **Types** — only types present (Text, Rich text, URL, Image, PDF, Color, File); **Collections**; **+ New Collection** pinned at the bottom. No item counts (as in Pasta). A selection filters the grid; search applies inside it.
+- **Sidebar** (toggle button, ⌥⌘S as in Pasta; ⌃⌘S also works): **History**, **Favorites**; **Apps** — source apps with icons, most recent first (right-click → **<App> ▸** quick actions, §5.1); **Types** — only types present (Text, Rich text, URL, Image, PDF, Color, File); **Collections** — drop a card on one to add it; *Delete Collection…* asks first and keeps the records; **+ New Collection** pinned at the bottom. No item counts (as in Pasta). A selection filters the grid; search applies inside it.
 - **Top bar** at the window's top edge (transparent title bar, no traffic lights): search field, then sidebar toggle, pin and a gear menu as in Pasta — Pause / Resume (⌘.), Skip Next Copy, Clear History…, Pin Window (⌘P), Hide Sidebar (⌥⌘S), Settings… (⌘,), Quit.
 - **Grid:** a fixed **columns × rows** grid that fills the visible area, as in Pasta — 3 × 3 by default, presets 2 × 2 … 6 × 5 in Settings → General and with ⌘+ / ⌘−; cards resize with the window; new and removed cards scale and fade in and out (store changes only, not searches); cards on a solid text-background color (darker than the panel in dark mode). The selection has an accent border; the card the clipboard holds has a thin green line, drawn over the inner side of that border (at the edge when the card is not selected) — a double frame when both are on one card (first-run feedback: a green *In Clipboard* label was clutter). When the panel opens the selection is on the card the clipboard holds (none when the clipboard holds something else) and follows clipboard changes until the user moves it. A custom title sits in its own tinted strip so it never reads as clipboard content. Hovering a card shows ♥ (favorite), ✎ (Edit Record) and ⋯ (menu); after a copy with the window pinned the card shows a checkmark and the trackpad gives haptic feedback.
 - **Card content:**
@@ -909,7 +909,7 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
   - File — QuickLook thumbnail or icon + file name; *Unavailable* dimmed when missing.
   - Secret (§3.10) — kind and the first characters, masked.
 - **Drag and drop:** a card drags into other apps (as in Pasta) with its stored types, loaded from the store only when the drop target asks; file cards drag as the file.
-- **Card footer:** source app icon (type icon when unknown) + metric (*N lines, M characters* for multi-line text, *N characters*, *W × H px*, *N files · 12.3 MB*, *#RRGGBB*) + relative time (*Now*, *2m*, *3h*, *4d*) badges: heart (favorite), pencil (edited), **T** (text found in image), clock (expires soon). Tooltip: source page (§5.2). Cards have no border except the selection and the clipboard line; ⌘1…⌘9 hints appear while ⌘ is held.
+- **Card footer:** source app icon (type icon when unknown) + metric (*N lines, M characters* for multi-line text, *N characters*, *W × H px*, *N files · 12.3 MB*, *#RRGGBB*) + relative time (*Now*, *2m*, *3h*, *4d*) badges: the card's collections (folder and name, *Name +1* for more, all names in the tooltip — first-run feedback: membership was visible only from inside each collection), heart (favorite), pencil (edited), **T** (text found in image), clock (expires soon). Tooltip: source page (§5.2). Cards have no border except the selection and the clipboard line; ⌘1…⌘9 hints appear while ⌘ is held.
 - **Red Current card** first in History (§3.2.3).
 - **Banners** above the grid: Enable capture (onboarding), Capture paused (access policy or user pause, with Resume), storage errors.
 - Empty states for History, filters and search.
@@ -943,7 +943,7 @@ All actions come from `ActionRegistry`, so the context menu, the **⌘K panel** 
 
 Card context menu (also behind the card's **⋯** hover button). Actions that do not apply are left out rather than shown disabled, so the menu stays short (first-run feedback: four "Copy…" items side by side were confusing):
 
-- **Select** (↩, the same as a double-click: the record becomes the clipboard content) · Add to / Remove from Favorites (⌘D) · Add to Collection ▸
+- **Select** (↩, the same as a double-click: the record becomes the clipboard content) · Add to / Remove from Favorites (⌘D) · *Remove from “Name”* while that collection is open · **Collections: Name, …** ▸ (*Add to Collection* ▸ when in none) with a checkmark per collection and New Collection…
 - **Edit Record** (⌘E or Space: the record window, §8.5) · Rename… · **Duplicate As ▸** — Plain Text, No Formatting · Text from Image · text actions (§3.9); the result is a new card, the clipboard is untouched
 - Open Source Page (§5.2) · Reveal in Finder (files)
 - **Rules for <App> ▸** — the quick actions of §5.1 plus *Delete This and Stop Saving from <App>*
@@ -957,7 +957,7 @@ One window (not the system Quick Look panel) to look at a record and to edit it 
 
 - **Toolbar:** ‹ › with *3 of 120* (the panel's current list; disabled with unsaved changes), Undo / Redo, the labelled text-action menus and Find (text only), the inspector toggle (⌥⌘I) and **Select** (↩; *Save and Select* ⌘↩ with changes).
 - **Content:** the text, the image, the file or the colour.
-- **Inspector** (right, can be hidden): **Title** field, **Source** (app, page link — click opens, ⌥-click copies it as a new card — and window title), **Highlighting** language (text), **Text in Image** with *Copy Selected Text* / *Copy All Text*, **Details** (first / last copied, copies, size, readable format names, skipped formats).
+- **Inspector** (right, can be hidden): **Title** field, **Source** (app, page link — click opens, ⌥-click copies it as a new card — and window title), **Collections** (a checkbox per collection and a *New collection…* field that creates one with the record in it), **Highlighting** language (text), **Text in Image** with *Copy Selected Text* / *Copy All Text*, **Details** (first / last copied, copies, size, readable format names, skipped formats).
 - **Status bar:** what the keys do right now — *Click the text to edit · ← → other records · ↩ selects · Esc closes*, *Editing · Esc stops editing*, or *⌘S saves · ⌘↩ saves and selects · Esc discards* — then counts, *Wrap lines*, *Edited*, **Revert** / **Save**.
 
 Opened to look at, nothing in it has the focus: ↑ ↓ ← → move to other records (not with unsaved changes), Space or Esc closes, ↩ selects. Every control has a label or a tooltip with its shortcut.

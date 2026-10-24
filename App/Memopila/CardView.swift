@@ -238,8 +238,27 @@ struct CardView: View {
         .foregroundStyle(.secondary)
     }
 
+    /// The collections this card is in, by name (first-run feedback: membership was visible only
+    /// from inside each collection).
+    private var collectionNames: [String] { model.history.collectionNames(of: card.id) }
+
+    @ViewBuilder
+    private var collectionsBadge: some View {
+        let names = collectionNames
+        if let first = names.first {
+            HStack(spacing: 2) {
+                Image(systemName: "folder.fill")
+                Text(names.count > 1 ? "\(first) +\(names.count - 1)" : first).lineLimit(1)
+            }
+            .frame(maxWidth: 90, alignment: .leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .help(String(localized: "In collections: \(names.joined(separator: ", "))"))
+        }
+    }
+
     @ViewBuilder
     private var badges: some View {
+        collectionsBadge
         if card.isFavorite {
             Image(systemName: "heart.fill").foregroundStyle(.pink).help(String(localized: "Favorite"))
         }
@@ -288,6 +307,8 @@ struct CardView: View {
         parts.append(metric)
         if let name = card.sourceAppName { parts.append(String(localized: "from \(name)")) }
         if card.isFavorite { parts.append(String(localized: "Favorite")) }
+        let collections = collectionNames
+        if !collections.isEmpty { parts.append(String(localized: "In collections: \(collections.joined(separator: ", "))")) }
         if isOnClipboard { parts.append(String(localized: "In Clipboard")) }
         parts.append(card.lastCopiedAt.formatted(.relative(presentation: .named)))
         return parts.joined(separator: ", ")

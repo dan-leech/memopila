@@ -56,6 +56,18 @@ enum ActionRegistry {
                 systemImage: card.isFavorite ? "heart.slash" : "heart",
                 shortcut: "⌘D"
             ) { model.toggleFavorite(id) },
+        ]
+        // Inside a collection, taking the card out of it is one click.
+        if case .collection(let collectionID) = model.history.scope,
+           model.history.memberships[id]?.contains(collectionID) == true,
+           let collection = model.history.collections.first(where: { $0.id == collectionID }) {
+            items.append(ActionItem(
+                id: "collection.removeCurrent",
+                title: String(localized: "Remove from “\(collection.name)”"),
+                systemImage: "folder.badge.minus"
+            ) { model.setMembership(id, collection: collectionID, isMember: false) })
+        }
+        items += [
             collectionsMenu(for: card, model: model),
             .divider("view"),
             // One window to look at a record and edit its title and text (§8.5).
@@ -157,7 +169,12 @@ enum ActionRegistry {
         children.append(ActionItem(id: "collection.new", title: String(localized: "New Collection…"), systemImage: "plus") {
             model.present(.newCollection(addingRecord: id))
         })
-        return ActionItem(id: "collections", title: String(localized: "Add to Collection"), systemImage: "folder.badge.plus", children: children)
+        // The title names the collections the card is in, so the menu itself answers "where is it?".
+        let names = model.history.collectionNames(of: id)
+        let title = names.isEmpty
+            ? String(localized: "Add to Collection")
+            : String(localized: "Collections: \(names.joined(separator: ", "))")
+        return ActionItem(id: "collections", title: title, systemImage: names.isEmpty ? "folder.badge.plus" : "folder", children: children)
     }
 
     // MARK: <App> ▸ quick actions (§5.1)
