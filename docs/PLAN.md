@@ -929,11 +929,11 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 | ⌘1 … ⌘9 | Copy the Nth visible card |
 | ⌘C | Copy the selected card, never pasting (even with *paste after copying*) |
 | ⌘K | Actions panel for the selection (§8.4) |
-| Space (grid focused) / ⌘Y (anywhere) | Edit Record: the record window (§8.5); in it, ↑ ↓ ← → move to other records while its text is not being edited, Space closes |
+| Space (empty search or keyboard on the cards) / ⌘Y (anywhere) | Edit Record: the record window (§8.5); in it, ↑ ↓ ← → move to other records while its text is not being edited, Space closes |
 | ⌘E | Edit Record with the cursor in the text (§3.6) |
 | ⌘R | Rename (custom title) |
 | ⌘D | Toggle favorite |
-| ⌘⌫, or ⌫ / ⌦ with an empty search | Delete the selected cards; *Undo* in the message for 6 s (favorites ask first). A held ⌫ that has just emptied the search does not go on to delete (key repeats are ignored) |
+| ⌘⌫; ⌫ / ⌦ only after a click on a card | Delete the selected cards; *Undo* in the message for 6 s (favorites ask first). A click on a card takes the keyboard from the search to the cards; in the search ⌫ / ⌦ only edit its text, also when it is empty (user feedback), and a held key never deletes cards. Typing with the keyboard on the cards goes back to the search |
 | ⌘A with an empty search | Select every loaded card |
 | ⌥↩ / ⌥ double-click | Select and paste, once |
 | ⇧ ↑ ↓ ← →, ⌘-click, ⇧-click | Select several cards |

@@ -84,6 +84,11 @@ final class AppModel {
     private(set) var copiedCardWasPasted = false
     /// Bumped whenever search should take focus (open, ⌘F, overlay closed).
     private(set) var focusSearchToken = 0
+    /// Bumped when a click on a card takes the keyboard from the search to the cards.
+    private(set) var focusGridToken = 0
+    /// The keyboard is on the cards: plain ⌫ deletes them. In the search it only edits the text,
+    /// also when the search is empty (user feedback).
+    @ObservationIgnored var gridHasFocus = false
     private(set) var hotKeyErrors: [HotKeyRole: String] = [:]
     var settingsApp: String?
 
@@ -168,11 +173,17 @@ final class AppModel {
             actionsState = nil
         }
         overlay = next
-        if next == nil { focusSearchToken += 1 }
+        if next == nil { focusSearch() }
     }
 
     func focusSearch() {
+        gridHasFocus = false
         focusSearchToken += 1
+    }
+
+    func focusGrid() {
+        gridHasFocus = true
+        focusGridToken += 1
     }
 
     func runHighlightedAction() {
@@ -408,7 +419,7 @@ final class AppModel {
         present(nil)
         toasts.dismiss()
         history.activate(keepingState: keepingState)
-        focusSearchToken += 1
+        focusSearch()
     }
 
     /// The app that keeps the focus behind the non-activating panel: the target of Paste after restore.

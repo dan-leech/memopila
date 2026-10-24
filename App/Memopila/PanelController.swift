@@ -204,7 +204,8 @@ final class PanelController: NSObject, NSWindowDelegate {
 
         switch model.overlay {
         case nil:
-            return handleGridKey(key, flags: flags, isRepeat: event.isARepeat)
+            if handleGridKey(key, flags: flags, isRepeat: event.isARepeat) { return true }
+            return typeIntoSearch(event, flags: flags)
         case .actions:
             guard let state = model.actionsState else { return false }
             switch key.code {
@@ -251,9 +252,18 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// The keyboard is on the cards (a card was clicked), not in the search or the sidebar.
+    private var gridHasFocus: Bool {
+        guard model.gridHasFocus else { return false }
+        let responder = panel?.firstResponder
+        return !(responder is NSText) && !(responder is NSTableView)
+    }
+
     private func handleGridKey(_ key: KeyPress, flags: NSEvent.ModifierFlags, isRepeat: Bool) -> Bool {
         let history = model.history
-        let searchIsEmpty = history.search.isEmpty
+        let onCards = gridHasFocus
+        // ← → and Space belong to the search text while it has any and the keyboard is there.
+        let searchIsEmpty = history.search.isEmpty || onCards
         if flags == .shift {
             // ⇧-arrows grow the selection (bulk delete, favorites, collections).
             switch key.code {
@@ -275,10 +285,9 @@ final class PanelController: NSObject, NSWindowDelegate {
                 if history.selection.count > 1 { history.clearMarks() } else { cancel() }
                 return true
             case kVK_Space where searchIsEmpty: openSelected(); return true
-            // ⌫ / ⌦ delete the selected cards when there is no search text to delete; a held key
-            // that has just emptied the search does not go on to delete cards (first-run feedback:
-            // only ⌘⌫ worked).
-            case kVK_Delete where searchIsEmpty && !isRepeat, kVK_ForwardDelete where searchIsEmpty && !isRepeat:
+            // ⌫ / ⌦ delete the selected cards only with the keyboard on the cards. In the search they
+            // edit the text, also when it is empty (user feedback); a held key deletes nothing.
+            case kVK_Delete where onCards && !isRepeat, kVK_ForwardDelete where onCards && !isRepeat:
                 model.deleteSelection()
                 return true
             case _ where key.isReturn:
@@ -325,6 +334,33 @@ final class PanelController: NSObject, NSWindowDelegate {
         default: return false
         }
         return true
+    }
+
+    /// Typing with the keyboard on the cards or the sidebar goes back to the search, as in Pasta.
+    private func typeIntoSearch(_ event: NSEvent, flags: NSEvent.ModifierFlags) -> Bool {
+        guard flags.isDisjoint(with: [.command, .control]), !(panel?.firstResponder is NSText),
+              let typed = event.characters, !typed.isEmpty,
+              typed.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) && !(0xF700...0xF8FF).contains($0.value) })
+        else { return false }
+        model.history.search += typed
+        model.focusSearch()
+        moveSearchCaretToEnd()
+        return true
+    }
+
+    /// A field that takes the focus selects all its text, so the next key would replace what was
+    /// just typed: the caret goes to the end once the field has the text.
+    private func moveSearchCaretToEnd() {
+        Task { @MainActor [weak self] in
+            for _ in 0..<10 {
+                try? await Task.sleep(for: .milliseconds(15))
+                guard let self, let panel = self.panel else { return }
+                if let editor = panel.firstResponder as? NSTextView, editor.string == self.model.history.search {
+                    editor.setSelectedRange(NSRange(location: (editor.string as NSString).length, length: 0))
+                    return
+                }
+            }
+        }
     }
 
     /// Space, ⌘Y, ⌘E (with the cursor in the text) and the pencil: the record window (§8.5).

@@ -33,6 +33,9 @@ struct HistoryView: View {
         .background(.regularMaterial)
         .onAppear { searchFocused = true }
         .onChange(of: model.focusSearchToken) { _, _ in searchFocused = true }
+        .onChange(of: model.focusGridToken) { _, _ in searchFocused = false }
+        // A click in the search field takes the keyboard back from the cards.
+        .onChange(of: searchFocused) { _, focused in if focused { model.gridHasFocus = false } }
         // The selection shows what the clipboard holds until the user moves it (§8.2).
         .onChange(of: model.monitor.clipboardRecordID) { _, _ in model.history.clipboardDidChange() }
     }
@@ -575,7 +578,10 @@ private struct HistoryGrid: View {
                             .id(card.id)
                             // ⌥-double-click also pastes, once.
                             .onTapGesture(count: 2) { model.restore(card.id, paste: NSEvent.modifierFlags.contains(.option) ? true : nil) }
-                            .simultaneousGesture(TapGesture().onEnded { model.history.click(card.id, modifiers: NSEvent.modifierFlags) })
+                            .simultaneousGesture(TapGesture().onEnded {
+                                model.history.click(card.id, modifiers: NSEvent.modifierFlags)
+                                model.focusGrid()
+                            })
                             .contextMenu { CardContextMenu(card: card, model: model) }
                             .onDrag {
                                 model.cardDragStarted(card.id)
