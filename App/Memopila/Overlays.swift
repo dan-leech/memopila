@@ -1095,6 +1095,14 @@ struct TextPane: NSViewRepresentable {
         func textViewDidChangeSelection(_ notification: Notification) {
             pane?.onSelectionChange()
         }
+
+        /// A link in formatted text opens in front of the record window, which floats (otherwise
+        /// the browser came up behind it).
+        func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
+            guard let url = (link as? URL) ?? (link as? String).flatMap({ URL(string: $0) }) else { return false }
+            External.open(url)
+            return true
+        }
     }
 }
 
@@ -1200,10 +1208,11 @@ final class LineNumberRuler: NSRulerView {
             } else {
                 fragment = layoutManager.lineFragmentRect(forGlyphAt: layoutManager.glyphIndexForCharacter(at: start), effectiveRange: nil)
             }
-            let top = convert(NSPoint(x: 0, y: fragment.minY + textView.textContainerOrigin.y), from: textView).y
+            // The whole line in ruler units, so the number stays beside it when formatted text is zoomed.
+            let line = convert(NSRect(x: 0, y: fragment.minY + textView.textContainerOrigin.y, width: 1, height: fragment.height), from: textView)
             let label = "\(number + 1)" as NSString
             let size = label.size(withAttributes: attributes)
-            label.draw(at: NSPoint(x: ruleThickness - size.width - 6, y: top + (fragment.height - size.height) / 2), withAttributes: attributes)
+            label.draw(at: NSPoint(x: ruleThickness - size.width - 6, y: line.minY + (line.height - size.height) / 2), withAttributes: attributes)
             number += 1
         }
     }
@@ -1216,6 +1225,29 @@ final class FocusReportingTextView: NSTextView {
     /// what is on screen only; nothing is added to the text.
     var showsInvisibles = false {
         didSet { if showsInvisibles != oldValue { needsDisplay = true } }
+    }
+
+    /// Wrapped lines: as wide as what the clip view shows, in document units. Zoomed formatted
+    /// text was as wide as the unzoomed window, so its lines ran off the right edge; the clip
+    /// view's frame changes on resize, its bounds on zoom, and only the frame resizes subviews.
+    var fitsVisibleWidth = false
+
+    override func resize(withOldSuperviewSize oldSize: NSSize) {
+        super.resize(withOldSuperviewSize: oldSize)
+        fitVisibleWidth()
+    }
+
+    func fitVisibleWidth() {
+        guard fitsVisibleWidth, let clip = superview as? NSClipView else { return }
+        let width = clip.bounds.width
+        if abs(frame.width - width) > 0.5 { setFrameSize(NSSize(width: width, height: frame.height)) }
+        // Also when the frame did not change but the inset did (formatted text has a wider margin).
+        if let textContainer, textContainer.widthTracksTextView {
+            let lineWidth = max(0, frame.width - 2 * textContainerInset.width)
+            if abs(textContainer.containerSize.width - lineWidth) > 0.5 {
+                textContainer.containerSize = NSSize(width: lineWidth, height: .greatestFiniteMagnitude)
+            }
+        }
     }
 
     override func draw(_ dirtyRect: NSRect) {

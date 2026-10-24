@@ -204,6 +204,8 @@ final class ItemState {
             textView.enclosingScrollView?.magnification = 1
             textView.font = usesMonospacedFont ? .monospacedSystemFont(ofSize: fontSize, weight: .regular) : .systemFont(ofSize: fontSize)
         }
+        // A zoom changes how much of the document shows: wrapped lines follow.
+        (textView as? FocusReportingTextView)?.fitVisibleWidth()
         // Line heights changed: the numbers move with them.
         textView.enclosingScrollView?.verticalRulerView?.needsDisplay = true
     }
@@ -585,7 +587,8 @@ final class ItemState {
         if !isLoaded {
             textChanged = false
         } else if isRich, let storage = textView?.textStorage, let initialRich {
-            textChanged = !storage.isEqual(to: initialRich)
+            // Lengths first: comparing every attribute of a long document on each keystroke shows.
+            textChanged = storage.length != initialRich.length || !storage.isEqual(to: initialRich)
         } else if let storage = textView?.textStorage {
             // Lengths first; the text itself without copying it.
             textChanged = storage.length != initialLength || !storage.mutableString.isEqual(to: initialText)
@@ -710,14 +713,14 @@ final class ItemState {
         guard let textView, let container = textView.textContainer, let scrollView = textView.enclosingScrollView else { return }
         if wrapsLines {
             textView.isHorizontallyResizable = false
-            // Back to the visible width first: the text view kept the width of its longest line. In
-            // document units, so a zoomed page is not cut off on the right (review finding).
-            let width = scrollView.contentView.bounds.width
-            textView.setFrameSize(NSSize(width: width, height: textView.frame.height))
             container.widthTracksTextView = true
-            container.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
+            // Back to the visible width: the text view kept the width of its longest line. In
+            // document units, so a zoomed page is not cut off on the right (review finding).
+            (textView as? FocusReportingTextView)?.fitsVisibleWidth = true
+            (textView as? FocusReportingTextView)?.fitVisibleWidth()
             scrollView.hasHorizontalScroller = false
         } else {
+            (textView as? FocusReportingTextView)?.fitsVisibleWidth = false
             container.widthTracksTextView = false
             container.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
             textView.isHorizontallyResizable = true
