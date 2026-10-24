@@ -3,6 +3,7 @@ import MemopilaCore
 import MemopilaServices
 import Observation
 import SwiftUI
+import WebKit
 
 /// Panel overlays (§8.4). Shown inside the panel; a record opens in its own window (§8.5).
 enum PanelOverlay: Equatable {
@@ -14,6 +15,8 @@ enum PanelOverlay: Equatable {
     /// Everything shown, from an app or in a collection: favorites kept unless asked.
     case confirmDeleteMany(DeleteManyScope, others: [UUID], favorites: [UUID])
     case confirmDeleteCollection(UUID)
+    /// Taking cards out of Favorites deletes those older than History keeps (§6): asked first.
+    case confirmUnfavorite([UUID], old: Int)
     case confirmClear
     /// ⌘/ — every shortcut of the panel (§8.3).
     case shortcuts
@@ -120,7 +123,17 @@ final class AppModel {
             store = try! ClipboardStore(url: nil)
         }
         storeOpenError = openError
-        storeMovedAside = movedAside
+        // The banner stays until dismissed, also after a relaunch (review finding: on the next
+        // launch nothing said where the old history went).
+        if let movedAside {
+            UserDefaults.standard.set(movedAside.path, forKey: Self.movedAsideKey)
+            storeMovedAside = movedAside
+        } else if let path = UserDefaults.standard.string(forKey: Self.movedAsideKey), FileManager.default.fileExists(atPath: path) {
+            storeMovedAside = URL(filePath: path, directoryHint: .isDirectory)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Self.movedAsideKey)
+            storeMovedAside = nil
+        }
         self.store = store
         monitor = ClipboardMonitor(settings: settings, store: store)
         history = HistoryModel(store: store)
@@ -149,6 +162,7 @@ final class AppModel {
         }
         monitor.start()
         runRetention()
+        prunePreviewFiles(all: true)
         recognition.wake()
         let daily = Timer(timeInterval: 86_400, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.runRetention() }
@@ -210,8 +224,8 @@ final class AppModel {
             windows.showRecord(focusText: false)
             return resolveUnsavedChanges { [weak self] in self?.openRecord(id, focusText: focusText) }
         }
-        itemState?.loadTask?.cancel()
         guard let card = history.cards.first(where: { $0.id == id }) else { return }
+        itemState?.loadTask?.cancel()
         let state = ItemState(card: card, focusOnLoad: focusText && Self.isEditable(card), maxBytes: settings.maxItemBytes)
         itemState = state
         if history.selectedID != id { history.selectedID = id }
@@ -225,6 +239,10 @@ final class AppModel {
 
     /// Formatted records open formatted when their RTF or HTML can be read, others as plain text.
     private func loadText(into state: ItemState) async {
+        if state.isEditable, (try? await store.itemCount(state.id)) ?? 1 > 1 {
+            guard !Task.isCancelled, itemState === state else { return }
+            state.makeReadOnly()
+        }
         if state.card.displayType == .richText, let rich = await editorRichText(state.id) {
             guard !Task.isCancelled, itemState === state else { return }
             state.load(rich: rich)
@@ -306,10 +324,15 @@ final class AppModel {
                     proceed()
                 }
             case .discard:
-                // Only the text: a changed title saves itself, as it would on leaving the field.
-                self?.saveTitle()
+                // Only the text: a changed title saves itself, as it would on leaving the field —
+                // stored before going on, so quitting does not lose it (review finding).
+                guard let self else { return }
+                let change = self.takeTitleChange()
                 state.revert()
-                proceed()
+                Task {
+                    if let change { await self.persist(change) }
+                    proceed()
+                }
             case .cancel:
                 onCancel()
             }
@@ -377,6 +400,23 @@ final class AppModel {
         restore(state.id, paste: paste)
     }
 
+    /// Images and PDFs handed to Preview. They go with their records, and all at launch (review
+    /// finding: a screenshot set to be deleted after 15 minutes stayed in the temporary folder).
+    private static let previewFolder = FileManager.default.temporaryDirectory.appendingPathComponent("Memopila", isDirectory: true)
+
+    private func prunePreviewFiles(all: Bool = false) {
+        let store = store
+        let folder = Self.previewFolder
+        Task.detached(priority: .utility) {
+            let files = (try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+            for file in files {
+                if !all, let id = UUID(uuidString: file.deletingPathExtension().lastPathComponent),
+                   (try? await store.card(id)) != nil { continue }
+                try? FileManager.default.removeItem(at: file)
+            }
+        }
+    }
+
     /// The image or PDF of a record in Preview, from a temporary file (§8.5).
     func openInPreview(_ id: UUID) {
         Task {
@@ -389,15 +429,19 @@ final class AppModel {
                   let bytes = representations.first(where: { $0.type == match.0 })?.bytes else {
                 return toasts.error(String(localized: "This item has no image to open."))
             }
-            let fileExtension = match.1
-            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Memopila", isDirectory: true)
-            let url = folder.appendingPathComponent(id.uuidString).appendingPathExtension(fileExtension)
-            do {
-                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                try bytes.write(to: url, options: .atomic)
-            } catch {
-                return toasts.error(error.localizedDescription)
-            }
+            let folder = Self.previewFolder
+            let url = folder.appendingPathComponent(id.uuidString).appendingPathExtension(match.1)
+            // Off the main thread: a large image or PDF takes a while to write (review finding).
+            let failure = await Task.detached(priority: .userInitiated) { () -> String? in
+                do {
+                    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                    try bytes.write(to: url, options: .atomic)
+                    return nil
+                } catch {
+                    return error.localizedDescription
+                }
+            }.value
+            if let failure { return toasts.error(failure) }
             let preview = URL(fileURLWithPath: "/System/Applications/Preview.app")
             do {
                 External.announce()
@@ -486,6 +530,7 @@ final class AppModel {
                 let next = try await store.applyRetention(limits: limits, now: Date())
                 history.storeDidChange()
                 armExpiry(next)
+                prunePreviewFiles()
             } catch {
                 // The store failed this time: try again in a minute instead of dropping the timer
                 // (review finding: a "delete after 8 hours" secret could outlive it).
@@ -747,16 +792,7 @@ final class AppModel {
     }
 
     func toggleFavorite(_ id: UUID) {
-        guard let card = history.cards.first(where: { $0.id == id }) else { return }
-        let limits = settings.retentionLimits
-        Task {
-            do {
-                try await store.setFavorite(id, !card.isFavorite, limits: limits, now: Date())
-            } catch {
-                toasts.error(error.localizedDescription)
-            }
-            history.storeDidChange()
-        }
+        toggleFavorites([id])
     }
 
     /// ⌘⌫: favorites ask first (§8.3). The cards leave the grid at once; the store deletes them
@@ -814,6 +850,8 @@ final class AppModel {
     func prepareToQuit(_ reply: @escaping @MainActor (Bool) -> Void) {
         let quit: @MainActor () -> Void = { [weak self] in
             Task { @MainActor in
+                // A title typed in the record window is saved before the app goes (review finding).
+                if let self, let change = self.takeTitleChange() { await self.persist(change) }
                 await self?.commitPendingDeletionNow()
                 reply(true)
             }
@@ -841,6 +879,7 @@ final class AppModel {
                 for id in ids { thumbnails.invalidate(id) }
                 history.forgetHidden(ids)
                 history.storeDidChange()
+                prunePreviewFiles()
                 return
             case .failure(.busy) where attempt < 3:
                 // Another delete, clear or edit is running; this one follows it.
@@ -866,14 +905,26 @@ final class AppModel {
     }
 
     /// ⌘D on several cards: all become favorites, or all stop being favorites when they all are.
-    func toggleFavorites(_ ids: [UUID]) {
+    /// Out of Favorites, cards older than History keeps are deleted (§6), so that is asked first
+    /// (review finding: an old favorite vanished at the next copy, with no warning).
+    func toggleFavorites(_ ids: [UUID], confirmed: Bool = false) {
         let cards = history.cards.filter { ids.contains($0.id) }
         guard !cards.isEmpty else { return }
         let makeFavorite = !cards.allSatisfy(\.isFavorite)
         let limits = settings.retentionLimits
+        if !makeFavorite, !confirmed {
+            let cutoff = Date().addingTimeInterval(-limits.maxAge)
+            let old = cards.filter { $0.lastCopiedAt < cutoff }.count
+            if old > 0 { return present(.confirmUnfavorite(cards.map(\.id), old: old)) }
+        }
+        if case .confirmUnfavorite? = overlay { present(nil) }
         Task {
-            for card in cards where card.isFavorite != makeFavorite {
-                try? await store.setFavorite(card.id, makeFavorite, limits: limits, now: Date())
+            do {
+                for card in cards where card.isFavorite != makeFavorite {
+                    try await store.setFavorite(card.id, makeFavorite, limits: limits, now: Date())
+                }
+            } catch {
+                toasts.error(error.localizedDescription)
             }
             history.storeDidChange()
         }
@@ -951,10 +1002,20 @@ final class AppModel {
     func saveEdit(_ id: UUID, text: String, rich: RichContent? = nil, savedRich: NSAttributedString? = nil) async -> String? {
         let store = store
         let maxBytes = settings.maxItemBytes
-        switch await monitor.destructive({ opSeq in try await store.editText(id, text: text, rich: rich, opSeq: opSeq, maxBytes: maxBytes) }) {
+        let policy = settings.secretPolicy
+        let kinds = settings.secretKinds
+        // *Don't save* holds for typed secrets too (review finding).
+        if policy == .dontSave, SecretDetector.detect(text, kinds: kinds) != nil {
+            return String(localized: "The text contains a secret, and Settings say not to save secrets.")
+        }
+        switch await monitor.destructive({ opSeq in
+            try await store.editText(id, text: text, rich: rich, opSeq: opSeq, maxBytes: maxBytes, secretPolicy: policy, secretKinds: kinds)
+        }) {
         case .success(.updated):
             monitor.recordChanged(id)
             history.storeDidChange()
+            // A secret typed in may now expire: the timer follows (§3.10).
+            if case .deleteAfter = policy { runRetention() }
             if let state = itemState, state.id == id {
                 // Saved in place: what was saved is the new starting point.
                 state.textSaved(text, rich: savedRich)
@@ -1011,13 +1072,33 @@ final class AppModel {
         ]
         for (type, documentType) in readable {
             guard let data = representations.first(where: { $0.type == type })?.bytes, data.count <= 4 * 1_048_576 else { continue }
-            var options: [NSAttributedString.DocumentReadingOptionKey: Any] = [.documentType: documentType]
-            if documentType == .html { options[.characterEncoding] = String.Encoding.utf8.rawValue }
-            if let text = try? NSAttributedString(data: data, options: options, documentAttributes: nil), text.length > 0 {
-                return text
-            }
+            if let text = await Self.attributedString(data, type: documentType), text.length > 0 { return text }
         }
         return nil
+    }
+
+    /// RTF off the main thread; HTML through WebKit's asynchronous loader, which waits for
+    /// remote images and styles without blocking the app (review finding: a copy from a browser
+    /// froze the app while it opened). Web archives stay small and wait two seconds at most.
+    private static func attributedString(_ data: Data, type: NSAttributedString.DocumentType) async -> NSAttributedString? {
+        switch type {
+        case .html:
+            let result = await withCheckedContinuation { (continuation: CheckedContinuation<Transfer<NSAttributedString?>, Never>) in
+                NSAttributedString.loadFromHTML(data: data, options: [.characterEncoding: String.Encoding.utf8.rawValue, .timeout: 5]) { text, _, _ in
+                    continuation.resume(returning: Transfer(value: text))
+                }
+            }
+            return result.value
+        case .webArchive:
+            guard data.count <= 1_048_576 else { return nil }
+            return try? NSAttributedString(data: data, options: [.documentType: type, .timeout: 2], documentAttributes: nil)
+        default:
+            let raw = type.rawValue
+            return await Task.detached(priority: .userInitiated) { () -> Transfer<NSAttributedString?> in
+                let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [.documentType: NSAttributedString.DocumentType(rawValue: raw)]
+                return Transfer(value: try? NSAttributedString(data: data, options: options, documentAttributes: nil))
+            }.value.value
+        }
     }
 
     func clear(_ scope: ClearScope) {
@@ -1027,6 +1108,7 @@ final class AppModel {
             case .success:
                 thumbnails.removeAll()
                 history.storeDidChange()
+                prunePreviewFiles()
                 toasts.show(scope == .all ? String(localized: "History cleared") : String(localized: "History cleared except favorites"))
             case .failure(let error):
                 report(error)
@@ -1224,8 +1306,11 @@ final class AppModel {
         return true
     }
 
+    private static let movedAsideKey = "storeMovedAsidePath"
+
     func dismissStoreRecovery() {
         storeMovedAside = nil
+        UserDefaults.standard.removeObject(forKey: Self.movedAsideKey)
     }
 
 

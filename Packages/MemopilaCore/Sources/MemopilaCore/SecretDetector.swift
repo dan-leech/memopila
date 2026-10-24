@@ -79,9 +79,11 @@ public enum SecretDetector {
     static func isCardNumber(_ text: String) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count <= maxCardTextLength else { return false }
-        let digits = trimmed.compactMap(\.wholeNumberValue)
-        guard (13...19).contains(digits.count),
-              trimmed.allSatisfy({ $0.isNumber || $0 == " " || $0 == "-" }) else { return false }
+        // ASCII digits only: `wholeNumberValue` is a numeral's value, and 京 is 10¹⁶ (review
+        // finding: the prefix arithmetic overflowed and the app crashed on every capture of it).
+        guard trimmed.allSatisfy({ ($0.isASCII && $0.isNumber) || $0 == " " || $0 == "-" }) else { return false }
+        let digits = trimmed.compactMap { $0.isNumber ? $0.asciiValue.map { Int($0) - 48 } : nil }
+        guard (13...19).contains(digits.count) else { return false }
         let prefix2 = digits[0] * 10 + digits[1]
         let prefix4 = prefix2 * 100 + digits[2] * 10 + digits[3]
         let knownNetwork = digits[0] == 4 || (51...55).contains(prefix2) || (2221...2720).contains(prefix4)

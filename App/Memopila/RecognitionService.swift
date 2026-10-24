@@ -43,6 +43,12 @@ final class RecognitionService {
             await run()
         } while wakeAgain && !Task.isCancelled
         loop = nil
+        // A wake that came while a cancelled pass finished its job is served now (review finding:
+        // after memory pressure, waiting images stayed until the next copy).
+        if wakeAgain, Task.isCancelled {
+            wakeAgain = false
+            wake()
+        }
     }
 
     /// Memory pressure (§7.3): stop after the current job and stay idle for a minute.

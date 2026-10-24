@@ -47,7 +47,6 @@ struct RecordView: View {
     @State private var image: NSImage?
     @State private var imageFailed = false
     @State private var newCollectionName = ""
-    @State private var showsChanges = false
     @State private var isNamingCollection = false
     @FocusState private var collectionNameFocused: Bool
     @State private var dragStartHeight: Double?
@@ -102,7 +101,7 @@ struct RecordView: View {
             Task { details = await model.details(state.id, maxTextScalars: 0) }
         }
         .onChange(of: state.language) { _, value in model.setCodeLanguage(state.id, value.stored) }
-        .sheet(isPresented: $showsChanges) {
+        .sheet(isPresented: $state.showsChanges) {
             ChangesSheet(
                 original: state.initialText,
                 edited: state.currentText() ?? state.initialText,
@@ -690,7 +689,7 @@ struct RecordView: View {
                     .foregroundStyle(.secondary)
             }
             if state.isDirty {
-                Button("Changes…") { showsChanges = true }
+                Button("Changes…") { state.showsChanges = true }
                     .help(String(localized: "Compare the edited text with the saved text, line by line"))
                 Button("Revert") { state.revert() }
                     .help(String(localized: "Go back to the saved text (⌘Z undoes this)"))

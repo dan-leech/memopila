@@ -26,24 +26,54 @@ public actor ClipboardStore {
 
     /// Opens the store at `url`. If it cannot be opened, its files move to a dated folder next to
     /// it and an empty store starts in their place: history is set aside, never deleted (PLAN §7.2).
+    /// When an empty store cannot be opened either, the files were not the problem (a full disk,
+    /// no permission): they go back where they were and the first error is thrown (review finding:
+    /// the history was set aside, and on the next launch nothing said where it went).
     public static func openRecovering(at url: URL, now: Date = Date()) throws -> (store: ClipboardStore, movedTo: URL?) {
+        let firstError: any Error
         do {
             return (try ClipboardStore(url: url), nil)
         } catch {
-            let folder = url.deletingLastPathComponent()
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
-            let backup = folder.appending(path: "Unreadable History \(formatter.string(from: now))", directoryHint: .isDirectory)
-            try FileManager.default.createDirectory(at: backup, withIntermediateDirectories: true)
-            // The store, its -shm / -wal journals and SwiftData's external storage folder.
-            let name = url.lastPathComponent
-            let support = ".\(url.deletingPathExtension().lastPathComponent)_SUPPORT"
-            for file in try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
-            where file.lastPathComponent.hasPrefix(name) || file.lastPathComponent == support {
-                try FileManager.default.moveItem(at: file, to: backup.appending(path: file.lastPathComponent))
+            firstError = error
+        }
+        let manager = FileManager.default
+        let folder = url.deletingLastPathComponent()
+        // The store, its -shm / -wal journals and SwiftData's external storage folder.
+        let name = url.lastPathComponent
+        let support = ".\(url.deletingPathExtension().lastPathComponent)_SUPPORT"
+        func storeFiles() -> [URL] {
+            let files = (try? manager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? []
+            return files.filter { $0.lastPathComponent.hasPrefix(name) || $0.lastPathComponent == support }
+        }
+        let originals = storeFiles()
+        guard !originals.isEmpty else { throw firstError }
+
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
+        let backup = folder.appending(path: "Unreadable History \(formatter.string(from: now))", directoryHint: .isDirectory)
+        var moved: [String] = []
+        do {
+            try manager.createDirectory(at: backup, withIntermediateDirectories: true)
+            for file in originals {
+                try manager.moveItem(at: file, to: backup.appending(path: file.lastPathComponent))
+                moved.append(file.lastPathComponent)
             }
             return (try ClipboardStore(url: url), backup)
+        } catch {
+            // Files the failed open created in place of moved ones (or new ones) go first; originals
+            // that were not moved stay untouched.
+            let originalNames = Set(originals.map(\.lastPathComponent))
+            for file in storeFiles() where moved.contains(file.lastPathComponent) || !originalNames.contains(file.lastPathComponent) {
+                try? manager.removeItem(at: file)
+            }
+            for fileName in moved {
+                try? manager.moveItem(at: backup.appending(path: fileName), to: folder.appending(path: fileName))
+            }
+            if ((try? manager.contentsOfDirectory(atPath: backup.path)) ?? []).isEmpty {
+                try? manager.removeItem(at: backup)
+            }
+            throw firstError
         }
     }
 
@@ -206,6 +236,19 @@ public actor ClipboardStore {
         )
     }
 
+    /// Non-favorites last copied before `date`: what a lower count or age limit would delete (§6).
+    public func countNonFavorites(copiedBefore date: Date = .distantFuture) throws -> Int {
+        let context = makeContext()
+        return try context.fetchCount(FetchDescriptor<ClipboardRecord>(predicate: #Predicate { !$0.isFavorite && $0.lastCopiedAt < date }))
+    }
+
+    /// How many pasteboard items the record holds (several bookmarks or notes in one copy).
+    public func itemCount(_ id: UUID) throws -> Int {
+        let context = makeContext()
+        guard let record = try fetchRecord(id, in: context) else { return 0 }
+        return Set(record.representations.map(\.itemIndex)).count
+    }
+
     public func thumbnail(for id: UUID) throws -> Data? {
         let context = makeContext()
         return try fetchRecord(id, in: context)?.thumbnail?.data
@@ -317,10 +360,10 @@ public actor ClipboardStore {
             }
             let candidates = try retentionCandidates(in: context)
             var victims = RetentionPlanner.planUnfavorite(id, existing: candidates, maxCount: limits.maxCount)
-            // The record just unfavorited stays, however old (review finding: an old favorite was
-            // deleted at once, with no Undo).
+            // Older than History keeps, the record goes too, as the next cleanup would delete it
+            // anyway; the app asks before unfavoriting such a record.
             let planned = Set(victims)
-            victims += RetentionPlanner.planAge(existing: candidates, now: now, maxAge: limits.maxAge).filter { $0 != id && !planned.contains($0) }
+            victims += RetentionPlanner.planAge(existing: candidates, now: now, maxAge: limits.maxAge).filter { !planned.contains($0) }
             try deleteRecords(ids: victims, in: context)
         }
     }
@@ -342,14 +385,28 @@ public actor ClipboardStore {
     }
 
     /// Edit text (§3.6): in-place replacement with one item — the formatted text when `rich` is
-    /// given, always the plain text — and merge on collision.
-    public func editText(_ id: UUID, text: String, rich: RichContent? = nil, opSeq: Int, maxBytes: Int) throws -> EditResult {
+    /// given, always the plain text — and merge on collision. A secret typed in is masked and,
+    /// under *Delete after*, expires as a copied one does (§3.10).
+    public func editText(
+        _ id: UUID,
+        text: String,
+        rich: RichContent? = nil,
+        opSeq: Int,
+        maxBytes: Int,
+        secretPolicy: SecretPolicy = .off,
+        secretKinds: Set<SecretKind> = Set(SecretKind.allCases),
+        now: Date = Date()
+    ) throws -> EditResult {
         let context = makeContext()
         guard let record = try fetchRecord(id, in: context) else { return .rejected("The record no longer exists.") }
         guard let type = DisplayType(rawValue: record.displayTypeRaw), [.text, .richText, .url].contains(type) else {
             return .rejected("Only text records can be edited.")
         }
         guard !text.isEmpty else { return .rejected("The text is empty.") }
+        // The editor shows the first item's text: saving would drop the others (review finding).
+        guard Set(record.representations.map(\.itemIndex)).count <= 1 else {
+            return .rejected("Records with several items can't be edited.")
+        }
         let data = Data(text.utf8)
         var representations: [CanonicalRepresentation] = []
         if let rich {
@@ -393,8 +450,14 @@ public actor ClipboardStore {
             record.textIndex = TextDecoding.prefix(text, maxScalars: IngestEnrichment.searchScalars)
             record.textLength = text.count
             record.lineCount = TextStats.lineCount(text)
-            // Edited text is checked like a copy: a password typed in is masked too (review finding).
-            record.sensitiveKind = SecretDetector.detect(text)?.rawValue
+            // Edited text is checked like a copy: a token typed in is masked, and expires under
+            // *Delete after* (review findings).
+            let secret = secretPolicy == .off ? nil : SecretDetector.detect(text, kinds: secretKinds)
+            record.sensitiveKind = secret?.rawValue
+            if secret != nil, case .deleteAfter(let minutes) = secretPolicy, !record.isFavorite {
+                let expiry = now.addingTimeInterval(TimeInterval(minutes) * 60)
+                record.expiresAt = min(record.expiresAt ?? expiry, expiry)
+            }
             record.editedAt = Date()
             record.storedTypes = representations.map(\.type.rawValue)
             record.skippedTypes = []

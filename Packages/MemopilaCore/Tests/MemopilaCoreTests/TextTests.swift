@@ -87,6 +87,14 @@ struct TextActionTests {
         """)
     }
 
+    @Test func formatJSONWithACombiningMarkAfterAQuote() {
+        // A quote and a combining mark are one Character: strings and brackets swapped and the
+        // depth went below zero (a crash).
+        let json = "[\"\u{301}\", \"x]]\"]"
+        #expect(TextAction.formatJSON.apply(to: json) == "[\n  \"\u{301}\",\n  \"x]]\"\n]")
+        #expect(TextAction.minifyJSON.apply(to: json) == "[\"\u{301}\",\"x]]\"]")
+    }
+
     @Test func minifyJSON() {
         #expect(TextAction.minifyJSON.apply(to: "{\n  \"a\" : [ 1, 2 ],\n  \"b\": \"x y\"\n}") == #"{"a":[1,2],"b":"x y"}"#)
     }

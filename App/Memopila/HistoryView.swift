@@ -715,6 +715,12 @@ private struct OverlayHost: View {
             } cancel: {
                 model.present(nil)
             }
+        case .confirmUnfavorite(let ids, let old):
+            ConfirmUnfavoriteOverlay(count: ids.count, old: old, maxAgeDays: model.settings.maxAgeDays) {
+                model.toggleFavorites(ids, confirmed: true)
+            } cancel: {
+                model.present(nil)
+            }
         case .shortcuts:
             ShortcutsOverlay { model.present(nil) }
         case .confirmClear:
@@ -970,6 +976,35 @@ private struct ConfirmDeleteOverlay: View {
         }
         .padding(18)
         .frame(width: 360)
+    }
+}
+
+private struct ConfirmUnfavoriteOverlay: View {
+    let count: Int
+    let old: Int
+    let maxAgeDays: Int
+    let confirm: () -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(count == 1 ? String(localized: "Remove from Favorites and delete?") : String(localized: "Remove \(count) items from Favorites?"))
+                .font(.headline)
+            Text(count == 1
+                ? String(localized: "It is older than History keeps (\(maxAgeDays) days), so it is deleted. This can't be undone.")
+                : String(localized: "\(old) of them are older than History keeps (\(maxAgeDays) days) and are deleted. This can't be undone."))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button("Cancel", action: cancel)
+                Button(count == 1 ? String(localized: "Remove and Delete") : String(localized: "Remove"), role: .destructive, action: confirm)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(18)
+        .frame(width: 380)
     }
 }
 

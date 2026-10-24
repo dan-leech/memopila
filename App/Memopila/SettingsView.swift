@@ -241,6 +241,10 @@ private struct HistorySettings: View {
     /// The picker's value; a lower limit waits here for confirmation, since it deletes at once.
     @State private var storageChoice = 0
     @State private var isConfirmingStorage = false
+    /// A lower count or age limit deletes at once too: asked first (review finding).
+    @State private var countChoice = 0
+    @State private var ageChoice = 0
+    @State private var pendingCut: RetentionCut?
 
     private static let countOptions = [100, 250, 500, 1_000, 2_500, 5_000, 10_000]
     private static let ageOptions = [1, 7, 14, 30, 90, 180, 365]
@@ -250,12 +254,12 @@ private struct HistorySettings: View {
         @Bindable var settings = model.settings
         return Form {
             Section {
-                Picker("Keep up to", selection: $settings.maxCount) {
+                Picker("Keep up to", selection: $countChoice) {
                     ForEach(Self.options(Self.countOptions, current: settings.maxCount), id: \.self) { count in
                         Text(String(localized: "\(count) items")).tag(count)
                     }
                 }
-                Picker("Delete items older than", selection: $settings.maxAgeDays) {
+                Picker("Delete items older than", selection: $ageChoice) {
                     ForEach(Self.options(Self.ageOptions, current: settings.maxAgeDays), id: \.self) { days in
                         Text(Self.ageTitle(days)).tag(days)
                     }
@@ -313,8 +317,41 @@ private struct HistorySettings: View {
             guard (notification.object as? NSWindow)?.identifier == SecondaryWindows.settingsIdentifier else { return }
             Task { await refreshUsage() }
         }
-        .onAppear { storageChoice = model.settings.maxStorageMiB }
+        .onAppear {
+            storageChoice = model.settings.maxStorageMiB
+            countChoice = model.settings.maxCount
+            ageChoice = model.settings.maxAgeDays
+        }
         .onChange(of: storageChoice) { _, mib in requestStorageLimit(mib) }
+        .onChange(of: countChoice) { _, count in requestCut(.count(count)) }
+        .onChange(of: ageChoice) { _, days in requestCut(.age(days)) }
+        .onChange(of: pendingCut) { _, cut in
+            // Cancelled: the pickers show the limits in force again.
+            if cut == nil {
+                countChoice = model.settings.maxCount
+                ageChoice = model.settings.maxAgeDays
+            }
+        }
+        .confirmationDialog(
+            pendingCut?.title ?? "",
+            isPresented: Binding(get: { pendingCut != nil }, set: { if !$0 { pendingCut = nil } }),
+            titleVisibility: .visible,
+            presenting: pendingCut
+        ) { cut in
+            Button(String(localized: "Delete Them"), role: .destructive) {
+                switch cut.kind {
+                case .count(let count): model.settings.maxCount = count
+                case .age(let days): model.settings.maxAgeDays = days
+                }
+                pendingCut = nil
+                Task {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    await refreshUsage()
+                }
+            }
+        } message: { cut in
+            Text(String(localized: "\(cut.victims) items that are not favorites are deleted now. This can't be undone."))
+        }
         .onChange(of: isConfirmingStorage) { _, asking in
             // Cancelled: the picker shows the limit in force again.
             if !asking { storageChoice = model.settings.maxStorageMiB }
@@ -354,17 +391,50 @@ private struct HistorySettings: View {
         usage = try? await model.store.usage()
     }
 
-    /// The presets plus the current value when it was set elsewhere.
-    /// Lowering the limit below what history holds deletes old items: it asks first.
+    /// Lowering the limit below what history holds deletes old items: it asks first, also before
+    /// the usage is known.
     private func requestStorageLimit(_ mib: Int) {
         guard mib > 0, mib != model.settings.maxStorageMiB else { return }
-        if mib < model.settings.maxStorageMiB, let usage, usage.payloadBytes > mib * FormatPolicy.mebibyte {
+        if mib < model.settings.maxStorageMiB, usage.map({ $0.payloadBytes > mib * FormatPolicy.mebibyte }) ?? true {
             isConfirmingStorage = true
         } else {
             model.settings.maxStorageMiB = mib
         }
     }
 
+    /// A lower count or age limit: applied at once when it deletes nothing, else asked first.
+    private func requestCut(_ kind: RetentionCut.Kind) {
+        let settings = model.settings
+        let store = model.store
+        switch kind {
+        case .count(let count):
+            guard count > 0, count != settings.maxCount else { return }
+            guard count < settings.maxCount else { settings.maxCount = count; return }
+        case .age(let days):
+            guard days > 0, days != settings.maxAgeDays else { return }
+            guard days < settings.maxAgeDays else { settings.maxAgeDays = days; return }
+        }
+        Task {
+            let victims: Int
+            switch kind {
+            case .count(let count):
+                victims = max(0, ((try? await store.countNonFavorites()) ?? count + 1) - count)
+            case .age(let days):
+                let cutoff = Date().addingTimeInterval(-TimeInterval(days) * 86_400)
+                victims = (try? await store.countNonFavorites(copiedBefore: cutoff)) ?? 1
+            }
+            guard victims > 0 else {
+                switch kind {
+                case .count(let count): settings.maxCount = count
+                case .age(let days): settings.maxAgeDays = days
+                }
+                return
+            }
+            pendingCut = RetentionCut(kind: kind, victims: victims, ageTitle: Self.ageTitle)
+        }
+    }
+
+    /// The presets plus the current value when it was set elsewhere.
     private static func options(_ presets: [Int], current: Int) -> [Int] {
         presets.contains(current) ? presets : (presets + [current]).sorted()
     }
@@ -380,6 +450,29 @@ private struct HistorySettings: View {
         default: String(localized: "\(days) days")
         }
     }
+}
+
+/// A lower *Keep up to* or *Delete items older than*, waiting for confirmation.
+private struct RetentionCut: Equatable {
+    enum Kind: Equatable {
+        case count(Int)
+        case age(Int)
+    }
+
+    let kind: Kind
+    let victims: Int
+    let title: String
+
+    init(kind: Kind, victims: Int, ageTitle: (Int) -> String) {
+        self.kind = kind
+        self.victims = victims
+        switch kind {
+        case .count(let count): title = String(localized: "Keep only \(count) items?")
+        case .age(let days): title = String(localized: "Delete items older than \(ageTitle(days))?")
+        }
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.kind == rhs.kind && lhs.victims == rhs.victims }
 }
 
 // MARK: - Privacy (§3.10, §5, §9)

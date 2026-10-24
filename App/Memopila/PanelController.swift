@@ -228,6 +228,10 @@ final class PanelController: NSObject, NSWindowDelegate {
                 return true
             }
             return false
+        case .confirmUnfavorite(let ids, _):
+            if key.code == kVK_Escape { model.present(nil); return true }
+            if key.isReturn { model.toggleFavorites(ids, confirmed: true); return true }
+            return false
         case .confirmDeleteCollection(let id):
             if key.code == kVK_Escape { model.present(nil); return true }
             if key.isReturn { model.deleteCollection(id); return true }

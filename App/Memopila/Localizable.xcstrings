@@ -359,6 +359,16 @@
         }
       }
     },
+    "%lld items that are not favorites are deleted now. This can't be undone.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Объекты не из избранного (%lld) будут удалены сейчас. Это нельзя отменить."
+          }
+        }
+      }
+    },
     "%lld lines": {
       "localizations": {
         "en": {
@@ -427,6 +437,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Выделено символов: %1$lld из %2$lld"
+          }
+        }
+      }
+    },
+    "%lld of them are older than History keeps (%lld days) and are deleted. This can't be undone.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld из них старше срока хранения истории (%lld дн.) и будут удалены. Это нельзя отменить."
           }
         }
       }
@@ -1925,6 +1945,16 @@
         }
       }
     },
+    "Delete Them": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить их"
+          }
+        }
+      }
+    },
     "Delete This and Stop Saving from %@": {
       "localizations": {
         "ru": {
@@ -2011,6 +2041,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Удалять элементы старше"
+          }
+        }
+      }
+    },
+    "Delete items older than %@?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить объекты старше: %@?"
           }
         }
       }
@@ -2865,6 +2905,16 @@
         }
       }
     },
+    "It is older than History keeps (%lld days), so it is deleted. This can't be undone.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Он старше срока хранения истории (%lld дн.), поэтому будет удалён. Это нельзя отменить."
+          }
+        }
+      }
+    },
     "Italic (⌘I)": {
       "localizations": {
         "ru": {
@@ -2951,6 +3001,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Сохранять пропущенные форматы"
+          }
+        }
+      }
+    },
+    "Keep only %lld items?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Хранить только %lld объектов?"
           }
         }
       }
@@ -4185,12 +4245,32 @@
         }
       }
     },
+    "Remove": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать"
+          }
+        }
+      }
+    },
     "Remove %lld from Favorites": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Убрать из избранного: %lld"
+          }
+        }
+      }
+    },
+    "Remove %lld items from Favorites?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из избранного объекты (%lld)?"
           }
         }
       }
@@ -4225,6 +4305,16 @@
         }
       }
     },
+    "Remove and Delete": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать и удалить"
+          }
+        }
+      }
+    },
     "Remove from Favorites": {
       "localizations": {
         "ru": {
@@ -4241,6 +4331,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Убрать из избранного (⌘D)"
+          }
+        }
+      }
+    },
+    "Remove from Favorites and delete?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из избранного и удалить?"
           }
         }
       }
@@ -5271,6 +5371,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Следующее копирование будет пропущено"
+          }
+        }
+      }
+    },
+    "The text contains a secret, and Settings say not to save secrets.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В тексте есть секрет, а в настройках указано не сохранять секреты."
           }
         }
       }

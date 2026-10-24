@@ -263,6 +263,38 @@ struct ClipboardStoreTests {
         #expect(try await store.count(HistoryQuery()) == 0)
     }
 
+    @Test func editedSecretIsMaskedAndExpires() async throws {
+        let store = try ClipboardStore(url: nil)
+        let now = Date(timeIntervalSince1970: 10_000)
+        guard case .committed(let id) = await ingest(store, snapshot("draft", at: 9_000)) else { Issue.record("not committed"); return }
+        let token = "gh" + "p_" + String(repeating: "A1b2", count: 9)
+        #expect(try await store.editText(id, text: token, opSeq: 1, maxBytes: 1_000, secretPolicy: .deleteAfter(minutes: 15), now: now) == .updated)
+        #expect(try await store.card(id)?.sensitiveKind == SecretKind.githubToken.rawValue)
+        try await store.applyRetention(limits: RetentionLimits(), now: now.addingTimeInterval(16 * 60))
+        #expect(try await store.card(id) == nil)
+    }
+
+    @Test func recordsWithSeveralItemsAreNotEdited() async throws {
+        let store = try ClipboardStore(url: nil)
+        let items = [CanonicalItem([.bytes(.utf8PlainText, Data("one".utf8))]), CanonicalItem([.bytes(.utf8PlainText, Data("two".utf8))])]
+        guard case .committed(let id) = await ingest(store, snapshot("", items: items)) else { Issue.record("not committed"); return }
+        #expect(try await store.itemCount(id) == 2)
+        guard case .rejected = try await store.editText(id, text: "one!", opSeq: 1, maxBytes: 1_000) else {
+            Issue.record("a record with two items was edited down to one")
+            return
+        }
+    }
+
+    @Test func unfavoritingAnOldRecordDeletesIt() async throws {
+        // The app asks first (§6); the store then deletes it, as the next cleanup would.
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits(maxAge: 100)
+        guard case .committed(let old) = await ingest(store, snapshot("old", at: 1), limits: limits) else { return }
+        try await store.setFavorite(old, true, limits: limits, now: Date(timeIntervalSince1970: 2))
+        try await store.setFavorite(old, false, limits: limits, now: Date(timeIntervalSince1970: 1_000))
+        #expect(try await store.card(old) == nil)
+    }
+
     @Test func unfavoriteEnforcesTheCountCapAndKeepsTheRecord() async throws {
         let store = try ClipboardStore(url: nil)
         let limits = RetentionLimits(maxCount: 1)

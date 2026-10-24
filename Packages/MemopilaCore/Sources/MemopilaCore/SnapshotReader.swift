@@ -289,7 +289,7 @@ public struct SnapshotReader: Sendable {
         let sourceURL = settings.recordSourcePage ? Self.sourceURL(itemTypes: itemTypes, items: items, pasteboard: pasteboard) : nil
 
         var sensitiveKind: SecretKind?
-        if context.secretPolicy != .off, let text = TextDecoding.plainText(of: items), let kind = SecretDetector.detect(text, kinds: context.secretKinds) {
+        if context.secretPolicy != .off, let kind = Self.secretKind(in: items, kinds: context.secretKinds) {
             switch context.secretPolicy {
             case .off:
                 break
@@ -360,6 +360,31 @@ public struct SnapshotReader: Sendable {
     }
 
     /// A PNG carrying the screenshot mark macOS writes (`ScreenshotMark`).
+    /// The secret in any item's plain text. A copy with no plain text at all (RTF or HTML only)
+    /// is checked in its markup, where a token stays as typed (review finding: only the first
+    /// item's plain text was checked, so such copies were saved unmasked).
+    static func secretKind(in items: [CanonicalItem], kinds: Set<SecretKind>) -> SecretKind? {
+        let order: [PasteboardType] = [.utf8PlainText, .plainText, .utf16PlainText]
+        var texts: [String] = []
+        for item in items {
+            for type in order {
+                if let data = item.representations.first(where: { $0.type == type })?.bytes,
+                   let text = TextDecoding.decode(data, as: type) {
+                    texts.append(text)
+                    break
+                }
+            }
+        }
+        if texts.isEmpty {
+            for item in items {
+                for representation in item.representations where representation.type == .rtf || representation.type == .html {
+                    if let data = representation.bytes { texts.append(String(decoding: data, as: UTF8.self)) }
+                }
+            }
+        }
+        return texts.lazy.compactMap { SecretDetector.detect($0, kinds: kinds) }.first
+    }
+
     static func isScreenshotImage(_ items: [CanonicalItem]) -> Bool {
         items.contains { item in
             item.representations.contains { $0.type == .png && $0.bytes.map(ScreenshotMark.isScreenshot(png:)) == true }

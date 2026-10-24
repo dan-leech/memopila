@@ -63,6 +63,26 @@ struct SecretDetectorTests {
         #expect(SecretDetector.detect(Sample.github, kinds: [.githubToken]) == .githubToken)
     }
 
+    @Test func nonASCIINumeralsAreNotCardNumbers() {
+        // 京 is a numeral worth 10¹⁶: the network prefix arithmetic overflowed (a crash).
+        #expect(SecretDetector.detect("京0000000000000") == nil)
+        #expect(SecretDetector.detect("４１１１ １１１１ １１１１ １１１１") == nil)
+    }
+
+    @Test func everyItemAndRichOnlyCopiesAreChecked() {
+        let kinds = Set(SecretKind.allCases)
+        let second = [
+            CanonicalItem([.bytes(.utf8PlainText, Data("notes".utf8))]),
+            CanonicalItem([.bytes(.utf8PlainText, Data(Sample.github.utf8))]),
+        ]
+        #expect(SnapshotReader.secretKind(in: second, kinds: kinds) == .githubToken)
+        let htmlOnly = [CanonicalItem([.bytes(.html, Data("<p>\(Sample.github)</p>".utf8))])]
+        #expect(SnapshotReader.secretKind(in: htmlOnly, kinds: kinds) == .githubToken)
+        // With plain text present, the markup is not read.
+        let both = [CanonicalItem([.bytes(.utf8PlainText, Data("hello".utf8)), .bytes(.html, Data("<p>\(Sample.github)</p>".utf8))])]
+        #expect(SnapshotReader.secretKind(in: both, kinds: kinds) == nil)
+    }
+
     @Test func largeTextIsNotScanned() {
         let text = String(repeating: "a", count: SecretDetector.maxScannedBytes) + Sample.jwt
         #expect(SecretDetector.detect(text) == nil)

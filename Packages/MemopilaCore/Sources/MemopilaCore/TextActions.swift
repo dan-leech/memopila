@@ -93,42 +93,48 @@ enum JSONText {
         guard let data = trimmed.data(using: .utf8),
               (try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])) != nil else { return nil }
 
-        var output = ""
+        var output = String.UnicodeScalarView()
         var depth = 0
         var inString = false
         var escaped = false
-        let characters = Array(trimmed)
+        // Scalars, not Characters: a quote followed by a combining mark is one Character that is
+        // not a quote, which flipped strings and structure and drove the depth below zero (a crash).
+        let scalars = Array(trimmed.unicodeScalars)
         var index = 0
 
-        func newline() {
-            output.append("\n")
-            output.append(String(repeating: "  ", count: depth))
+        func append(_ text: String) {
+            output.append(contentsOf: text.unicodeScalars)
         }
 
-        while index < characters.count {
-            let character = characters[index]
+        func newline() {
+            append("\n")
+            append(String(repeating: "  ", count: max(depth, 0)))
+        }
+
+        while index < scalars.count {
+            let scalar = scalars[index]
             defer { index += 1 }
 
             if inString {
-                output.append(character)
+                output.append(scalar)
                 if escaped {
                     escaped = false
-                } else if character == "\\" {
+                } else if scalar == "\\" {
                     escaped = true
-                } else if character == "\"" {
+                } else if scalar == "\"" {
                     inString = false
                 }
                 continue
             }
 
-            switch character {
+            switch scalar {
             case "\"":
                 inString = true
-                output.append(character)
+                output.append(scalar)
             case "{", "[":
-                output.append(character)
-                let closing: Character = character == "{" ? "}" : "]"
-                if let next = nextSignificant(characters, after: index), characters[next] == closing {
+                output.append(scalar)
+                let closing: Unicode.Scalar = scalar == "{" ? "}" : "]"
+                if let next = nextSignificant(scalars, after: index), scalars[next] == closing {
                     output.append(closing)
                     index = next
                 } else {
@@ -138,24 +144,28 @@ enum JSONText {
             case "}", "]":
                 depth -= 1
                 if pretty { newline() }
-                output.append(character)
+                output.append(scalar)
             case ",":
-                output.append(character)
+                output.append(scalar)
                 if pretty { newline() }
             case ":":
-                output.append(pretty ? ": " : ":")
-            case _ where character.isWhitespace:
+                append(pretty ? ": " : ":")
+            case _ where isJSONWhitespace(scalar):
                 break
             default:
-                output.append(character)
+                output.append(scalar)
             }
         }
-        return output
+        return String(output)
     }
 
-    private static func nextSignificant(_ characters: [Character], after index: Int) -> Int? {
+    private static func isJSONWhitespace(_ scalar: Unicode.Scalar) -> Bool {
+        scalar == " " || scalar == "\t" || scalar == "\n" || scalar == "\r"
+    }
+
+    private static func nextSignificant(_ scalars: [Unicode.Scalar], after index: Int) -> Int? {
         var next = index + 1
-        while next < characters.count, characters[next].isWhitespace { next += 1 }
-        return next < characters.count ? next : nil
+        while next < scalars.count, isJSONWhitespace(scalars[next]) { next += 1 }
+        return next < scalars.count ? next : nil
     }
 }

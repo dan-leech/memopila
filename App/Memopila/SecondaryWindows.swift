@@ -86,11 +86,27 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
 
     /// *Do you want to save the changes?* as the standard sheet on the record window: ↩ saves, Esc
     /// cancels, ⌘D does not save.
+    private var isAskingToSave = false
+
     func askToSaveRecord(_ answer: @escaping @MainActor (UnsavedChoice) -> Void) {
         guard let record, record.isVisible else { return answer(.cancel) }
-        // Already asking (a second Esc or ⌘W while the sheet is up), or another sheet is open:
-        // the answer is Cancel, so whoever asked is never left waiting (⌘Q).
-        guard record.attachedSheet == nil else { return answer(.cancel) }
+        if record.attachedSheet != nil {
+            // Already asking (a second Esc or ⌘W while the alert is up): the answer is Cancel, so
+            // whoever asked is never left waiting.
+            guard !isAskingToSave, let state = model.itemState, state.showsChanges else { return answer(.cancel) }
+            // The Changes sheet goes first, so ⌘Q or a logout still gets the question (review
+            // finding: quitting was refused with no word).
+            state.showsChanges = false
+            Task { @MainActor [weak self, weak record] in
+                for _ in 0..<20 where record?.attachedSheet != nil {
+                    try? await Task.sleep(for: .milliseconds(50))
+                }
+                guard let self, let record, record.attachedSheet == nil else { return answer(.cancel) }
+                self.askToSaveRecord(answer)
+            }
+            return
+        }
+        isAskingToSave = true
         let alert = NSAlert()
         alert.messageText = String(localized: "Do you want to save the changes to this record?")
         alert.informativeText = String(localized: "Your changes to the text will be lost if you don’t save them.")
@@ -100,8 +116,9 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
         discard.keyEquivalent = "d"
         discard.keyEquivalentModifierMask = .command
         discard.hasDestructiveAction = true
-        alert.beginSheetModal(for: record) { response in
+        alert.beginSheetModal(for: record) { [weak self] response in
             MainActor.assumeIsolated {
+                self?.isAskingToSave = false
                 switch response {
                 case .alertFirstButtonReturn: answer(.save)
                 case .alertThirdButtonReturn: answer(.discard)

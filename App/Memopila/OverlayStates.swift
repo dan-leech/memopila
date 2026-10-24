@@ -43,14 +43,17 @@ final class ActionsPanelState {
 final class ItemState {
     let id: UUID
     let card: HistoryCard
-    /// Text, rich text and links; other text-like items (mixed) are shown read-only.
-    let isEditable: Bool
+    /// Text, rich text and links; other text-like items (mixed) and records with several items
+    /// are shown read-only.
+    private(set) var isEditable: Bool
     /// RTF / HTML / web archive records lose their formatting on save.
     let hasFormatting: Bool
     /// The title as stored; it is saved on its own when the field is left (§3.6).
     private(set) var originalTitle: String
     var title: String
     private(set) var isLoaded = false
+    /// The Changes sheet; the window closes it before asking to save (⌘Q, logout).
+    var showsChanges = false
     private(set) var initialText = "" {
         didSet { initialLength = (initialText as NSString).length }
     }
@@ -282,6 +285,14 @@ final class ItemState {
 
     /// The title as stored, once the record's details are read: the card the window opened with
     /// may be older (review finding). A title being typed is left alone.
+    /// Several items in one copy (bookmarks, notes): the editor shows the first one's text, and
+    /// saving would drop the others (review finding).
+    func makeReadOnly() {
+        isEditable = false
+        focusOnLoad = false
+        textView?.isEditable = false
+    }
+
     func adoptStoredTitle(_ stored: String?) {
         let stored = stored ?? ""
         guard stored != originalTitle, !titleChanged else { return }
@@ -672,10 +683,12 @@ final class ItemState {
         guard let textView, let container = textView.textContainer, let scrollView = textView.enclosingScrollView else { return }
         if wrapsLines {
             textView.isHorizontallyResizable = false
-            // Back to the visible width first: the text view kept the width of its longest line.
-            textView.setFrameSize(NSSize(width: scrollView.contentSize.width, height: textView.frame.height))
+            // Back to the visible width first: the text view kept the width of its longest line. In
+            // document units, so a zoomed page is not cut off on the right (review finding).
+            let width = scrollView.contentView.bounds.width
+            textView.setFrameSize(NSSize(width: width, height: textView.frame.height))
             container.widthTracksTextView = true
-            container.containerSize = NSSize(width: scrollView.contentSize.width, height: .greatestFiniteMagnitude)
+            container.containerSize = NSSize(width: width, height: .greatestFiniteMagnitude)
             scrollView.hasHorizontalScroller = false
         } else {
             container.widthTracksTextView = false
