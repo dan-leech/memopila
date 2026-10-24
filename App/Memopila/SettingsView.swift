@@ -21,8 +21,6 @@ struct SettingsPage: View {
         case .history: HistorySettings(model: model)
         case .privacy: PrivacySettings(model: model)
         case .apps: AppsSettings(model: model)
-        case .formats: FormatsSettings(model: model)
-        case .recognition: RecognitionSettings(settings: model.settings)
         case .about: AboutSettings()
         }
     }
@@ -35,8 +33,6 @@ extension SettingsTab {
         case .history: String(localized: "History")
         case .privacy: String(localized: "Privacy")
         case .apps: String(localized: "Apps")
-        case .formats: String(localized: "Formats")
-        case .recognition: String(localized: "Text Recognition")
         case .about: String(localized: "About")
         }
     }
@@ -47,8 +43,6 @@ extension SettingsTab {
         case .history: "clock.arrow.circlepath"
         case .privacy: "hand.raised"
         case .apps: "square.grid.2x2"
-        case .formats: "doc.on.doc"
-        case .recognition: "text.viewfinder"
         case .about: "info.circle"
         }
     }
@@ -121,6 +115,8 @@ private struct GeneralSettings: View {
             } footer: {
                 Text("A double-click, ↩ or ⌘1…⌘9 put an item on the clipboard and take you back to the app you were in. With this option Memopila also presses ⌘V there for you, which needs Accessibility. When allowed, Memopila also remembers the title of the window you copied from.")
             }
+
+            RecognitionSections(settings: model.settings)
         }
         .formStyle(.grouped)
     }
@@ -444,46 +440,48 @@ extension SecretKind {
 
 // MARK: - Text recognition (§3.8)
 
-private struct RecognitionSettings: View {
+/// Text recognition (§3.8), in General: one switch and the languages.
+private struct RecognitionSections: View {
     let settings: SettingsStore
     @State private var supported: [String] = []
 
     var body: some View {
-        @Bindable var bindable = settings
         let settings = self.settings
-        return Form {
-            Section {
-                Toggle("Recognize text in images and scanned PDFs", isOn: $bindable.recognizeText)
-            } footer: {
-                Text("Runs on this Mac, one image at a time in the background. Found text is searchable and can be copied in Edit Record.")
-            }
-            Section {
-                LabeledContent("In use", value: settings.effectiveRecognitionLanguages.map(Self.languageName).joined(separator: ", "))
-                Toggle("Use my preferred languages", isOn: .main(
-                    get: { settings.recognitionLanguages.isEmpty },
-                    set: { useDefault in settings.recognitionLanguages = useDefault ? [] : settings.effectiveRecognitionLanguages }
-                ))
-                if !settings.recognitionLanguages.isEmpty {
-                    ForEach(supported, id: \.self) { language in
-                        Toggle(Self.languageName(language), isOn: .main(
-                            get: { settings.recognitionLanguages.contains(language) },
-                            set: { isOn in
-                                if isOn {
-                                    settings.recognitionLanguages.append(language)
-                                } else if settings.recognitionLanguages.count > 1 {
-                                    settings.recognitionLanguages.removeAll { $0 == language }
-                                }
-                            }
-                        ))
-                    }
-                }
-            } header: {
-                Text("Languages")
-            }
-            .disabled(!settings.recognizeText)
+        Section {
+            Toggle("Recognize text in images and scanned PDFs", isOn: .main(
+                get: { settings.recognizeText },
+                set: { settings.recognizeText = $0 }
+            ))
+        } header: {
+            Text("Text Recognition")
+        } footer: {
+            Text("Runs on this Mac, one image at a time in the background. Found text is searchable and can be copied in Edit Record.")
         }
-        .formStyle(.grouped)
         .task { supported = await Task.detached { TextRecognizer.supportedLanguages() }.value }
+        Section {
+            LabeledContent("In use", value: settings.effectiveRecognitionLanguages.map(Self.languageName).joined(separator: ", "))
+            Toggle("Use my preferred languages", isOn: .main(
+                get: { settings.recognitionLanguages.isEmpty },
+                set: { useDefault in settings.recognitionLanguages = useDefault ? [] : settings.effectiveRecognitionLanguages }
+            ))
+            if !settings.recognitionLanguages.isEmpty {
+                ForEach(supported, id: \.self) { language in
+                    Toggle(Self.languageName(language), isOn: .main(
+                        get: { settings.recognitionLanguages.contains(language) },
+                        set: { isOn in
+                            if isOn {
+                                settings.recognitionLanguages.append(language)
+                            } else if settings.recognitionLanguages.count > 1 {
+                                settings.recognitionLanguages.removeAll { $0 == language }
+                            }
+                        }
+                    ))
+                }
+            }
+        } header: {
+            Text("Recognition Languages")
+        }
+        .disabled(!settings.recognizeText)
     }
 
     private static func languageName(_ identifier: String) -> String {

@@ -721,6 +721,16 @@
         }
       }
     },
+    "All Apps": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Все приложения"
+          }
+        }
+      }
+    },
     "All actions for the card": {
       "localizations": {
         "ru": {
@@ -869,16 +879,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ключи Anthropic"
-          }
-        }
-      }
-    },
-    "Any App": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Любое приложение"
           }
         }
       }
@@ -3465,6 +3465,16 @@
         }
       }
     },
+    "Recognition Languages": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Языки распознавания"
+          }
+        }
+      }
+    },
     "Recognize Text in Images from %@": {
       "localizations": {
         "ru": {
@@ -4921,6 +4931,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Если в копии есть секрет"
+          }
+        }
+      }
+    },
+    "Which formats of what is on the clipboard now would be saved; nothing is read but the format names.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Какие форматы того, что сейчас в буфере обмена, были бы сохранены; читаются только названия форматов."
           }
         }
       }

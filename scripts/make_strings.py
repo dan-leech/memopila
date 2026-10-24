@@ -75,7 +75,6 @@ T = {
 "Skip Next Copy": "Пропустить следующее копирование",
 "Cancel Skip": "Отменить пропуск",
 # Apps settings
-"Any App": "Любое приложение",
 "Add an app": "Добавить приложение",
 "Save · up to %lld MB": "Сохранять · до %lld МБ",
 "Save": "Сохранить",
@@ -225,6 +224,9 @@ T = {
 "More": "Ещё",
 "Copied": "Скопировано",
 "Cut": "Вырезать",
+"Which formats of what is on the clipboard now would be saved; nothing is read but the format names.": "Какие форматы того, что сейчас в буфере обмена, были бы сохранены; читаются только названия форматов.",
+"Recognition Languages": "Языки распознавания",
+"All Apps": "Все приложения",
 "Zoom level: at 100, one image pixel is one screen pixel": "Масштаб: при 100 один пиксель изображения — один пиксель экрана",
 "⌘+ ⌘− zoom · ⌘0 fit · ← → other records · ↩ selects · Esc closes": "⌘+ ⌘− масштаб · ⌘0 вписать · ← → другие записи · ↩ выбрать · Esc закрыть",
 "Zoom Out (⌘−)": "Уменьшить (⌘−)",

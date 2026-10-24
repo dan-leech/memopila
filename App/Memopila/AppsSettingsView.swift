@@ -4,7 +4,8 @@ import MemopilaServices
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Settings → Apps (PLAN §5.1): every app seen in history or added by hand, plus *Any app*.
+/// Settings → Apps (PLAN §5.1): every app seen in history or added by hand, plus *All Apps* with the
+/// size limit, the format rules for every app and the clipboard inspector (formerly a Formats tab).
 struct AppsSettings: View {
     let model: AppModel
     @State private var seen: [AppSummary] = []
@@ -24,7 +25,7 @@ struct AppsSettings: View {
         return HStack(spacing: 0) {
             VStack(spacing: 0) {
                 List(selection: $model.settingsApp) {
-                    Label("Any App", systemImage: "square.grid.2x2").tag(Self.anyApp)
+                    Label("All Apps", systemImage: "square.grid.2x2").tag(Self.anyApp)
                     ForEach(bundleIDs, id: \.self) { bundleID in
                         HStack {
                             appIcon(bundleID)
@@ -227,11 +228,13 @@ private struct AnyAppDetail: View {
                 Stepper(value: $settings.maxItemMiB, in: SettingsStore.itemMiBRange, step: 4) {
                     LabeledContent("Largest item", value: "\(settings.maxItemMiB) MB")
                 }
-                Toggle("Recognize text in images", isOn: $settings.recognizeText)
+            } footer: {
+                Text("Larger copies show a red “Current — not saved” card with Save Anyway. Apps can have their own limit.")
             }
             Section("Format Rules for All Apps") {
                 FormatRulesEditor(settings: settings, appBundleID: nil)
             }
+            ClipboardInspectorSection(model: model)
         }
         .formStyle(.grouped)
     }
@@ -301,7 +304,8 @@ struct FormatRulesEditor: View {
 
 // MARK: - Formats tab (§3.2.2)
 
-struct FormatsSettings: View {
+/// *Inspect Current Clipboard* (§3.2.2): what each declared type of the clipboard would become.
+struct ClipboardInspectorSection: View {
     let model: AppModel
     @State private var inspected: [InspectedType] = []
     @State private var inspectedLimit: Int?
@@ -316,43 +320,32 @@ struct FormatsSettings: View {
     }
 
     var body: some View {
-        @Bindable var settings = model.settings
-        return Form {
-            Section("Size") {
-                Stepper(value: $settings.maxItemMiB, in: SettingsStore.itemMiBRange, step: 4) {
-                    LabeledContent("Largest item", value: "\(settings.maxItemMiB) MB")
+        Section {
+            HStack {
+                Picker("As if copied from", selection: $inspectApp) {
+                    Text("Any app").tag("")
+                    ForEach(apps) { app in
+                        Text(AppInfo.displayName(for: app.bundleID, fallback: app.name)).tag(app.bundleID)
+                    }
                 }
-                Text("Larger copies show a red “Current — not saved” card with Save Anyway. Apps can have their own limit.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Button("Inspect") { inspect() }
             }
-            Section("Rules for All Apps") {
-                FormatRulesEditor(settings: settings, appBundleID: nil)
+            if let inspectedLimit {
+                Text(String(localized: "Size limit: \(ByteCount.string(inspectedLimit))")).font(.caption)
             }
-            Section("Inspect Current Clipboard") {
+            ForEach(inspected) { entry in
                 HStack {
-                    Picker("As if copied from", selection: $inspectApp) {
-                        Text("Any app").tag("")
-                        ForEach(apps) { app in
-                            Text(AppInfo.displayName(for: app.bundleID, fallback: app.name)).tag(app.bundleID)
-                        }
-                    }
-                    Button("Inspect") { inspect() }
-                }
-                if let inspectedLimit {
-                    Text(String(localized: "Size limit: \(ByteCount.string(inspectedLimit))")).font(.caption)
-                }
-                ForEach(inspected) { entry in
-                    HStack {
-                        Text("\(entry.item + 1)").font(.caption.monospaced()).foregroundStyle(.secondary)
-                        Text(entry.type).font(.caption.monospaced()).textSelection(.enabled)
-                        Spacer()
-                        Text(entry.decision).font(.caption)
-                    }
+                    Text("\(entry.item + 1)").font(.caption.monospaced()).foregroundStyle(.secondary)
+                    Text(entry.type).font(.caption.monospaced()).textSelection(.enabled)
+                    Spacer()
+                    Text(entry.decision).font(.caption)
                 }
             }
+        } header: {
+            Text("Inspect Current Clipboard")
+        } footer: {
+            Text("Which formats of what is on the clipboard now would be saved; nothing is read but the format names.")
         }
-        .formStyle(.grouped)
         .task { apps = (try? await model.store.apps()) ?? [] }
     }
 

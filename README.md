@@ -10,7 +10,7 @@ All v1 features of the plan are implemented and build in CI; they have not yet b
 
 - Menu bar app; history panel on ⌥⌘V (non-activating, pin to keep it open, frame remembered per display).
 - History on disk (SwiftData, payloads in external storage); RAM holds only the visible cards and a 24 MB thumbnail cache, dropped 10 s after the panel closes.
-- Pasta-style layout: sidebar with History, Favorites, Apps, Types and Collections; search over text, titles, text in images, app names, source pages and file names.
+- Pasta-style layout: sidebar with History, Favorites, Apps and Collections, a filter bar (kind, period) and search over text, titles, text in images, app names, source pages and file names, with matches marked on the cards.
 - Red *Current — not saved* card for oversized, unsupported or failed copies, with *Save Anyway* and per-app quick fixes; format rules (keep / skip types per app, e.g. for Photoshop) and a clipboard inspector.
 - Per-app settings: *Don't save*, *Delete after*, size limit, text recognition, source page; quick actions on every card and app with Undo.
 - Pause capture, *Skip next copy* (menu, optional hotkeys).

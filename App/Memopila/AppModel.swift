@@ -33,8 +33,9 @@ enum RestoreVariant: Equatable {
     }
 }
 
+/// Five tabs (first-run feedback: seven, with Formats repeating Apps, were too many).
 enum SettingsTab: String, Hashable, CaseIterable {
-    case general, history, privacy, apps, formats, recognition, about
+    case general, history, privacy, apps, about
 }
 
 enum HotKeyRole: CaseIterable {
