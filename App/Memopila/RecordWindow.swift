@@ -66,6 +66,23 @@ enum RecordKeys {
             UserDefaults.standard.set(!(UserDefaults.standard.object(forKey: key) as? Bool ?? true), forKey: key)
             return true
         }
+        // ⌘+ / ⌘− / ⌘0: the image's zoom, or the text's size.
+        if flags == .command || flags == [.command, .shift], ["=", "+", "-", "0"].contains(key.letter) {
+            let isImage = [.image, .pdf].contains(state.card.displayType)
+            switch (key.letter, isImage) {
+            case ("0", true): state.imageZoom.fit()
+            case ("0", false): state.fontSize = ItemState.defaultFontSize
+            case ("-", true): state.imageZoom.zoom(by: 1 / 1.25)
+            case ("-", false): state.changeFontSize(by: -1)
+            case (_, true): state.imageZoom.zoom(by: 1.25)
+            case (_, false): state.changeFontSize(by: 1)
+            }
+            return true
+        }
+        if flags == .option, key.isReturn, !(responder is NSTextView) {
+            model.copyItem(paste: true)
+            return true
+        }
         if flags == .command {
             if key.isReturn {
                 model.copyItem()

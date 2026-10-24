@@ -47,10 +47,9 @@ final class ItemState {
     let isEditable: Bool
     /// RTF / HTML / web archive records lose their formatting on save.
     let hasFormatting: Bool
-    let originalTitle: String
-    var title: String {
-        didSet { updateDirty() }
-    }
+    /// The title as stored; it is saved on its own when the field is left (§3.6).
+    private(set) var originalTitle: String
+    var title: String
     private(set) var isLoaded = false
     private(set) var initialText = ""
     private(set) var isTextDirty = false
@@ -73,6 +72,8 @@ final class ItemState {
     @ObservationIgnored var focusOnLoad: Bool
     @ObservationIgnored weak var textView: NSTextView?
     @ObservationIgnored private var highlightTask: Task<Void, Never>?
+    /// Fit, Actual Size and zoom of an image or PDF record.
+    let imageZoom = ImageZoom()
 
     /// Highlighting stops above this many UTF-16 units: colouring that much text costs more than it helps.
     private static let highlightLimit = 200_000
@@ -91,7 +92,37 @@ final class ItemState {
     /// Shown as text: the text view instead of an image, file or colour view.
     var hasText: Bool { [.text, .richText, .url, .mixed].contains(card.displayType) }
     var titleChanged: Bool { title.trimmingCharacters(in: .whitespacesAndNewlines) != originalTitle }
-    var isDirty: Bool { isTextDirty || titleChanged }
+    /// Unsaved text. The title does not count: it saves itself when the field is left.
+    var isDirty: Bool { isTextDirty }
+
+    /// Point size of the text (⌘+ / ⌘− / ⌘0 in the record window), kept for the next record.
+    var fontSize: CGFloat = ItemState.storedFontSize {
+        didSet {
+            UserDefaults.standard.set(Double(fontSize), forKey: Self.fontSizeKey)
+            textView?.font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        }
+    }
+
+    static let defaultFontSize: CGFloat = 12.5
+    private static let fontSizeKey = "recordFontSize"
+    private static var storedFontSize: CGFloat {
+        let stored = UserDefaults.standard.double(forKey: fontSizeKey)
+        return stored > 0 ? CGFloat(stored) : defaultFontSize
+    }
+
+    func changeFontSize(by step: CGFloat) {
+        fontSize = min(max(fontSize + step, 9), 28)
+    }
+
+    func titleSaved() {
+        originalTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Save kept the window open: the saved text is the new starting point.
+    func textSaved() {
+        initialText = textView?.string ?? initialText
+        updateDirty()
+    }
 
     func load(_ text: String) {
         initialText = text
@@ -104,6 +135,7 @@ final class ItemState {
     func attach(_ textView: NSTextView) {
         self.textView = textView
         textView.isEditable = isEditable
+        textView.font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
         if isLoaded, textView.string.isEmpty { textView.string = initialText }
         applyWrapping()
         textDidChange()

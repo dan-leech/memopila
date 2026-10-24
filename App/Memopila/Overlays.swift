@@ -51,6 +51,8 @@ struct RecordView: View {
     static let inspectorKey = "recordInspectorShown"
 
     private var card: HistoryCard { details?.card ?? state.card }
+    private var isImage: Bool { [.image, .pdf].contains(state.card.displayType) }
+    @FocusState private var titleFocused: Bool
 
     var body: some View {
         VStack(spacing: 0) {
@@ -101,6 +103,7 @@ struct RecordView: View {
                 Button { state.showFind() } label: { Label("Find", systemImage: "magnifyingglass") }
                     .help(String(localized: "Find in the text (⌘F)"))
             }
+            if isImage { imageControls }
             Spacer(minLength: 8)
             Button {
                 showsInspector.toggle()
@@ -128,6 +131,27 @@ struct RecordView: View {
         .controlSize(.small)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
+    }
+
+    /// Zoom, Fit, Actual Size and Preview for an image or PDF (§8.5).
+    @ViewBuilder
+    private var imageControls: some View {
+        let zoom = state.imageZoom
+        Divider().frame(height: 18).padding(.horizontal, 4)
+        ToolbarIcon(systemImage: "minus.magnifyingglass", help: String(localized: "Zoom Out (⌘−)")) { zoom.zoom(by: 1 / 1.25) }
+        Text(verbatim: "\(zoom.percent) %")
+            .font(.caption)
+            .monospacedDigit()
+            .foregroundStyle(.secondary)
+            .frame(minWidth: 44)
+            .help(String(localized: "Zoom level: at 100, one image pixel is one screen pixel"))
+        ToolbarIcon(systemImage: "plus.magnifyingglass", help: String(localized: "Zoom In (⌘+)")) { zoom.zoom(by: 1.25) }
+        Button("Fit") { zoom.fit() }
+            .help(String(localized: "Fit the image in the window (⌘0)"))
+        Button("Actual Size") { zoom.actualSize() }
+            .help(String(localized: "One image pixel per screen pixel"))
+        Button { model.openInPreview(state.id) } label: { Label("Open in Preview", systemImage: "arrow.up.forward.app") }
+            .help(String(localized: "Open the image in Preview to mark it up, crop or export it"))
     }
 
     /// ‹ › and *3 of 120*: the records of the panel's current list.
@@ -185,19 +209,18 @@ struct RecordView: View {
             .overlay {
                 if !state.isLoaded, state.error == nil { ProgressView().controlSize(.small) }
             }
+        } else if isImage {
+            // Zoom with ⌘+ / ⌘− / ⌘0, a pinch or the toolbar; scroll when larger than the window.
+            if let image {
+                ZoomableImage(image: image, zoom: state.imageZoom)
+            } else {
+                ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         } else {
             Group {
                 switch card.displayType {
                 case .image, .pdf:
-                    Group {
-                        if let image {
-                            Image(nsImage: image).resizable().scaledToFit()
-                        } else {
-                            Image(systemName: card.displayType.systemImage).font(.largeTitle).foregroundStyle(.tertiary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Checkerboard().opacity(0.15))
+                    EmptyView()
                 case .color:
                     VStack(spacing: 12) {
                         RoundedRectangle(cornerRadius: 12)
@@ -222,10 +245,14 @@ struct RecordView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 inspectorSection(String(localized: "Title")) {
+                    // Saved when the field is left or ↩ is pressed; no Save needed.
                     TextField("Title", text: $state.title, prompt: Text("Shown on the card"))
                         .textFieldStyle(.roundedBorder)
                         .labelsHidden()
-                        .help(String(localized: "A title is shown on the card and found by search"))
+                        .focused($titleFocused)
+                        .onSubmit { model.saveTitle() }
+                        .onChange(of: titleFocused) { _, focused in if !focused { model.saveTitle() } }
+                        .help(String(localized: "Shown on the card and found by search; saved when you leave the field"))
                 }
                 inspectorSection(String(localized: "Source")) { source }
                 inspectorSection(String(localized: "Collections")) { collections }
@@ -372,7 +399,7 @@ struct RecordView: View {
                 Text("Discard your changes?").font(.callout)
                 Spacer()
                 Button("Keep Editing") { state.isConfirmingDiscard = false }
-                Button("Discard", role: .destructive) { model.closeRecord() }
+                Button("Discard", role: .destructive) { model.discardRecordChanges() }
             } else {
                 if state.isDirty {
                     Label("Edited", systemImage: "circle.fill")
@@ -394,6 +421,10 @@ struct RecordView: View {
                 Spacer(minLength: 8)
                 if state.hasText {
                     Text(stats).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                    HStack(spacing: 0) {
+                        ToolbarIcon(systemImage: "textformat.size.smaller", help: String(localized: "Smaller text (⌘−)")) { state.changeFontSize(by: -1) }
+                        ToolbarIcon(systemImage: "textformat.size.larger", help: String(localized: "Larger text (⌘+)")) { state.changeFontSize(by: 1) }
+                    }
                     Toggle("Wrap lines", isOn: $state.wrapsLines)
                         .toggleStyle(.checkbox)
                         .controlSize(.small)
@@ -425,6 +456,9 @@ struct RecordView: View {
         if state.isEditable {
             return String(localized: "Click the text to edit · ← → other records · ↩ selects · Esc closes")
         }
+        if isImage {
+            return String(localized: "⌘+ ⌘− zoom · ⌘0 fit · ← → other records · ↩ selects · Esc closes")
+        }
         return String(localized: "← → other records · ↩ selects · Esc closes")
     }
 
@@ -441,7 +475,8 @@ struct RecordView: View {
         guard !Task.isCancelled else { return }
         details = loaded
         guard [.image, .pdf].contains(state.card.displayType) else { return }
-        let loadedImage = await model.previewImage(state.id, maxPixelSize: 1_600)
+        // Large enough for Actual Size on most screenshots, still bounded in memory (§7.3).
+        let loadedImage = await model.previewImage(state.id, maxPixelSize: 4_096)
         guard !Task.isCancelled else { return }
         image = loadedImage
     }

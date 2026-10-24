@@ -187,15 +187,35 @@ final class AppModel {
         }
     }
 
-    /// ‹ › and ← → in the record window: the previous or next record of the panel's list.
+    /// ‹ › and ← → in the record window: the previous or next record of the panel's list. Close to
+    /// the end of what is loaded, the next page loads, so ‹ › go through the whole list.
     func openAdjacentRecord(_ offset: Int, vertically: Bool = false) {
         guard let state = itemState, !state.isDirty else { return }
+        saveTitle()
         if vertically {
             history.moveSelectionVertically(offset)
         } else {
             history.moveSelection(by: offset)
         }
+        if let card = history.selectedCard { history.cardAppeared(card) }
         if let id = history.selectedID, id != state.id { openRecord(id) }
+    }
+
+    /// The title saves itself when its field is left or ↩ is pressed, and before the record
+    /// window moves on or closes (first-run feedback: a separate Save for a title was one step too many).
+    func saveTitle() {
+        guard let state = itemState, state.titleChanged else { return }
+        let id = state.id
+        let title = state.title
+        state.titleSaved()
+        Task {
+            do {
+                try await store.rename(id, title: title)
+            } catch {
+                toasts.error(error.localizedDescription)
+            }
+            history.storeDidChange()
+        }
     }
 
     /// Esc, the close button or ⌘W: unsaved changes ask first. `false` while the window stays open to ask.
@@ -211,15 +231,25 @@ final class AppModel {
 
     /// The close button or ⌘W: `false` keeps the window open to ask about unsaved changes.
     func recordMayClose() -> Bool {
-        guard let state = itemState, state.isDirty, !state.isConfirmingDiscard else { return true }
-        state.isConfirmingDiscard = true
-        return false
+        if let state = itemState, state.isDirty, !state.isConfirmingDiscard {
+            state.isConfirmingDiscard = true
+            return false
+        }
+        saveTitle()
+        return true
     }
 
     /// The panel comes back, unless the record went to the clipboard: then the focus goes back to
     /// the app the user came from, as after a double-click (a pinned panel still comes back).
     func closeRecord(returningToPanel: Bool = true) {
+        saveTitle()
         windows.closeRecord(returningToPanel: returningToPanel || isPinned)
+    }
+
+    /// *Discard* after *Discard your changes?*: the text goes back, then the window closes.
+    func discardRecordChanges() {
+        itemState?.revert()
+        closeRecord()
     }
 
     /// The record window closed, whichever way.
@@ -227,33 +257,29 @@ final class AppModel {
         itemState = nil
     }
 
-    /// Save (⌘S): title and text; the window closes. `thenCopy` puts the result on the clipboard as a
-    /// double-click would.
+    /// Save (⌘S): the text is saved and the window stays open. `thenCopy` (Save and Select) then
+    /// puts the record on the clipboard as a double-click would.
     func saveItem(thenCopy: Bool = false) {
         guard let state = itemState, !state.isSaving else { return }
-        var text: String?
-        if state.isTextDirty {
-            guard let current = state.currentText() else { return }
-            guard !current.isEmpty else {
-                state.error = String(localized: "The text is empty.")
-                return
+        // The title first: an edit that merges into another record keeps that record's title (§3.6).
+        saveTitle()
+        guard state.isTextDirty else {
+            if thenCopy {
+                closeRecord(returningToPanel: false)
+                restore(state.id)
             }
-            text = current
+            return
+        }
+        guard let text = state.currentText() else { return }
+        guard !text.isEmpty else {
+            state.error = String(localized: "The text is empty.")
+            return
         }
         state.isSaving = true
         Task {
-            // The title first: an edit that merges into another record keeps that record's title (§3.6).
-            if state.titleChanged { try? await store.rename(state.id, title: state.title) }
-            if let text {
-                let error = await saveEdit(state.id, text: text, thenRestore: thenCopy)
-                state.isSaving = false
-                state.error = error
-            } else {
-                state.isSaving = false
-                closeRecord(returningToPanel: !thenCopy)
-                history.storeDidChange()
-                if thenCopy { await performRestore(state.id) }
-            }
+            let error = await saveEdit(state.id, text: text, thenRestore: thenCopy)
+            state.isSaving = false
+            state.error = error
         }
     }
 
@@ -268,6 +294,32 @@ final class AppModel {
         }
         closeRecord(returningToPanel: false)
         restore(state.id, paste: paste)
+    }
+
+    /// The image or PDF of a record in Preview, from a temporary file (§8.5).
+    func openInPreview(_ id: UUID) {
+        Task {
+            guard let payload = try? await store.payload(for: id) else {
+                return toasts.error(String(localized: "The item no longer exists."))
+            }
+            let preferred: [(PasteboardType, String)] = [(.pdf, "pdf"), (.png, "png"), (.jpeg, "jpg"), (.heic, "heic"), (.gif, "gif"), (.tiff, "tiff")]
+            let representations = payload.items.flatMap(\.representations)
+            guard let match = preferred.first(where: { candidate in representations.contains { $0.type == candidate.0 } }),
+                  let bytes = representations.first(where: { $0.type == match.0 })?.bytes else {
+                return toasts.error(String(localized: "This item has no image to open."))
+            }
+            let fileExtension = match.1
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("Memopila", isDirectory: true)
+            let url = folder.appendingPathComponent(id.uuidString).appendingPathExtension(fileExtension)
+            do {
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                try bytes.write(to: url, options: .atomic)
+            } catch {
+                return toasts.error(error.localizedDescription)
+            }
+            let preview = URL(fileURLWithPath: "/System/Applications/Preview.app")
+            NSWorkspace.shared.open([url], withApplicationAt: preview, configuration: NSWorkspace.OpenConfiguration())
+        }
     }
 
     // MARK: Panel lifecycle (§8.1, §7.3)
@@ -747,9 +799,15 @@ final class AppModel {
         switch await monitor.destructive({ opSeq in try await store.editText(id, text: text, opSeq: opSeq, maxBytes: maxBytes) }) {
         case .success(.updated):
             monitor.recordChanged(id)
-            closeRecord(returningToPanel: !thenRestore)
             history.storeDidChange()
-            if thenRestore { await performRestore(id) }
+            if thenRestore {
+                closeRecord(returningToPanel: false)
+                await performRestore(id)
+            } else if let state = itemState, state.id == id {
+                // Saved in place: the window stays, the saved text is the new starting point.
+                state.textSaved()
+                toasts.show(String(localized: "Saved"))
+            }
             return nil
         case .success(.merged(let survivor)):
             monitor.recordChanged(id)

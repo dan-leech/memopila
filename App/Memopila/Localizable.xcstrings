@@ -541,16 +541,6 @@
         }
       }
     },
-    "A title is shown on the card and found by search": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Заголовок виден на карточке и находится поиском"
-          }
-        }
-      }
-    },
     "AWS access key": {
       "localizations": {
         "ru": {
@@ -597,6 +587,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Универсальный доступ"
+          }
+        }
+      }
+    },
+    "Actual Size": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Реальный размер"
           }
         }
       }
@@ -2045,6 +2045,26 @@
         }
       }
     },
+    "Fit": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вписать"
+          }
+        }
+      }
+    },
+    "Fit the image in the window (⌘0)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вписать изображение в окно (⌘0)"
+          }
+        }
+      }
+    },
     "For anything else, use Pause, Skip Next Copy, or set the app to Don't Save.": {
       "localizations": {
         "ru": {
@@ -2595,6 +2615,16 @@
         }
       }
     },
+    "Larger text (⌘+)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Крупнее текст (⌘+)"
+          }
+        }
+      }
+    },
     "Larger than %@": {
       "localizations": {
         "ru": {
@@ -3045,6 +3075,16 @@
         }
       }
     },
+    "One image pixel per screen pixel": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Один пиксель изображения на пиксель экрана"
+          }
+        }
+      }
+    },
     "Only %@": {
       "localizations": {
         "ru": {
@@ -3131,6 +3171,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Открыть Системные настройки"
+          }
+        }
+      }
+    },
+    "Open in Preview": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть в Просмотре"
+          }
+        }
+      }
+    },
+    "Open the image in Preview to mark it up, crop or export it": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть изображение в Просмотре, чтобы разметить, обрезать или экспортировать"
           }
         }
       }
@@ -3715,12 +3775,12 @@
         }
       }
     },
-    "Runs on this Mac, one image at a time in the background. Found text is searchable and can be copied from the preview.": {
+    "Runs on this Mac, one image at a time in the background. Found text is searchable and can be copied in Edit Record.": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Работает на этом Mac, по одному изображению в фоне. По найденному тексту можно искать, а в просмотре его можно скопировать."
+            "value": "Работает на этом Mac, по одному изображению в фоне. Найденный текст ищется поиском, а скопировать его можно в окне «Редактировать запись»."
           }
         }
       }
@@ -4125,6 +4185,16 @@
         }
       }
     },
+    "Shown on the card and found by search; saved when you leave the field": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывается на карточке и находится поиском; сохраняется, когда вы выходите из поля"
+          }
+        }
+      }
+    },
     "Sidebar": {
       "localizations": {
         "ru": {
@@ -4211,6 +4281,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Токены и вебхуки Slack"
+          }
+        }
+      }
+    },
+    "Smaller text (⌘−)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Мельче текст (⌘−)"
           }
         }
       }
@@ -4545,6 +4625,16 @@
         }
       }
     },
+    "This item has no image to open.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В этой записи нет изображения."
+          }
+        }
+      }
+    },
     "This item has no text.": {
       "localizations": {
         "ru": {
@@ -4615,12 +4705,12 @@
         }
       }
     },
-    "Tokens, keys, JWTs and card numbers are recognized on this Mac. Saved secrets are masked on cards (open the preview to see one) and deleted on time; ⌘D keeps one for good.": {
+    "Tokens, keys, JWTs and card numbers are recognized on this Mac. Saved secrets are masked on cards (Edit Record shows one) and deleted on time; ⌘D keeps one for good.": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Токены, ключи, JWT и номера карт распознаются на этом Mac. Сохранённые секреты скрыты на карточках (полностью видны в просмотре) и удаляются в срок; ⌘D оставляет секрет насовсем."
+            "value": "Токены, ключи, JWT и номера карт распознаются на этом Mac. Сохранённые секреты скрыты на карточках (окно «Редактировать запись» показывает их) и удаляются в срок; ⌘D оставляет секрет навсегда."
           }
         }
       }
@@ -4885,6 +4975,36 @@
         }
       }
     },
+    "Zoom In (⌘+)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Увеличить (⌘+)"
+          }
+        }
+      }
+    },
+    "Zoom Out (⌘−)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Уменьшить (⌘−)"
+          }
+        }
+      }
+    },
+    "Zoom level: at 100, one image pixel is one screen pixel": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Масштаб: при 100 один пиксель изображения — один пиксель экрана"
+          }
+        }
+      }
+    },
     "all formats": {
       "localizations": {
         "ru": {
@@ -4981,6 +5101,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "← → другие записи · ↩ выбрать · Esc закрыть"
+          }
+        }
+      }
+    },
+    "⌘+ ⌘− zoom · ⌘0 fit · ← → other records · ↩ selects · Esc closes": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌘+ ⌘− масштаб · ⌘0 вписать · ← → другие записи · ↩ выбрать · Esc закрыть"
           }
         }
       }

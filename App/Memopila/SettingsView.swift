@@ -400,7 +400,7 @@ private struct SecretsSection: View {
         } header: {
             Text("Secrets")
         } footer: {
-            Text("Tokens, keys, JWTs and card numbers are recognized on this Mac. Saved secrets are masked on cards (open the preview to see one) and deleted on time; ⌘D keeps one for good.")
+            Text("Tokens, keys, JWTs and card numbers are recognized on this Mac. Saved secrets are masked on cards (Edit Record shows one) and deleted on time; ⌘D keeps one for good.")
         }
     }
 }
@@ -455,7 +455,7 @@ private struct RecognitionSettings: View {
             Section {
                 Toggle("Recognize text in images and scanned PDFs", isOn: $bindable.recognizeText)
             } footer: {
-                Text("Runs on this Mac, one image at a time in the background. Found text is searchable and can be copied from the preview.")
+                Text("Runs on this Mac, one image at a time in the background. Found text is searchable and can be copied in Edit Record.")
             }
             Section {
                 LabeledContent("In use", value: settings.effectiveRecognitionLanguages.map(Self.languageName).joined(separator: ", "))
