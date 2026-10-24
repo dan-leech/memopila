@@ -191,7 +191,12 @@ final class AppModel {
     /// ‹ › and ← → in the record window: the previous or next record of the panel's list. Close to
     /// the end of what is loaded, the next page loads, so ‹ › go through the whole list.
     func openAdjacentRecord(_ offset: Int, vertically: Bool = false) {
-        guard let state = itemState, !state.isDirty else { return }
+        guard let state = itemState else { return }
+        // Unsaved text: Save / Don't Save / Cancel first, then go on (first-run feedback: the arrows
+        // simply stopped working).
+        guard !state.isDirty else {
+            return resolveUnsavedChanges { [weak self] in self?.openAdjacentRecord(offset, vertically: vertically) }
+        }
         saveTitle()
         if vertically {
             history.moveSelectionVertically(offset)
@@ -219,25 +224,42 @@ final class AppModel {
         }
     }
 
-    /// Esc, the close button or ⌘W: unsaved changes ask first. `false` while the window stays open to ask.
-    @discardableResult
-    func dismissRecord() -> Bool {
-        if let state = itemState, state.isDirty, !state.isConfirmingDiscard {
-            state.isConfirmingDiscard = true
-            return false
-        }
-        closeRecord()
-        return true
+    /// Esc, Space: unsaved text asks first (Save / Don't Save / Cancel), then the window closes.
+    func dismissRecord() {
+        resolveUnsavedChanges { [weak self] in self?.closeRecord() }
     }
 
-    /// The close button or ⌘W: `false` keeps the window open to ask about unsaved changes.
+    /// The close button or ⌘W: `false` keeps the window open while the sheet asks.
     func recordMayClose() -> Bool {
-        if let state = itemState, state.isDirty, !state.isConfirmingDiscard {
-            state.isConfirmingDiscard = true
+        if let state = itemState, state.isDirty {
+            resolveUnsavedChanges { [weak self] in self?.closeRecord() }
             return false
         }
         saveTitle()
         return true
+    }
+
+    /// With unsaved text, the standard sheet: *Save* saves and goes on, *Don't Save* drops the edit
+    /// and goes on, *Cancel* stays (first-run feedback: an inline question in the status bar was easy
+    /// to miss). Without unsaved text it goes on at once.
+    func resolveUnsavedChanges(then proceed: @escaping @MainActor () -> Void) {
+        guard let state = itemState, state.isDirty else { return proceed() }
+        windows.askToSaveRecord { [weak self] choice in
+            switch choice {
+            case .save:
+                Task {
+                    guard let self, await self.saveText() else { return }
+                    proceed()
+                }
+            case .discard:
+                // Only the text: a changed title saves itself, as it would on leaving the field.
+                self?.saveTitle()
+                state.revert()
+                proceed()
+            case .cancel:
+                break
+            }
+        }
     }
 
     /// The panel comes back, unless the record went to the clipboard: then the focus goes back to
@@ -247,47 +269,43 @@ final class AppModel {
         windows.closeRecord(returningToPanel: returningToPanel || isPinned)
     }
 
-    /// *Discard* after *Discard your changes?*: the text goes back, then the window closes.
-    func discardRecordChanges() {
-        itemState?.revert()
-        closeRecord()
-    }
-
     /// The record window closed, whichever way.
     func recordWindowDidClose() {
         itemState = nil
     }
 
-    /// Save (⌘S): the text is saved and the window stays open. `thenCopy` (Save and Select) then
-    /// puts the record on the clipboard as a double-click would.
-    func saveItem(thenCopy: Bool = false) {
-        guard let state = itemState, !state.isSaving else { return }
+    /// Save (⌘S): the text is saved and the window stays open — only Select and Esc close it.
+    func saveItem() {
+        Task { await saveText() }
+    }
+
+    /// The title, then the text if it changed. `true` when nothing is left unsaved. A merge into an
+    /// existing record (§3.6) shows that record in the window.
+    @discardableResult
+    func saveText() async -> Bool {
+        guard let state = itemState, !state.isSaving else { return false }
         // The title first: an edit that merges into another record keeps that record's title (§3.6).
         saveTitle()
-        guard state.isTextDirty else {
-            if thenCopy {
-                closeRecord(returningToPanel: false)
-                restore(state.id)
-            }
-            return
-        }
-        guard let text = state.currentText() else { return }
-        guard !text.isEmpty else {
+        guard state.isTextDirty else { return true }
+        guard let text = state.currentText(), !text.isEmpty else {
             state.error = String(localized: "The text is empty.")
-            return
+            return false
         }
         state.isSaving = true
-        Task {
-            let error = await saveEdit(state.id, text: text, thenRestore: thenCopy)
-            state.isSaving = false
-            state.error = error
-        }
+        let error = await saveEdit(state.id, text: text)
+        state.isSaving = false
+        state.error = error
+        return error == nil
     }
 
     /// *Select* in the record window (↩, ⌘↩; ⌥↩ also pastes): unsaved changes are saved first.
     func copyItem(paste: Bool? = nil) {
         guard let state = itemState else { return }
-        if state.isDirty { return saveItem(thenCopy: true) }
+        if state.isDirty {
+            // After a merge the window shows the surviving record, which is then the one selected.
+            Task { if await saveText() { copyItem(paste: paste) } }
+            return
+        }
         if paste == true, !AccessibilityBridge.isTrusted {
             AccessibilityBridge.requestTrust()
             toasts.error(String(localized: "To paste, allow Memopila in System Settings → Privacy & Security → Accessibility, then try again."))
@@ -797,31 +815,27 @@ final class AppModel {
         return image.map { NSImage(cgImage: $0.value, size: .zero) }
     }
 
-    /// Edit save (§3.6). Returns an error message to keep the editor open, or `nil` on success.
-    func saveEdit(_ id: UUID, text: String, thenRestore: Bool) async -> String? {
+    /// Edit save (§3.6). Returns an error message, or `nil` on success; the window stays open.
+    func saveEdit(_ id: UUID, text: String) async -> String? {
         let store = store
         let maxBytes = settings.maxItemBytes
         switch await monitor.destructive({ opSeq in try await store.editText(id, text: text, opSeq: opSeq, maxBytes: maxBytes) }) {
         case .success(.updated):
             monitor.recordChanged(id)
             history.storeDidChange()
-            if thenRestore {
-                closeRecord(returningToPanel: false)
-                await performRestore(id)
-            } else if let state = itemState, state.id == id {
-                // Saved in place: the window stays, the saved text is the new starting point.
+            if let state = itemState, state.id == id {
+                // Saved in place: the saved text is the new starting point.
                 state.textSaved()
                 toasts.show(String(localized: "Saved"))
             }
             return nil
         case .success(.merged(let survivor)):
             monitor.recordChanged(id)
-            closeRecord(returningToPanel: !thenRestore)
-            history.selectedID = survivor
             history.removeLocally([id])
+            history.selectedID = survivor
             history.storeDidChange()
             toasts.show(String(localized: "Merged with an existing record"))
-            if thenRestore { await performRestore(survivor) }
+            await showRecord(survivor)
             return nil
         case .success(.rejected(let message)):
             return message
@@ -830,6 +844,17 @@ final class AppModel {
         case .failure(.failed(let message)):
             return message
         }
+    }
+
+    /// The record window switches to `id`, also when the panel has not loaded that card.
+    private func showRecord(_ id: UUID) async {
+        var card = history.cards.first { $0.id == id }
+        if card == nil { card = await details(id, maxTextScalars: 0)?.card }
+        guard let card else { return closeRecord() }
+        let state = ItemState(card: card, focusOnLoad: false)
+        itemState = state
+        windows.showRecord(focusText: false)
+        if let text = await editorText(id) { state.load(text) }
     }
 
     /// Full text for the editor and preview (≤ 20 000 scalars in the preview, §7.4).

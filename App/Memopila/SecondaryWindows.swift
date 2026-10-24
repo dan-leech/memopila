@@ -54,6 +54,36 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
         record.close()
     }
 
+    enum UnsavedChoice {
+        case save, discard, cancel
+    }
+
+    /// *Do you want to save the changes?* as the standard sheet on the record window: ↩ saves, Esc
+    /// cancels, ⌘D does not save.
+    func askToSaveRecord(_ answer: @escaping @MainActor (UnsavedChoice) -> Void) {
+        guard let record, record.isVisible else { return answer(.cancel) }
+        // Already asking (a second Esc or ⌘W while the sheet is up).
+        guard record.attachedSheet == nil else { return }
+        let alert = NSAlert()
+        alert.messageText = String(localized: "Do you want to save the changes to this record?")
+        alert.informativeText = String(localized: "Your changes to the text will be lost if you don’t save them.")
+        alert.addButton(withTitle: String(localized: "Save"))
+        alert.addButton(withTitle: String(localized: "Cancel")).keyEquivalent = "\u{1b}"
+        let discard = alert.addButton(withTitle: String(localized: "Don’t Save"))
+        discard.keyEquivalent = "d"
+        discard.keyEquivalentModifierMask = .command
+        discard.hasDestructiveAction = true
+        alert.beginSheetModal(for: record) { response in
+            MainActor.assumeIsolated {
+                switch response {
+                case .alertFirstButtonReturn: answer(.save)
+                case .alertThirdButtonReturn: answer(.discard)
+                default: answer(.cancel)
+                }
+            }
+        }
+    }
+
     private func makeRecord() -> RecordWindow {
         let host = NSHostingController(rootView: RecordWindowContent(model: model))
         // The window keeps the size the user gave it, whatever the record shows.

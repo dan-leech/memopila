@@ -57,8 +57,31 @@ final class ItemState {
     private(set) var characterCount = 0
     var isSaving = false
     var error: String?
-    /// Esc with unsaved changes asks first.
-    var isConfirmingDiscard = false
+    /// The selection, for the status bar: characters and lines (0 = nothing selected).
+    private(set) var selectedCharacters = 0
+    private(set) var selectedLines = 0
+    /// Text actions that apply to the selection, or to all text when nothing is selected; the
+    /// others are disabled in the menus with their reason (§3.9). Updated shortly after edits.
+    private(set) var availableActions = Set(TextAction.allCases)
+    /// The language the text is highlighted as; `nil` = plain text.
+    private(set) var highlightedLanguage: CodeLanguage?
+    /// `nil` = automatic: line numbers for code, not for prose.
+    var lineNumbersPreference: Bool? = ItemState.storedLineNumbers {
+        didSet {
+            if let lineNumbersPreference {
+                UserDefaults.standard.set(lineNumbersPreference, forKey: Self.lineNumbersKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.lineNumbersKey)
+            }
+            applyRulers()
+        }
+    }
+    var showsInvisibles = UserDefaults.standard.bool(forKey: ItemState.invisiblesKey) {
+        didSet {
+            UserDefaults.standard.set(showsInvisibles, forKey: Self.invisiblesKey)
+            applyInvisibles()
+        }
+    }
     var wrapsLines = true {
         didSet { applyWrapping() }
     }
@@ -105,6 +128,64 @@ final class ItemState {
 
     static let defaultFontSize: CGFloat = 12.5
     private static let fontSizeKey = "recordFontSize"
+    private static let lineNumbersKey = "recordLineNumbers"
+    private static let invisiblesKey = "recordShowsInvisibles"
+    private static var storedLineNumbers: Bool? { UserDefaults.standard.object(forKey: lineNumbersKey) as? Bool }
+
+    var showsLineNumbers: Bool { lineNumbersPreference ?? (highlightedLanguage != nil) }
+
+    private func applyRulers() {
+        guard let scrollView = textView?.enclosingScrollView, scrollView.verticalRulerView != nil else { return }
+        if scrollView.rulersVisible != showsLineNumbers { scrollView.rulersVisible = showsLineNumbers }
+        (scrollView.verticalRulerView as? LineNumberRuler)?.textDidChange()
+    }
+
+    private func applyInvisibles() {
+        (textView as? FocusReportingTextView)?.showsInvisibles = showsInvisibles
+    }
+
+    /// From the text view's delegate whenever the selection moves.
+    func selectionDidChange() {
+        guard let textView else { return }
+        let range = textView.selectedRange()
+        var characters = range.length
+        var lines = 0
+        // Counted exactly up to the size the status bar counts the whole text (UTF-16 above it).
+        // Through the storage's own string: `textView.string` would copy all of the text.
+        if range.length > 0, range.length < 200_000, let text = textView.textStorage?.mutableString {
+            let selected = text.substring(with: range)
+            characters = selected.count
+            lines = TextStats.lineCount(selected)
+        }
+        if characters != selectedCharacters { selectedCharacters = characters }
+        if lines != selectedLines { selectedLines = lines }
+        scheduleAvailability()
+    }
+
+    @ObservationIgnored private var availabilityTask: Task<Void, Never>?
+
+    /// Which text actions apply, a moment after the text or the selection changed. Very long text is
+    /// not checked: every action stays on and reports when it does not apply.
+    private func scheduleAvailability() {
+        availabilityTask?.cancel()
+        guard isEditable else { return }
+        availabilityTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, let self, let textView = self.textView, let text = textView.textStorage?.mutableString else { return }
+            let selection = textView.selectedRange()
+            let range = selection.length > 0 ? selection : NSRange(location: 0, length: text.length)
+            guard range.length <= 100_000 else {
+                if self.availableActions.count != TextAction.allCases.count { self.availableActions = Set(TextAction.allCases) }
+                return
+            }
+            let target = text.substring(with: range)
+            let available = await Task.detached(priority: .userInitiated) {
+                Set(TextAction.allCases.filter { $0.isAvailable(for: target) })
+            }.value
+            guard !Task.isCancelled, available != self.availableActions else { return }
+            self.availableActions = available
+        }
+    }
     private static var storedFontSize: CGFloat {
         let stored = UserDefaults.standard.double(forKey: fontSizeKey)
         return stored > 0 ? CGFloat(stored) : defaultFontSize
@@ -136,8 +217,10 @@ final class ItemState {
         self.textView = textView
         textView.isEditable = isEditable
         textView.font = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
+        applyInvisibles()
         if isLoaded, textView.string.isEmpty { textView.string = initialText }
         applyWrapping()
+        applyRulers()
         textDidChange()
         if isLoaded, focusOnLoad { focus() }
     }
@@ -160,22 +243,25 @@ final class ItemState {
         characterCount = length < 200_000 ? text.count : length
         lineCount = TextStats.lineCount(text)
         updateDirty()
+        (textView?.enclosingScrollView?.verticalRulerView as? LineNumberRuler)?.textDidChange()
+        scheduleAvailability()
         scheduleHighlight(after: .milliseconds(isLoaded && isTextDirty ? 300 : 0))
     }
 
     private func updateDirty() {
         let textChanged = isLoaded && (textView?.string ?? initialText) != initialText
         if textChanged != isTextDirty { isTextDirty = textChanged }
-        if !isDirty { isConfirmingDiscard = false }
     }
 
-    /// Back to the stored text and title.
+    /// Back to the stored text and title, as one change ⌘Z undoes.
     func revert() {
         title = originalTitle
         guard let textView else { return }
-        textView.string = initialText
-        textView.undoManager?.removeAllActions()
-        textDidChange()
+        let range = NSRange(location: 0, length: (textView.string as NSString).length)
+        guard textView.shouldChangeText(in: range, replacementString: initialText) else { return }
+        textView.textStorage?.replaceCharacters(in: range, with: initialText)
+        textView.didChangeText()
+        textView.setSelectedRange(NSRange(location: 0, length: 0))
     }
 
     /// Runs a text action on the selection, or on everything when nothing is selected (§3.9).
@@ -240,6 +326,10 @@ final class ItemState {
         case .auto: detected
         case .plain: nil
         case .language(let language): language
+        }
+        if chosen != highlightedLanguage {
+            highlightedLanguage = chosen
+            applyRulers()
         }
         let ranges = await CodeStyler.ranges(text, language: chosen)
         guard !Task.isCancelled, textView.string == text else { return }

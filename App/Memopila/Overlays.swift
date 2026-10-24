@@ -46,6 +46,7 @@ struct RecordView: View {
     @State private var image: NSImage?
     @State private var recognizedText = TextSelection()
     @State private var newCollectionName = ""
+    @State private var showsChanges = false
     @AppStorage(RecordView.inspectorKey) private var showsInspector = true
 
     static let inspectorKey = "recordInspectorShown"
@@ -74,6 +75,9 @@ struct RecordView: View {
         .frame(minWidth: 640, maxWidth: .infinity, minHeight: 380, maxHeight: .infinity)
         .animation(.easeOut(duration: 0.15), value: showsInspector)
         .task(id: state.id) { await load() }
+        .sheet(isPresented: $showsChanges) {
+            ChangesSheet(original: state.initialText, edited: state.currentText() ?? state.initialText) { model.saveItem() }
+        }
     }
 
     // MARK: Toolbar
@@ -122,8 +126,9 @@ struct RecordView: View {
                 )
             }
             .buttonStyle(.borderedProminent)
+            .disabled(state.isDirty && cannotSaveReason != nil)
             .help(state.isDirty
-                ? String(localized: "Save the changes, make this record the clipboard content and go back to the app you were in (⌘↩)")
+                ? cannotSaveReason ?? String(localized: "Save the changes, make this record the clipboard content and go back to the app you were in (⌘↩)")
                 : String(localized: "Make this record the clipboard content and go back to the app you were in (↩)"))
         }
         .buttonStyle(.borderless)
@@ -154,22 +159,16 @@ struct RecordView: View {
             .help(String(localized: "Open the image in Preview to mark it up, crop or export it"))
     }
 
-    /// ‹ › and *3 of 120*: the records of the panel's current list.
+    /// ‹ › and *3 of 120*: the records of the panel's current list. With unsaved text they ask to
+    /// save first.
     private var navigation: some View {
         let history = model.history
         let index = history.selectedIndex
-        let blocked = state.isDirty
         return HStack(spacing: 2) {
-            ToolbarIcon(
-                systemImage: "chevron.left",
-                help: blocked ? String(localized: "Save or revert your changes first") : String(localized: "Previous record (←)")
-            ) { model.openAdjacentRecord(-1) }
-            .disabled(blocked || (index ?? 0) == 0)
-            ToolbarIcon(
-                systemImage: "chevron.right",
-                help: blocked ? String(localized: "Save or revert your changes first") : String(localized: "Next record (→)")
-            ) { model.openAdjacentRecord(1) }
-            .disabled(blocked || index.map { $0 >= history.cards.count - 1 } ?? true)
+            ToolbarIcon(systemImage: "chevron.left", help: String(localized: "Previous record (←)")) { model.openAdjacentRecord(-1) }
+                .disabled((index ?? 0) == 0)
+            ToolbarIcon(systemImage: "chevron.right", help: String(localized: "Next record (→)")) { model.openAdjacentRecord(1) }
+                .disabled(index.map { $0 >= history.cards.count - 1 } ?? true)
             if let index {
                 Text(String(localized: "\(index + 1) of \(history.totalCount)"))
                     .font(.caption)
@@ -180,18 +179,27 @@ struct RecordView: View {
         }
     }
 
-    /// Text actions on the selection, or on all text when nothing is selected (§3.9).
+    /// Text actions on the selection, or on all text when nothing is selected (§3.9). One that does
+    /// not apply is disabled and says why, as in ⌘K; a menu with none that apply is disabled.
     private func actionMenu(_ title: String, systemImage: String, actions: [TextAction]) -> some View {
-        Menu {
+        let available = actions.filter { state.availableActions.contains($0) }
+        let scope = state.selectedCharacters > 0 ? String(localized: "the selected text") : String(localized: "all of the text")
+        return Menu {
             ForEach(actions, id: \.self) { action in
+                let isAvailable = available.contains(action)
                 Button(action.title) { state.apply(action) }
+                    .disabled(!isAvailable)
+                    .help(isAvailable ? String(localized: "Applies to \(scope)") : action.unavailableReason)
             }
         } label: {
             Label(title, systemImage: systemImage)
         }
         .menuStyle(.button)
         .fixedSize()
-        .help(String(localized: "\(title): applies to the selected text, or to all of it"))
+        .disabled(available.isEmpty)
+        .help(available.isEmpty
+            ? String(localized: "\(title): nothing here applies to \(scope)")
+            : String(localized: "\(title): applies to \(scope)"))
     }
 
     // MARK: Content
@@ -199,10 +207,12 @@ struct RecordView: View {
     @ViewBuilder
     private var content: some View {
         if state.hasText {
-            TextPane(isEditable: state.isEditable, font: .monospacedSystemFont(ofSize: 12.5, weight: .regular)) { textView in
+            TextPane(isEditable: state.isEditable, font: .monospacedSystemFont(ofSize: 12.5, weight: .regular), hasLineNumbers: true) { textView in
                 state.attach(textView)
             } onTextChange: {
                 state.textDidChange()
+            } onSelectionChange: {
+                state.selectionDidChange()
             } onFocusChange: { focused in
                 state.isEditingText = focused
             }
@@ -395,49 +405,37 @@ struct RecordView: View {
 
     private var statusBar: some View {
         HStack(spacing: 10) {
-            if state.isConfirmingDiscard {
-                Text("Discard your changes?").font(.callout)
-                Spacer()
-                Button("Keep Editing") { state.isConfirmingDiscard = false }
-                Button("Discard", role: .destructive) { model.discardRecordChanges() }
-            } else {
-                if state.isDirty {
-                    Label("Edited", systemImage: "circle.fill")
-                        .labelStyle(.titleAndIcon)
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .imageScale(.small)
-                }
-                Text(hint).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                if state.hasFormatting, state.isTextDirty {
-                    Label("Formatting will be removed", systemImage: "exclamationmark.triangle")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
-                        .help(String(localized: "This item has rich text; saving keeps the plain text only."))
-                }
-                if let error = state.error {
-                    Text(error).font(.caption).foregroundStyle(.red).lineLimit(1)
-                }
-                Spacer(minLength: 8)
-                if state.hasText {
-                    Text(stats).font(.caption).monospacedDigit().foregroundStyle(.secondary)
-                    HStack(spacing: 0) {
-                        ToolbarIcon(systemImage: "textformat.size.smaller", help: String(localized: "Smaller text (⌘−)")) { state.changeFontSize(by: -1) }
-                        ToolbarIcon(systemImage: "textformat.size.larger", help: String(localized: "Larger text (⌘+)")) { state.changeFontSize(by: 1) }
-                    }
-                    Toggle("Wrap lines", isOn: $state.wrapsLines)
-                        .toggleStyle(.checkbox)
-                        .controlSize(.small)
-                        .help(String(localized: "Break long lines at the window edge instead of scrolling sideways"))
-                }
-                if state.isDirty {
-                    Button("Revert") { state.revert() }
-                        .help(String(localized: "Go back to the saved text and title"))
-                    Button { model.saveItem() } label: { ShortcutLabel(title: String(localized: "Save"), shortcut: "⌘S") }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(state.isSaving || (state.hasText && !state.isLoaded))
-                        .help(String(localized: "Save the changes"))
-                }
+            if state.isDirty {
+                Label("Edited", systemImage: "circle.fill")
+                    .labelStyle(.titleAndIcon)
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .imageScale(.small)
+            }
+            Text(hint).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            if state.hasFormatting, state.isTextDirty {
+                Label("Formatting will be removed", systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .help(String(localized: "This item has rich text; saving keeps the plain text only."))
+            }
+            if let error = state.error {
+                Text(error).font(.caption).foregroundStyle(.red).lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if state.hasText {
+                Text(stats).font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
+                viewMenu
+            }
+            if state.isDirty {
+                Button("Changes…") { showsChanges = true }
+                    .help(String(localized: "Compare the edited text with the saved text, line by line"))
+                Button("Revert") { state.revert() }
+                    .help(String(localized: "Go back to the saved text (⌘Z undoes this)"))
+                Button { model.saveItem() } label: { ShortcutLabel(title: String(localized: "Save"), shortcut: "⌘S") }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(cannotSaveReason != nil)
+                    .help(cannotSaveReason ?? String(localized: "Save the changes; the window stays open (⌘S)"))
             }
         }
         .controlSize(.small)
@@ -445,10 +443,43 @@ struct RecordView: View {
         .padding(.vertical, 8)
     }
 
+    /// Why Save is disabled right now; `nil` when it can save.
+    private var cannotSaveReason: String? {
+        if state.isSaving { return String(localized: "Saving…") }
+        if !state.isLoaded { return String(localized: "The text is still loading") }
+        if state.characterCount == 0 { return String(localized: "A record can’t be empty: type some text, or Revert") }
+        return nil
+    }
+
+    /// Wrapping, line numbers, invisible characters and text size: how the text is shown, never
+    /// what is saved.
+    private var viewMenu: some View {
+        Menu {
+            Toggle("Wrap Lines", isOn: $state.wrapsLines)
+            Picker("Line Numbers", selection: $state.lineNumbersPreference) {
+                Text("Automatic (for Code)").tag(Bool?.none)
+                Text("Always").tag(Bool?.some(true))
+                Text("Never").tag(Bool?.some(false))
+            }
+            .pickerStyle(.menu)
+            Toggle("Show Invisible Characters", isOn: $state.showsInvisibles)
+            Divider()
+            Button("Larger Text (⌘+)") { state.changeFontSize(by: 1) }
+            Button("Smaller Text (⌘−)") { state.changeFontSize(by: -1) }
+            Button("Default Text Size (⌘0)") { state.fontSize = ItemState.defaultFontSize }
+        } label: {
+            Label("View", systemImage: "eye")
+        }
+        .menuStyle(.button)
+        .buttonStyle(.borderless)
+        .fixedSize()
+        .help(String(localized: "Wrap lines, line numbers, invisible characters (spaces, tabs, line breaks) and text size"))
+    }
+
     /// What the keys do right now.
     private var hint: String {
         if state.isDirty {
-            return String(localized: "⌘S saves · ⌘↩ saves and selects · Esc discards")
+            return String(localized: "⌘S saves · ⌘↩ saves and selects · Esc asks to save")
         }
         if state.isEditingText {
             return String(localized: "Editing · Esc stops editing")
@@ -462,7 +493,13 @@ struct RecordView: View {
         return String(localized: "← → other records · ↩ selects · Esc closes")
     }
 
+    /// The selection when there is one, else the whole text.
     private var stats: String {
+        if state.selectedCharacters > 0 {
+            let selected = String(localized: "\(state.selectedCharacters) of \(state.characterCount) characters selected")
+            guard state.selectedLines > 1 else { return selected }
+            return selected + " · " + String(localized: "\(state.selectedLines) lines")
+        }
         let characters = String(localized: "\(state.characterCount) characters")
         guard state.lineCount > 1 else { return characters }
         return String(localized: "\(state.lineCount) lines") + " · " + characters
@@ -589,6 +626,8 @@ private struct ShortcutLabel: View {
 struct TextPane: NSViewRepresentable {
     let isEditable: Bool
     let font: NSFont
+    /// A line-number ruler, shown or hidden later through `scrollView.rulersVisible`.
+    var hasLineNumbers = false
     let onAttach: @MainActor (NSTextView) -> Void
     var onTextChange: @MainActor () -> Void = {}
     var onSelectionChange: @MainActor () -> Void = {}
@@ -601,7 +640,14 @@ struct TextPane: NSViewRepresentable {
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.drawsBackground = false
-        let textView = FocusReportingTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300))
+        // TextKit 1, built explicitly: line numbers and invisible characters are placed with its
+        // layout manager, without the switch from TextKit 2 that asking for one would cause.
+        let storage = NSTextStorage()
+        let layoutManager = NSLayoutManager()
+        storage.addLayoutManager(layoutManager)
+        let container = NSTextContainer(size: NSSize(width: 400, height: CGFloat.greatestFiniteMagnitude))
+        layoutManager.addTextContainer(container)
+        let textView = FocusReportingTextView(frame: NSRect(x: 0, y: 0, width: 400, height: 300), textContainer: container)
         textView.minSize = .zero
         textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)
         textView.isVerticallyResizable = true
@@ -626,6 +672,11 @@ struct TextPane: NSViewRepresentable {
         paragraph.lineSpacing = 2
         textView.defaultParagraphStyle = paragraph
         scrollView.documentView = textView
+        if hasLineNumbers {
+            scrollView.hasVerticalRuler = true
+            scrollView.verticalRulerView = LineNumberRuler(textView: textView)
+            scrollView.rulersVisible = false
+        }
         context.coordinator.pane = self
         textView.delegate = context.coordinator
         textView.onFocusChange = { [weak coordinator = context.coordinator] focused in
@@ -653,9 +704,158 @@ struct TextPane: NSViewRepresentable {
     }
 }
 
-/// Tells when it becomes or stops being the first responder.
+/// Line numbers beside the text (§8.5): one per line of text, also when long lines wrap. The line
+/// starts are kept up to date on each edit, so drawing only looks at the visible lines.
+final class LineNumberRuler: NSRulerView {
+    private weak var textView: NSTextView?
+    private var lineStarts: [Int] = [0]
+    /// The text changed while the ruler was hidden: count the lines when it is drawn.
+    private var isStale = true
+
+    init(textView: NSTextView) {
+        self.textView = textView
+        super.init(scrollView: textView.enclosingScrollView, orientation: .verticalRuler)
+        clientView = textView
+        ruleThickness = 34
+        if let clip = textView.enclosingScrollView?.contentView {
+            clip.postsBoundsChangedNotifications = true
+            NotificationCenter.default.addObserver(self, selector: #selector(boundsChanged), name: NSView.boundsDidChangeNotification, object: clip)
+        }
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override var isFlipped: Bool { true }
+
+    @objc private func boundsChanged(_ notification: Notification) {
+        needsDisplay = true
+    }
+
+    /// After every edit, and when the text is set. Nothing to do while the ruler is hidden.
+    func textDidChange() {
+        isStale = true
+        guard scrollView?.rulersVisible == true else { return }
+        countLines()
+        needsDisplay = true
+    }
+
+    private func countLines() {
+        isStale = false
+        guard let text = textView?.string as NSString? else { return }
+        var starts = [0]
+        let length = text.length
+        // In blocks rather than a call per character: this runs on every edit while numbers show.
+        var buffer = [unichar](repeating: 0, count: 4_096)
+        var location = 0
+        var afterReturn = false
+        while location < length {
+            let count = min(buffer.count, length - location)
+            text.getCharacters(&buffer, range: NSRange(location: location, length: count))
+            for offset in 0..<count {
+                switch buffer[offset] {
+                case 10:
+                    // \r\n is one break: the line starts after the \n.
+                    if afterReturn { starts[starts.count - 1] = location + offset + 1 } else { starts.append(location + offset + 1) }
+                    afterReturn = false
+                case 13:
+                    starts.append(location + offset + 1)
+                    afterReturn = true
+                default:
+                    afterReturn = false
+                }
+            }
+            location += count
+        }
+        lineStarts = starts
+        let thickness = CGFloat(max(2, String(starts.count).count)) * 7.5 + 14
+        if abs(ruleThickness - thickness) > 0.5 { ruleThickness = thickness }
+    }
+
+    /// The last line that starts at or before `location`.
+    private func line(containing location: Int) -> Int {
+        var low = 0
+        var high = lineStarts.count - 1
+        while low < high {
+            let middle = (low + high + 1) / 2
+            if lineStarts[middle] <= location { low = middle } else { high = middle - 1 }
+        }
+        return low
+    }
+
+    override func drawHashMarksAndLabels(in rect: NSRect) {
+        guard let textView, let layoutManager = textView.layoutManager, let container = textView.textContainer,
+              let clip = scrollView?.contentView else { return }
+        if isStale { countLines() }
+        let visible = clip.bounds
+        let glyphs = layoutManager.glyphRange(forBoundingRect: visible, in: container)
+        let characters = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+        let length = (textView.string as NSString).length
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: max(9, (textView.font?.pointSize ?? 12) - 2), weight: .regular),
+            .foregroundColor: NSColor.tertiaryLabelColor,
+        ]
+        var number = line(containing: characters.location)
+        while number < lineStarts.count, lineStarts[number] <= NSMaxRange(characters) {
+            let start = lineStarts[number]
+            let fragment: NSRect
+            if start >= length {
+                fragment = layoutManager.extraLineFragmentRect
+            } else {
+                fragment = layoutManager.lineFragmentRect(forGlyphAt: layoutManager.glyphIndexForCharacter(at: start), effectiveRange: nil)
+            }
+            let top = convert(NSPoint(x: 0, y: fragment.minY + textView.textContainerOrigin.y), from: textView).y
+            let label = "\(number + 1)" as NSString
+            let size = label.size(withAttributes: attributes)
+            label.draw(at: NSPoint(x: ruleThickness - size.width - 6, y: top + (fragment.height - size.height) / 2), withAttributes: attributes)
+            number += 1
+        }
+    }
+}
+
+/// Tells when it becomes or stops being the first responder, and can show invisible characters.
 final class FocusReportingTextView: NSTextView {
     var onFocusChange: ((Bool) -> Void)?
+    /// · for spaces, → for tabs, ° for no-break spaces and ¬ for line breaks (§8.5), drawn over
+    /// what is on screen only; nothing is added to the text.
+    var showsInvisibles = false {
+        didSet { if showsInvisibles != oldValue { needsDisplay = true } }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        super.draw(dirtyRect)
+        if showsInvisibles { drawInvisibles(in: dirtyRect) }
+    }
+
+    private func drawInvisibles(in dirtyRect: NSRect) {
+        guard let layoutManager, let textContainer, let storage = textStorage, storage.length > 0 else { return }
+        let origin = textContainerOrigin
+        let glyphs = layoutManager.glyphRange(forBoundingRect: dirtyRect.offsetBy(dx: -origin.x, dy: -origin.y), in: textContainer)
+        let characters = layoutManager.characterRange(forGlyphRange: glyphs, actualGlyphRange: nil)
+        guard characters.length > 0 else { return }
+        let text = storage.string as NSString
+        let font = self.font ?? .monospacedSystemFont(ofSize: 12, weight: .regular)
+        let attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: NSColor.tertiaryLabelColor]
+        for index in characters.location..<NSMaxRange(characters) {
+            let symbol: String
+            switch text.character(at: index) {
+            case 0x20: symbol = "·"
+            case 0x09: symbol = "→"
+            case 0xA0: symbol = "°"
+            case 0x0D: symbol = "¬"
+            // \r\n shows one mark.
+            case 0x0A where index == 0 || text.character(at: index - 1) != 0x0D: symbol = "¬"
+            default: continue
+            }
+            let glyph = layoutManager.glyphIndexForCharacter(at: index)
+            let fragment = layoutManager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil)
+            let baseline = layoutManager.location(forGlyphAt: glyph)
+            let point = NSPoint(x: origin.x + fragment.minX + baseline.x, y: origin.y + fragment.minY + baseline.y - font.ascender)
+            (symbol as NSString).draw(at: point, withAttributes: attributes)
+        }
+    }
 
     override func becomeFirstResponder() -> Bool {
         let accepted = super.becomeFirstResponder()

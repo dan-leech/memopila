@@ -31,6 +31,16 @@
         }
       }
     },
+    "%@: applies to %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@: применяется к %2$@"
+          }
+        }
+      }
+    },
     "%@: applies to the selected text, or to all of it": {
       "localizations": {
         "ru": {
@@ -67,6 +77,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "%@: текст на изображениях не распознаётся"
+          }
+        }
+      }
+    },
+    "%@: nothing here applies to %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$@: ничего не применимо к %2$@"
           }
         }
       }
@@ -381,6 +401,16 @@
         }
       }
     },
+    "%lld of %lld characters selected": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выделено символов: %1$lld из %2$lld"
+          }
+        }
+      }
+    },
     "%lldd": {
       "localizations": {
         "ru": {
@@ -517,6 +547,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Двойной щелчок, ↩ или ⌘1…⌘9 кладут запись в буфер обмена и возвращают вас в приложение, в котором вы были. С этим параметром Memopila ещё и нажимает там за вас ⌘V — для этого нужен Универсальный доступ. С ним Memopila также запоминает заголовок окна, из которого вы копировали."
+          }
+        }
+      }
+    },
+    "A record can’t be empty: type some text, or Revert": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запись не может быть пустой: введите текст или нажмите «Вернуть»"
           }
         }
       }
@@ -843,6 +883,16 @@
         }
       }
     },
+    "Always": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Всегда"
+          }
+        }
+      }
+    },
     "Another app changed the clipboard. Try again.": {
       "localizations": {
         "ru": {
@@ -923,6 +973,16 @@
         }
       }
     },
+    "Applies to %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Применяется к %@"
+          }
+        }
+      }
+    },
     "Apps": {
       "localizations": {
         "ru": {
@@ -973,6 +1033,16 @@
         }
       }
     },
+    "Automatic (for Code)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Автоматически (для кода)"
+          }
+        }
+      }
+    },
     "Base64 Decode": {
       "localizations": {
         "ru": {
@@ -999,16 +1069,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Крупнее или мельче карточки"
-          }
-        }
-      }
-    },
-    "Break long lines at the window edge instead of scrolling sideways": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Переносить длинные строки по краю окна, а не прокручивать вбок"
           }
         }
       }
@@ -1119,6 +1179,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Регистр"
+          }
+        }
+      }
+    },
+    "Changes": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменения"
+          }
+        }
+      }
+    },
+    "Changes…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменения…"
           }
         }
       }
@@ -1323,6 +1403,16 @@
         }
       }
     },
+    "Compare the edited text with the saved text, line by line": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сравнить изменённый текст с сохранённым, построчно"
+          }
+        }
+      }
+    },
     "Copied": {
       "localizations": {
         "ru": {
@@ -1489,6 +1579,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Вырезать"
+          }
+        }
+      }
+    },
+    "Default Text Size (⌘0)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Обычный размер текста (⌘0)"
           }
         }
       }
@@ -1785,32 +1885,22 @@
         }
       }
     },
-    "Discard": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Отменить изменения"
-          }
-        }
-      }
-    },
-    "Discard your changes?": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Отменить изменения?"
-          }
-        }
-      }
-    },
     "Dismiss": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Скрыть"
+          }
+        }
+      }
+    },
+    "Do you want to save the changes to this record?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить изменения в этой записи?"
           }
         }
       }
@@ -1851,6 +1941,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Готово"
+          }
+        }
+      }
+    },
+    "Don’t Save": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не сохранять"
           }
         }
       }
@@ -2225,12 +2325,12 @@
         }
       }
     },
-    "Go back to the saved text and title": {
+    "Go back to the saved text (⌘Z undoes this)": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Вернуть сохранённые текст и заголовок"
+            "value": "Вернуть сохранённый текст (⌘Z отменит возврат)"
           }
         }
       }
@@ -2525,16 +2625,6 @@
         }
       }
     },
-    "Keep Editing": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Продолжить"
-          }
-        }
-      }
-    },
     "Keep Formats from %@": {
       "localizations": {
         "ru": {
@@ -2605,22 +2695,22 @@
         }
       }
     },
+    "Larger Text (⌘+)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Крупнее (⌘+)"
+          }
+        }
+      }
+    },
     "Larger copies show a red “Current — not saved” card with Save Anyway. Apps can have their own limit.": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Для более крупных копий показывается красная карточка «Текущее — не сохранено» с кнопкой «Всё равно сохранить». У приложений может быть свой лимит."
-          }
-        }
-      }
-    },
-    "Larger text (⌘+)": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Крупнее текст (⌘+)"
           }
         }
       }
@@ -2695,12 +2785,32 @@
         }
       }
     },
+    "Line Numbers": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Номера строк"
+          }
+        }
+      }
+    },
     "Lines": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Строки"
+          }
+        }
+      }
+    },
+    "Lines added and removed": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Строк добавлено и удалено"
           }
         }
       }
@@ -2861,6 +2971,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Нужен текст из нескольких строк."
+          }
+        }
+      }
+    },
+    "Never": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Никогда"
           }
         }
       }
@@ -3111,6 +3231,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "В буфере обмена может быть только одна запись. Выделите одну карточку."
+          }
+        }
+      }
+    },
+    "Only the first changes are shown.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показаны только первые изменения."
           }
         }
       }
@@ -3855,16 +3985,6 @@
         }
       }
     },
-    "Save or revert your changes first": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Сначала сохраните или отмените изменения"
-          }
-        }
-      }
-    },
     "Save the changes": {
       "localizations": {
         "ru": {
@@ -3881,6 +4001,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Сохранить изменения, положить запись в буфер обмена и вернуться в приложение, в котором вы были (⌘↩)"
+          }
+        }
+      }
+    },
+    "Save the changes; the window stays open": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить изменения; окно останется открытым"
+          }
+        }
+      }
+    },
+    "Save the changes; the window stays open (⌘S)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить изменения; окно останется открытым (⌘S)"
           }
         }
       }
@@ -3961,6 +4101,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Снова сохраняем из «%@»"
+          }
+        }
+      }
+    },
+    "Saving…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранение…"
           }
         }
       }
@@ -4121,6 +4271,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Показать всю историю"
+          }
+        }
+      }
+    },
+    "Show Invisible Characters": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывать невидимые символы"
           }
         }
       }
@@ -4295,12 +4455,12 @@
         }
       }
     },
-    "Smaller text (⌘−)": {
+    "Smaller Text (⌘−)": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Мельче текст (⌘−)"
+            "value": "Мельче (⌘−)"
           }
         }
       }
@@ -4601,6 +4761,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Текст не является корректным JSON."
+          }
+        }
+      }
+    },
+    "The text is still loading": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст ещё загружается"
+          }
+        }
+      }
+    },
+    "The text is the same as the saved text.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст не отличается от сохранённого."
           }
         }
       }
@@ -4925,6 +5105,16 @@
         }
       }
     },
+    "View": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вид"
+          }
+        }
+      }
+    },
     "When a copy contains a secret": {
       "localizations": {
         "ru": {
@@ -4975,6 +5165,16 @@
         }
       }
     },
+    "Wrap Lines": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переносить строки"
+          }
+        }
+      }
+    },
     "Wrap lines": {
       "localizations": {
         "ru": {
@@ -4985,12 +5185,32 @@
         }
       }
     },
+    "Wrap lines, line numbers, invisible characters (spaces, tabs, line breaks) and text size": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перенос строк, номера строк, невидимые символы (пробелы, табуляции, переносы строк) и размер текста"
+          }
+        }
+      }
+    },
     "Your Data": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Ваши данные"
+          }
+        }
+      }
+    },
+    "Your changes to the text will be lost if you don’t save them.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Если не сохранить, изменения текста будут потеряны."
           }
         }
       }
@@ -5031,6 +5251,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "все форматы"
+          }
+        }
+      }
+    },
+    "all of the text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "всему тексту"
           }
         }
       }
@@ -5115,12 +5345,74 @@
         }
       }
     },
+    "the selected text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "выделенному тексту"
+          }
+        }
+      }
+    },
     "← → other records · ↩ selects · Esc closes": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "← → другие записи · ↩ выбрать · Esc закрыть"
+          }
+        }
+      }
+    },
+    "⋯ %lld unchanged lines": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "⋯ %lld unchanged line"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "⋯ %lld unchanged lines"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "⋯ %lld строка без изменений"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "⋯ %lld строки без изменений"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "⋯ %lld строк без изменений"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "⋯ %lld строки без изменений"
+                }
+              }
+            }
           }
         }
       }
@@ -5135,12 +5427,12 @@
         }
       }
     },
-    "⌘S saves · ⌘↩ saves and selects · Esc discards": {
+    "⌘S saves · ⌘↩ saves and selects · Esc asks to save": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "⌘S сохранить · ⌘↩ сохранить и выбрать · Esc отменить"
+            "value": "⌘S сохранить · ⌘↩ сохранить и выбрать · Esc спросит о сохранении"
           }
         }
       }

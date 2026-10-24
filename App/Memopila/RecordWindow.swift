@@ -98,7 +98,7 @@ enum RecordKeys {
             return true
         }
         guard !(responder is NSTextView), flags.isEmpty else { return false }
-        // Arrows do nothing with unsaved changes: they stay on screen until saved or discarded.
+        // With unsaved text, Space and the arrows first ask whether to save.
         switch key.code {
         case kVK_Space: model.dismissRecord()
         case _ where key.isReturn: model.copyItem()
