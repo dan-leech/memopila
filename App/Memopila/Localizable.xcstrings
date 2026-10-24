@@ -3055,6 +3055,16 @@
         }
       }
     },
+    "Memopila may not read this folder.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "У Memopila нет доступа к этой папке."
+          }
+        }
+      }
+    },
     "Memopila needs to read the clipboard in the background to build your history.": {
       "localizations": {
         "ru": {
@@ -3811,6 +3821,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Конфиденциальность"
+          }
+        }
+      }
+    },
+    "Privacy & Security → Files and Folders: let Memopila read this folder, then open the record again": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Конфиденциальность и безопасность → Файлы и папки: разрешите Memopila читать эту папку и откройте запись снова"
           }
         }
       }

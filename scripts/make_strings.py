@@ -223,6 +223,8 @@ T = {
 "More": "Ещё",
 "Copied": "Скопировано",
 "Cut": "Вырезать",
+"Privacy & Security → Files and Folders: let Memopila read this folder, then open the record again": "Конфиденциальность и безопасность → Файлы и папки: разрешите Memopila читать эту папку и откройте запись снова",
+"Memopila may not read this folder.": "У Memopila нет доступа к этой папке.",
 "Favorites are never deleted automatically. When all items together reach the storage limit, the oldest make room; lowering it does that at once.": "Избранное никогда не удаляется автоматически. Когда все элементы вместе достигают лимита хранилища, самые старые освобождают место; при уменьшении лимита это происходит сразу.",
 "Storage limit": "Лимит хранилища",
 "Copy %@: it goes to the clipboard and into history": "Скопировать %@: значение попадёт в буфер и в историю",

@@ -9,6 +9,8 @@ struct QuickLookView: NSViewRepresentable {
     /// A closed preview must never get another item: Quick Look asserts on it.
     final class Coordinator {
         var isClosed = false
+        /// The file shown; compared instead of `previewItem`, which a failed load may clear.
+        var url: URL?
     }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
@@ -22,6 +24,7 @@ struct QuickLookView: NSViewRepresentable {
             preview.shouldCloseWithWindow = false
             preview.autostarts = true
             preview.previewItem = url as NSURL
+            context.coordinator.url = url
             preview.frame = container.bounds
             preview.autoresizingMask = [.width, .height]
             container.addSubview(preview)
@@ -30,10 +33,10 @@ struct QuickLookView: NSViewRepresentable {
     }
 
     func updateNSView(_ container: NSView, context: Context) {
-        guard !context.coordinator.isClosed, let preview = container.subviews.first as? QLPreviewView else { return }
-        if (preview.previewItem as? NSURL) as URL? != url {
-            preview.previewItem = url as NSURL
-        }
+        guard !context.coordinator.isClosed, context.coordinator.url != url,
+              let preview = container.subviews.first as? QLPreviewView else { return }
+        context.coordinator.url = url
+        preview.previewItem = url as NSURL
     }
 
     static func dismantleNSView(_ container: NSView, coordinator: Coordinator) {

@@ -803,24 +803,39 @@ private struct FilePreview: View {
     @State private var status: ThumbnailCache.FileStatus?
     /// With several files, the one shown.
     @State private var shownPath: String?
+    /// Whether Memopila may read the shown file; `nil` while checking. macOS keeps Desktop,
+    /// Documents, Downloads and removable volumes from apps the user has not allowed.
+    @State private var access: FileAccess?
+
+    enum FileAccess {
+        case readable, denied, missing
+    }
 
     private var previewPath: String? { shownPath ?? card.filePaths.first }
 
     var body: some View {
         VStack(spacing: 0) {
             Group {
-                if let path = previewPath, FileManager.default.fileExists(atPath: path) {
-                    QuickLookView(url: URL(fileURLWithPath: path))
-                } else {
-                    VStack(spacing: 10) {
-                        if let image {
-                            Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: 240, maxHeight: 180)
-                        } else {
-                            Image(systemName: "doc").font(.system(size: 48)).foregroundStyle(.secondary)
+                switch access {
+                case .readable:
+                    if let path = previewPath { QuickLookView(url: URL(fileURLWithPath: path)) }
+                case .denied:
+                    // Quick Look would only log sandbox errors and show nothing (first-run test).
+                    unavailable {
+                        Text("Memopila may not read this folder.").font(.callout).foregroundStyle(.orange)
+                        Button("Allow in System Settings…") {
+                            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders") {
+                                NSWorkspace.shared.open(url)
+                            }
                         }
+                        .help(String(localized: "Privacy & Security → Files and Folders: let Memopila read this folder, then open the record again"))
+                    }
+                case .missing:
+                    unavailable {
                         Text("Unavailable: the file was moved or deleted.").font(.callout).foregroundStyle(.orange)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                case nil:
+                    ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
             Divider()
@@ -855,6 +870,35 @@ private struct FilePreview: View {
             status = await thumbnails.fileStatus(for: card)
             image = await thumbnails.image(for: card)
         }
+        .task(id: previewPath) {
+            access = nil
+            access = await Self.access(to: previewPath)
+        }
+    }
+
+    /// The stored thumbnail, or a document icon, over what to do about the file.
+    private func unavailable<Message: View>(@ViewBuilder _ message: () -> Message) -> some View {
+        VStack(spacing: 10) {
+            if let image {
+                Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: 240, maxHeight: 180)
+            } else {
+                Image(systemName: "doc").font(.system(size: 48)).foregroundStyle(.secondary)
+            }
+            message()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    /// Opening the file tells: a folder the user has not allowed refuses it (and the first time
+    /// macOS asks), while its existence is still visible.
+    private static func access(to path: String?) async -> FileAccess {
+        guard let path else { return .missing }
+        return await Task.detached(priority: .userInitiated) { () -> FileAccess in
+            guard FileManager.default.fileExists(atPath: path) else { return .missing }
+            guard let handle = FileHandle(forReadingAtPath: path) else { return .denied }
+            try? handle.close()
+            return .readable
+        }.value
     }
 
     private var paths: some View {
