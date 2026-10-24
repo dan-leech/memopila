@@ -319,7 +319,11 @@ final class AppModel {
                 return toasts.error(error.localizedDescription)
             }
             let preview = URL(fileURLWithPath: "/System/Applications/Preview.app")
-            NSWorkspace.shared.open([url], withApplicationAt: preview, configuration: NSWorkspace.OpenConfiguration())
+            do {
+                _ = try await NSWorkspace.shared.open([url], withApplicationAt: preview, configuration: NSWorkspace.OpenConfiguration())
+            } catch {
+                toasts.error(error.localizedDescription)
+            }
         }
     }
 
