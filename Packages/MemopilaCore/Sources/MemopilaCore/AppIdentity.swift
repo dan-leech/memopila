@@ -79,6 +79,9 @@ public struct AppIdentity: Sendable, Equatable {
 
     public static let unknown = AppIdentity(bundleID: nil, source: .unknown)
 
+    /// macOS Screenshot: screenshots are attributed to it, as Pasta does (§5).
+    public static let screenshotApp = "com.apple.screenshot.launcher"
+
     /// - Parameters:
     ///   - frontmostBundleID: frontmost application when the change was detected.
     ///   - panelIsKey: Memopila's own panel is key, so its own copies are attributed to Memopila.

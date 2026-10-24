@@ -147,9 +147,12 @@ final class ClipboardMonitor {
     private func captureContext(saveAnyway: Bool, sourceSince: Date?) -> CaptureContext {
         var source = frontmostTracker.source(since: sourceSince ?? Date())
         var screenshotSource = frontmostTracker.screenshotSource()
+        var panelKey = panelIsKey()
         if let launchChangeCount, NSPasteboard.general.changeCount == launchChangeCount {
+            // Copied before launch: not by the panel that opened with it either.
             source = nil
             screenshotSource = nil
+            panelKey = false
         } else {
             launchChangeCount = nil
         }
@@ -157,7 +160,7 @@ final class ClipboardMonitor {
             profiles: settings.profiles,
             formatPolicy: settings.formatPolicy,
             frontmostBundleID: source,
-            panelIsKey: panelIsKey(),
+            panelIsKey: panelKey,
             ownBundleID: Self.ownBundleID,
             ignoreRemoteClipboard: settings.ignoreRemoteClipboard,
             saveAnyway: saveAnyway,

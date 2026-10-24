@@ -189,13 +189,22 @@ public struct SnapshotReader: Sendable {
             return pasteboard.string(forItem: index, type: .source).map(ItemSourceValue.value) ?? .unreadable
         })
         var frontmost = context.frontmostBundleID
-        if marker == .absent, let screenshotSource = context.screenshotSource, Self.isImageOnly(itemTypes) {
-            frontmost = screenshotSource
+        var panelIsKey = context.panelIsKey
+        if marker == .absent, Self.isImageOnly(itemTypes) {
+            // Memopila never puts an image-only copy of its own here (its writes are recognised
+            // before any read), so one that arrives while its panel or a window of it has the
+            // keyboard is a screenshot taken over it, even when no screenshot agent was seen
+            // (first-run feedback: such screenshots were attributed to Memopila).
+            let memopilaInFront = panelIsKey || frontmost == context.ownBundleID
+            if let screenshotSource = context.screenshotSource ?? (memopilaInFront ? AppIdentity.screenshotApp : nil) {
+                frontmost = screenshotSource
+                panelIsKey = false
+            }
         }
         let identity = AppIdentity.resolve(
             marker: marker,
             frontmostBundleID: frontmost,
-            panelIsKey: context.panelIsKey,
+            panelIsKey: panelIsKey,
             ownBundleID: context.ownBundleID
         )
 

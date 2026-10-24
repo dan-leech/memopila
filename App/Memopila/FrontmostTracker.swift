@@ -1,4 +1,5 @@
 import AppKit
+import MemopilaCore
 
 /// The frontmost app around the time of a copy, and whether a macOS screenshot agent was active
 /// then (PLAN §5). Polling sees a change up to 250 ms late, so it also remembers apps that stopped
@@ -7,7 +8,7 @@ import AppKit
 final class FrontmostTracker {
     /// macOS screenshot agents; their copies are attributed to the Screenshot app, as Pasta does.
     static let screenshotAgents: Set<String> = ["com.apple.screencaptureui", "com.apple.screenshot.launcher", "com.apple.screencapture"]
-    static let screenshotApp = "com.apple.screenshot.launcher"
+    static let screenshotApp = AppIdentity.screenshotApp
     /// A screenshot reaches the clipboard a moment after the agent was last seen: the capture
     /// overlay gives the focus back first, then the image is encoded and written.
     private static let screenshotWindow: TimeInterval = 10

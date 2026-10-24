@@ -132,6 +132,27 @@ struct SnapshotReaderTests {
         #expect(snapshot.identity == AppIdentity(bundleID: "com.example.editor", source: .frontmost))
     }
 
+    @Test func screenshotOverTheKeyPanelIsTheScreenshotAppsNotMemopilas() throws {
+        // No agent was seen, but Memopila never writes an image-only copy of its own.
+        let pasteboard = FakePasteboard(items: [[(.png, utf8("png"))]])
+        let overPanel = try #require(reader(panelIsKey: true).read(pasteboard).snapshot)
+        #expect(overPanel.identity == AppIdentity(bundleID: AppIdentity.screenshotApp, source: .frontmost))
+        let overWindow = try #require(reader(frontmost: ownBundleID).read(pasteboard).snapshot)
+        #expect(overWindow.identity == AppIdentity(bundleID: AppIdentity.screenshotApp, source: .frontmost))
+    }
+
+    @Test func textCopiedInTheKeyPanelStaysMemopilas() throws {
+        let pasteboard = FakePasteboard(items: [[(.utf8PlainText, utf8("hi"))]])
+        let snapshot = try #require(reader(panelIsKey: true).read(pasteboard).snapshot)
+        #expect(snapshot.identity == AppIdentity(bundleID: ownBundleID, source: .frontmost))
+    }
+
+    @Test func imageFromTheFrontmostAppStaysItsWithoutAScreenshot() throws {
+        let pasteboard = FakePasteboard(items: [[(.png, utf8("png"))]])
+        let snapshot = try #require(reader().read(pasteboard).snapshot)
+        #expect(snapshot.identity == AppIdentity(bundleID: "com.example.editor", source: .frontmost))
+    }
+
     @Test func sourceMarkerWinsOverAScreenshotGuess() throws {
         let pasteboard = FakePasteboard(items: [[(.png, utf8("png")), (.source, utf8("com.example.paint"))]])
         let snapshot = try #require(reader(screenshot: "com.apple.screenshot.launcher").read(pasteboard).snapshot)
