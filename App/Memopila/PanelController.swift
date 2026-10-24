@@ -94,10 +94,15 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
+    /// Nothing in the panel takes the keys: they all come to `handleKey`.
+    func clearFocus() {
+        panel?.makeFirstResponder(nil)
+    }
+
     /// Esc: close an overlay, clear a non-empty search, otherwise close (§3.4).
     func cancel() {
         if model.overlay != nil {
-            model.present(nil)
+            model.dismissOverlay()
         } else if !model.history.search.isEmpty {
             model.history.search = ""
         } else {
@@ -181,22 +186,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         switch model.overlay {
         case nil:
             return handleGridKey(key, flags: flags)
-        case .preview(let id):
-            return handlePreviewKey(key, flags: flags, id: id)
-        case .editor:
-            if key.code == kVK_Escape {
-                // Esc inside the find bar closes the find bar, not the editor.
-                if let responder = panel?.firstResponder as? NSView, let editor = model.editorState?.textView,
-                   responder !== editor, let scrollView = editor.enclosingScrollView, responder.isDescendant(of: scrollView) {
-                    return false
-                }
-                model.cancelEditor()
-                return true
-            }
-            if flags == .command, key.letter == "f" { model.editorState?.showFind(); return true }
-            if flags == .command, key.isReturn { model.saveEditor(thenRestore: true); return true }
-            if flags == .command, key.letter == "s" { model.saveEditor(thenRestore: false); return true }
-            return false
+        case .item:
+            return handleItemKey(key, flags: flags)
         case .actions:
             guard let state = model.actionsState else { return false }
             switch key.code {
@@ -235,9 +226,9 @@ final class PanelController: NSObject, NSWindowDelegate {
             case kVK_LeftArrow where searchIsEmpty: history.moveSelection(by: -1); return true
             case kVK_RightArrow where searchIsEmpty: history.moveSelection(by: 1); return true
             case kVK_Escape: cancel(); return true
-            case kVK_Space where searchIsEmpty && flags.isEmpty: togglePreview(); return true
-            case _ where key.isReturn:
-                model.restoreSelected(variant: flags == .shift ? .plainText : .original)
+            case kVK_Space where searchIsEmpty && flags.isEmpty: openSelected(); return true
+            case _ where key.isReturn && flags.isEmpty:
+                model.restoreSelected()
                 return true
             default: return false
             }
@@ -258,9 +249,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
         switch key.letter {
         case "k": if let id = history.selectedID { model.present(.actions(id)) }
-        case "y": togglePreview()
-        case "e":
-            if let card = history.selectedCard, AppModel.isEditable(card) { model.present(.editor(card.id)) }
+        case "y": openSelected()
+        case "e": openSelected(focusText: true)
         case "r": if let id = history.selectedID { model.present(.rename(id)) }
         case "d": if let id = history.selectedID { model.toggleFavorite(id) }
         case "f": model.focusSearch()
@@ -276,41 +266,60 @@ final class PanelController: NSObject, NSWindowDelegate {
         return true
     }
 
-    private func handlePreviewKey(_ key: KeyPress, flags: NSEvent.ModifierFlags, id: UUID) -> Bool {
-        let history = model.history
-        if flags.isEmpty {
-            switch key.code {
-            case kVK_Escape, kVK_Space: model.present(nil)
-            case kVK_UpArrow: history.moveSelectionVertically(-1); syncPreview()
-            case kVK_DownArrow: history.moveSelectionVertically(1); syncPreview()
-            case kVK_LeftArrow: history.moveSelection(by: -1); syncPreview()
-            case kVK_RightArrow: history.moveSelection(by: 1); syncPreview()
-            case _ where key.isReturn: model.restore(id)
-            default: return false
+    /// The item view (§8.5). While its text has the focus, keys edit the text; otherwise ↑ ↓ ← →
+    /// move to other items, Space closes and ↩ copies, as in the grid.
+    private func handleItemKey(_ key: KeyPress, flags: NSEvent.ModifierFlags) -> Bool {
+        guard let state = model.itemState else { return false }
+        let responder = panel?.firstResponder
+        if key.code == kVK_Escape {
+            // Esc inside the find bar closes the find bar, not the view.
+            if let responder = responder as? NSView, let textView = state.textView, responder !== textView,
+               let scrollView = textView.enclosingScrollView, responder.isDescendant(of: scrollView) {
+                return false
             }
+            model.dismissOverlay()
             return true
         }
-        if flags == .command, key.letter == "y" {
-            model.present(nil)
-            return true
+        if flags == .command {
+            switch key.letter {
+            case "s": model.saveItem(); return true
+            // With no text selected (a selection is copied as text, above).
+            case "c": model.copyItem(); return true
+            case "f" where state.hasText: state.showFind(); return true
+            case "y": model.dismissOverlay(); return true
+            case "e" where state.isEditable: state.focus(); return true
+            default: if key.isReturn { model.copyItem(); return true }
+            }
+            return false
         }
-        if flags == .command, key.letter == "e", let card = history.selectedCard, AppModel.isEditable(card) {
-            model.present(.editor(card.id))
-            return true
+        // A text view or the title field is editing: the keys are theirs.
+        guard !(responder is NSTextView), flags.isEmpty else { return false }
+        let history = model.history
+        switch key.code {
+        case kVK_Space: model.dismissOverlay()
+        case _ where key.isReturn: model.copyItem()
+        case kVK_UpArrow, kVK_DownArrow, kVK_LeftArrow, kVK_RightArrow:
+            // Unsaved changes stay on screen until they are saved or discarded.
+            guard !state.isDirty else { return true }
+            switch key.code {
+            case kVK_UpArrow: history.moveSelectionVertically(-1)
+            case kVK_DownArrow: history.moveSelectionVertically(1)
+            case kVK_LeftArrow: history.moveSelection(by: -1)
+            default: history.moveSelection(by: 1)
+            }
+            if let id = history.selectedID { model.present(.item(id)) }
+        default: return false
         }
-        return false
+        return true
     }
 
-    private func togglePreview() {
-        if case .preview? = model.overlay {
-            model.present(nil)
+    /// Space, ⌘Y, ⌘E (with the cursor in the text) and the eye button: the item view (§8.5).
+    private func openSelected(focusText: Bool = false) {
+        if case .item? = model.overlay {
+            model.dismissOverlay()
         } else if let id = model.history.selectedID {
-            model.present(.preview(id))
+            model.present(.item(id), focusText: focusText)
         }
-    }
-
-    private func syncPreview() {
-        if let id = model.history.selectedID { model.present(.preview(id)) }
     }
 
     /// Cut / copy / paste / select all / undo in text fields. A non-activating panel does not get

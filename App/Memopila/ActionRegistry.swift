@@ -44,26 +44,11 @@ enum ActionRegistry {
     /// shown disabled, so the menu stays short.
     static func cardActions(_ card: HistoryCard, model: AppModel) -> [ActionItem] {
         let id = card.id
-        // Choosing an item pastes it (§3.4); the titles say when it can only be copied.
+        // The same as a double-click (§3.4): the item goes to the clipboard and the focus goes back.
         var items: [ActionItem] = [
-            ActionItem(
-                id: "paste",
-                title: model.chooseTitle,
-                systemImage: model.pastesOnChoose ? "arrow.right.doc.on.clipboard" : "doc.on.clipboard",
-                shortcut: "↩"
-            ) { model.restore(id) },
-        ]
-        if card.hasText, card.displayType != .text {
-            items.append(ActionItem(id: "paste.plain", title: model.choosePlainTextTitle, systemImage: "textformat", shortcut: "⇧↩") {
-                model.restore(id, variant: .plainText)
-            })
-        }
-        if model.pastesOnChoose {
-            items.append(ActionItem(id: "copy", title: String(localized: "Copy to Clipboard"), systemImage: "doc.on.clipboard", shortcut: "⌘C") {
-                model.restore(id, paste: false)
-            })
-        }
-        items += [
+            ActionItem(id: "copy", title: String(localized: "Copy to Clipboard"), systemImage: "doc.on.clipboard", shortcut: "↩") {
+                model.restore(id)
+            },
             ActionItem(
                 id: "favorite",
                 title: card.isFavorite ? String(localized: "Remove from Favorites") : String(localized: "Add to Favorites"),
@@ -72,15 +57,14 @@ enum ActionRegistry {
             ) { model.toggleFavorite(id) },
             collectionsMenu(for: card, model: model),
             .divider("view"),
-            ActionItem(id: "preview", title: String(localized: "Preview"), systemImage: "eye", shortcut: "Space") {
-                model.present(.preview(id))
-            },
+            // One view to look at an item and to edit its text (§8.5).
+            ActionItem(
+                id: "open",
+                title: String(localized: "Open"),
+                systemImage: "eye",
+                shortcut: "Space"
+            ) { model.present(.item(id)) },
         ]
-        if AppModel.isEditable(card) {
-            items.append(ActionItem(id: "edit", title: String(localized: "Edit…"), systemImage: "pencil", shortcut: "⌘E") {
-                model.present(.editor(id))
-            })
-        }
         items.append(ActionItem(id: "rename", title: String(localized: "Rename…"), systemImage: "tag", shortcut: "⌘R") {
             model.present(.rename(id))
         })

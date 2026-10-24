@@ -89,7 +89,7 @@ struct DiagnosticsView: View {
             "accessBehavior: \(PasteboardAccess.behaviorName), capture: \(monitor.access)",
         ] + probes + monitor.log.map { "\($0.date.formatted(date: .omitted, time: .standard))  \($0.message)" })
             .joined(separator: "\n")
-        // Through the writer, so the report is suppressed by the token and not added to history.
-        _ = monitor.write(PasteboardWriter.plainTextItems(report), sourceBundleID: nil)
+        // A new card, like any copy: history shows what the clipboard holds.
+        model.copyNewText(report, from: nil)
     }
 }

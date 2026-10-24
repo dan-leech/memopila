@@ -20,6 +20,8 @@ struct CardView: View {
     private var thumbnails: ThumbnailCache { model.thumbnails }
     private var isUnavailable: Bool { fileStatus?.allMissing ?? false }
     private var isMedia: Bool { secretKind == nil && (card.displayType == .image || card.displayType == .pdf) }
+    /// The clipboard holds this item now (§8.2).
+    private var isOnClipboard: Bool { model.monitor.clipboardRecordID == card.id }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -99,9 +101,9 @@ struct CardView: View {
                     help: card.isFavorite ? String(localized: "Remove from Favorites (⌘D)") : String(localized: "Add to Favorites (⌘D)")
                 ) { model.toggleFavorite(card.id) }
                 .symbolEffect(.bounce, value: card.isFavorite)
-                CardIconButton(systemImage: "eye", help: String(localized: "Preview (Space)")) {
+                CardIconButton(systemImage: "eye", help: String(localized: "Open: look at it and edit it (Space)")) {
                     model.history.selectedID = card.id
-                    model.present(.preview(card.id))
+                    model.present(.item(card.id))
                 }
                 Menu {
                     CardContextMenu(card: card, model: model)
@@ -215,10 +217,24 @@ struct CardView: View {
             Text(metric).lineLimit(1)
             Spacer(minLength: 2)
             badges
-            TimelineView(.periodic(from: .now, by: 60)) { context in
-                Text(RelativeTime.short(card.lastCopiedAt, now: context.date))
+            if isOnClipboard {
+                // In place of the time: what a clipboard manager must always show.
+                Label("In Clipboard", systemImage: "doc.on.clipboard.fill")
+                    .labelStyle(.titleAndIcon)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.green, in: Capsule())
+                    .help(String(localized: "This is what the clipboard holds now"))
+                    .transition(.scale.combined(with: .opacity))
+            } else {
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    Text(RelativeTime.short(card.lastCopiedAt, now: context.date))
+                }
             }
         }
+        .animation(.easeOut(duration: 0.2), value: isOnClipboard)
         .font(.system(size: 10.5))
         .foregroundStyle(.secondary)
     }
@@ -273,6 +289,7 @@ struct CardView: View {
         parts.append(metric)
         if let name = card.sourceAppName { parts.append(String(localized: "from \(name)")) }
         if card.isFavorite { parts.append(String(localized: "Favorite")) }
+        if isOnClipboard { parts.append(String(localized: "In Clipboard")) }
         parts.append(card.lastCopiedAt.formatted(.relative(presentation: .named)))
         return parts.joined(separator: ", ")
     }

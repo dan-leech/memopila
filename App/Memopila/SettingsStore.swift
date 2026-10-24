@@ -32,8 +32,8 @@ final class SettingsStore {
         }
     }
     var ignoreRemoteClipboard: Bool { didSet { defaults.set(ignoreRemoteClipboard, forKey: Key.ignoreRemoteClipboard) } }
-    /// Choosing an item pastes it into the app behind the window (needs Accessibility); off = only copies it.
-    var pasteDirectly: Bool { didSet { defaults.set(pasteDirectly, forKey: Key.pasteDirectly) } }
+    /// After an item goes to the clipboard, also press ⌘V in the app behind the window (Accessibility).
+    var pasteAfterCopy: Bool { didSet { defaults.set(pasteAfterCopy, forKey: Key.pasteAfterCopy) } }
     var recognizeText: Bool {
         didSet {
             defaults.set(recognizeText, forKey: Key.recognizeText)
@@ -67,7 +67,7 @@ final class SettingsStore {
         maxAgeDays = (defaults.object(forKey: Key.maxAgeDays) as? Int ?? 30).clamped(to: Self.maxAgeRange)
 
         ignoreRemoteClipboard = defaults.bool(forKey: Key.ignoreRemoteClipboard)
-        pasteDirectly = defaults.object(forKey: Key.pasteDirectly) as? Bool ?? true
+        pasteAfterCopy = defaults.bool(forKey: Key.pasteAfterCopy)
         recognizeText = defaults.object(forKey: Key.recognizeText) as? Bool ?? true
         recognitionLanguages = defaults.stringArray(forKey: Key.recognitionLanguages) ?? []
         appProfiles = Self.load([AppProfile].self, Key.appProfiles, defaults) ?? []
@@ -188,7 +188,7 @@ final class SettingsStore {
         static let maxCount = "maxCount"
         static let maxAgeDays = "maxAgeDays"
         static let ignoreRemoteClipboard = "ignoreRemoteClipboard"
-        static let pasteDirectly = "pasteDirectly"
+        static let pasteAfterCopy = "pasteAfterCopy"
         static let recognizeText = "recognizeText"
         static let recognitionLanguages = "recognitionLanguages"
         static let appProfiles = "appProfiles"

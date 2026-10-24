@@ -6,8 +6,8 @@ import SwiftUI
 
 /// Panel overlays (§8.4, §8.5, §3.6). Shown inside the panel, never as separate windows.
 enum PanelOverlay: Equatable {
-    case preview(UUID)
-    case editor(UUID)
+    /// One view to look at an item and edit its text and title (§8.5, §3.6).
+    case item(UUID)
     case rename(UUID)
     case actions(UUID)
     case newCollection(addingRecord: UUID?)
@@ -61,7 +61,7 @@ final class AppModel {
 
     private(set) var overlay: PanelOverlay?
     private(set) var actionsState: ActionsPanelState?
-    private(set) var editorState: EditorState?
+    private(set) var itemState: ItemState?
     var isPinned = false
     /// ⌘ is held in the panel: cards show their ⌘1…⌘9 shortcuts.
     var isCommandHeld = false
@@ -69,8 +69,6 @@ final class AppModel {
     private(set) var copiedCardID: UUID?
     /// The badge on that card says Pasted rather than Copied.
     private(set) var copiedCardWasPasted = false
-    /// Accessibility, needed to paste (§3.4); refreshed when the panel opens.
-    private(set) var accessibilityTrusted = AccessibilityBridge.isTrusted
     /// Bumped whenever search should take focus (open, ⌘F, overlay closed).
     private(set) var focusSearchToken = 0
     private(set) var hotKeyErrors: [HotKeyRole: String] = [:]
@@ -138,22 +136,35 @@ final class AppModel {
     // MARK: Overlays
 
     /// Shows an overlay (or `nil` to close it); search takes focus again when it closes.
-    func present(_ next: PanelOverlay?) {
+    /// `focusText`: the item view starts with the cursor in its text (⌘E).
+    func present(_ next: PanelOverlay?, focusText: Bool = false) {
         switch next {
         case .actions(let id)?:
             guard let card = history.cards.first(where: { $0.id == id }) else { return }
             actionsState = ActionsPanelState(items: ActionRegistry.cardActions(card, model: self).flatMap { $0.flattened() })
-            editorState = nil
-        case .editor(let id)?:
-            guard let card = history.cards.first(where: { $0.id == id }), Self.isEditable(card) else { return }
-            if editorState?.id != id { openEditor(card) }
+            itemState = nil
+        case .item(let id)?:
+            if let itemState, itemState.id == id {
+                if focusText, itemState.isEditable { itemState.focus() }
+            } else {
+                guard let card = history.cards.first(where: { $0.id == id }) else { return }
+                openItem(card, focusText: focusText)
+            }
             actionsState = nil
         default:
             actionsState = nil
-            editorState = nil
+            itemState = nil
         }
         overlay = next
         if next == nil { focusSearchToken += 1 }
+    }
+
+    /// Esc, a click outside or Close: unsaved changes in the item view ask first.
+    func dismissOverlay() {
+        guard case .item? = overlay, let state = itemState, state.isDirty, !state.isConfirmingDiscard else {
+            return present(nil)
+        }
+        state.isConfirmingDiscard = true
     }
 
     func focusSearch() {
@@ -166,9 +177,12 @@ final class AppModel {
         action.run?()
     }
 
-    private func openEditor(_ card: HistoryCard) {
-        let state = EditorState(id: card.id, hasFormatting: card.displayType == .richText, title: card.customTitle)
-        editorState = state
+    private func openItem(_ card: HistoryCard, focusText: Bool) {
+        let state = ItemState(card: card, focusOnLoad: focusText && Self.isEditable(card))
+        itemState = state
+        // Opened to look at: nothing has the keyboard focus, so ↑ ↓ ← → move to other items and Space closes.
+        if !state.focusOnLoad { panel.clearFocus() }
+        guard state.hasText else { return }
         Task {
             if let text = await editorText(card.id) {
                 state.load(text)
@@ -178,29 +192,44 @@ final class AppModel {
         }
     }
 
-    func saveEditor(thenRestore: Bool) {
-        guard let state = editorState, !state.isSaving, let text = state.currentText() else { return }
-        guard !text.isEmpty else {
-            state.error = String(localized: "The text is empty.")
-            return
+    /// Save (⌘S) in the item view: title and text; the view closes. `thenCopy` puts the result on
+    /// the clipboard as a double-click would.
+    func saveItem(thenCopy: Bool = false) {
+        guard let state = itemState, !state.isSaving else { return }
+        var text: String?
+        if state.isTextDirty {
+            guard let current = state.currentText() else { return }
+            guard !current.isEmpty else {
+                state.error = String(localized: "The text is empty.")
+                return
+            }
+            text = current
         }
         state.isSaving = true
         Task {
             // The title first: an edit that merges into another record keeps that record's title (§3.6).
             if state.titleChanged { try? await store.rename(state.id, title: state.title) }
-            let error = await saveEdit(state.id, text: text, thenRestore: thenRestore)
-            state.isSaving = false
-            state.error = error
+            if let text {
+                let error = await saveEdit(state.id, text: text, thenRestore: thenCopy)
+                state.isSaving = false
+                state.error = error
+            } else {
+                state.isSaving = false
+                present(nil)
+                history.storeDidChange()
+                if thenCopy { await performRestore(state.id) }
+            }
         }
     }
 
-    /// Esc or Cancel in the editor: unsaved changes ask first.
-    func cancelEditor() {
-        guard let state = editorState else { return present(nil) }
-        if state.isDirty, !state.isConfirmingDiscard {
-            state.isConfirmingDiscard = true
+    /// *Copy to Clipboard* in the item view (↩, ⌘↩): unsaved changes are saved first.
+    func copyItem() {
+        guard let state = itemState else { return }
+        if state.isDirty {
+            saveItem(thenCopy: true)
         } else {
             present(nil)
+            restore(state.id)
         }
     }
 
@@ -208,7 +237,6 @@ final class AppModel {
 
     func panelWillShow() {
         refreshPreviousApp()
-        refreshAccessibility()
         purgeTask?.cancel()
         present(nil)
         toasts.dismiss()
@@ -299,30 +327,12 @@ final class AppModel {
 
     // MARK: Restore (§3.4)
 
-    /// Choosing an item (↩, double-click, ⌘1…⌘9) pastes it into the app behind the window, as in
-    /// Pasta; without Accessibility, or set to *Only copies it*, it only goes to the clipboard.
-    var pastesOnChoose: Bool { settings.pasteDirectly && accessibilityTrusted }
-
-    var chooseTitle: String {
-        pastesOnChoose ? String(localized: "Paste") : String(localized: "Copy to Clipboard")
-    }
-
-    var choosePlainTextTitle: String {
-        pastesOnChoose ? String(localized: "Paste as Plain Text") : String(localized: "Copy as Plain Text")
-    }
-
-    func refreshAccessibility() {
-        let trusted = AccessibilityBridge.isTrusted
-        if trusted != accessibilityTrusted { accessibilityTrusted = trusted }
-    }
-
-    /// ↩ / ⇧↩ / ⌘C: waits for a pending search so the restored card is the one the results show.
-    /// `paste: false` only copies (⌘C).
-    func restoreSelected(variant: RestoreVariant = .original, paste: Bool? = nil) {
+    /// ↩, double-click, ⌘C: waits for a pending search so the restored card is the one the results show.
+    func restoreSelected(paste: Bool? = nil) {
         Task {
             await history.settle()
             guard let id = history.selectedID ?? history.cards.first?.id else { return }
-            await performRestore(id, variant: variant, paste: paste)
+            await performRestore(id, paste: paste)
         }
     }
 
@@ -331,31 +341,26 @@ final class AppModel {
             await history.settle()
             guard let card = history.card(at: index) else { return }
             history.selectedID = card.id
-            await performRestore(card.id, variant: .original)
+            await performRestore(card.id)
         }
     }
 
-    func restore(_ id: UUID, variant: RestoreVariant = .original, paste: Bool? = nil) {
-        Task { await performRestore(id, variant: variant, paste: paste) }
+    func restore(_ id: UUID, paste: Bool? = nil) {
+        Task { await performRestore(id, paste: paste) }
     }
 
-    /// `true` when the clipboard now holds the item (or its variant). `paste` overrides the setting.
+    /// Puts the item on the clipboard, moves it to the top and gives the focus back to the app the
+    /// user came from, as in Pasta. *Paste after copying* (off by default) also presses ⌘V there;
+    /// `paste` overrides that setting. `true` when the clipboard now holds the item.
     @discardableResult
-    private func performRestore(_ id: UUID, variant: RestoreVariant, paste: Bool? = nil) async -> Bool {
-        guard let content = await variantContent(id, variant: variant) else { return false }
-        let items = content.items
-        let sourceBundleID = content.sourceBundleID
-        func fail(_ message: String) -> Bool {
+    private func performRestore(_ id: UUID, paste: Bool? = nil) async -> Bool {
+        guard let content = await variantContent(id, variant: .original) else { return false }
+        switch monitor.write(content.items, sourceBundleID: content.sourceBundleID, recordID: id) {
+        case .failed(let message):
             toasts.error(message)
             return false
-        }
-
-        switch monitor.write(items, sourceBundleID: sourceBundleID) {
-        case .failed(let message):
-            return fail(message)
         case .written:
-            refreshAccessibility()
-            let pastes = (paste ?? settings.pasteDirectly) && accessibilityTrusted
+            let pastes = (paste ?? settings.pasteAfterCopy) && AccessibilityBridge.isTrusted
             let target = previousApp
             // Memopila itself is active after a launch by hand or after Settings: the target app
             // needs a moment to take the focus back before ⌘V reaches it.
@@ -374,6 +379,33 @@ final class AppModel {
             try? await store.markUsed(id, at: Date())
             history.storeDidChange()
             return true
+        }
+    }
+
+    /// Text that is not a record yet (text found in an image, a source link, the Diagnostics report)
+    /// goes to the clipboard as a new card at the top, so history always shows what the clipboard
+    /// holds (§3.4). Copying part of an item keeps the window open, like ⌘C in its text.
+    func copyNewText(_ text: String, from id: UUID?) {
+        Task {
+            let items = PasteboardWriter.plainTextItems(text)
+            let sourceBundleID = id.flatMap { id in history.cards.first { $0.id == id } }?.sourceAppBundleID
+            switch await ingestDerived(items, from: id) {
+            case .saved(let newID):
+                switch monitor.write(items, sourceBundleID: sourceBundleID, recordID: newID) {
+                case .written:
+                    try? await store.markUsed(newID, at: Date())
+                    history.storeDidChange()
+                    toasts.show(String(localized: "Copied to the clipboard and added to history"))
+                case .failed(let message):
+                    toasts.error(message)
+                }
+            case .secretNotSaved:
+                // Copied as asked, but kept out of history like any other secret.
+                _ = monitor.write(items, sourceBundleID: sourceBundleID, recordID: nil)
+                toasts.show(String(localized: "Copied. Not added to history: it contains a secret."))
+            case .failed(let message):
+                toasts.error(message)
+            }
         }
     }
 
@@ -437,50 +469,65 @@ final class AppModel {
     func duplicate(_ id: UUID, as variant: RestoreVariant) {
         Task {
             guard let content = await variantContent(id, variant: variant) else { return }
-            let original = history.cards.first { $0.id == id }
-            var appSettings = original?.sourceAppBundleID.map { settings.settings(for: $0) } ?? ResolvedAppSettings()
-            var sensitiveKind: SecretKind?
-            if let text = TextDecoding.plainText(of: content.items), settings.secretPolicy != .off,
-               let kind = SecretDetector.detect(text, kinds: settings.secretKinds) {
-                switch settings.secretPolicy {
-                case .off: break
-                case .dontSave:
-                    return toasts.error(String(localized: "Not duplicated: the text contains a secret and secrets are not saved."))
-                case .deleteAfter(let minutes):
-                    appSettings.captureMode = .deleteAfter(minutes: min(minutes, appSettings.retentionMinutes ?? minutes))
-                }
-                sensitiveKind = kind
-            }
-            let items = content.items
-            let snapshot = OwnedSnapshot(
-                changeCount: 0,
-                observedAt: Date(),
-                identity: AppIdentity(bundleID: original?.sourceAppBundleID, source: .frontmost),
-                settings: appSettings,
-                items: items,
-                contentHash: MCS1.contentHash(of: items),
-                payloadSizeBytes: MCS1.payloadSize(of: items),
-                displayType: DisplayType.classify(items),
-                skippedTypes: [],
-                sourceURL: original?.sourceURL,
-                sensitiveKind: sensitiveKind
-            )
-            let enrichment = IngestEnrichment.make(for: items, sourceAppName: original?.sourceAppName)
-            let result = await store.ingest(snapshot, readerSeq: monitor.coordinator.opSeq, enrichment: enrichment, limits: settings.retentionLimits)
-            switch result {
-            case .committed(let newID), .merged(let newID):
+            switch await ingestDerived(content.items, from: id) {
+            case .saved(let newID):
                 history.selectedID = newID
                 history.storeDidChange()
                 toasts.show(String(localized: "Duplicated as \(variant.title)"))
-            case .rejected(let message), .failed(let message):
+            case .secretNotSaved:
+                toasts.error(String(localized: "Not duplicated: the text contains a secret and secrets are not saved."))
+            case .failed(let message):
                 toasts.error(message)
-            case .dropped:
-                break
             }
         }
     }
 
-    // MARK: Record commands
+    enum DerivedResult {
+        case saved(UUID)
+        /// *Secrets: Don't save* applies to it, as to any copy.
+        case secretNotSaved
+        case failed(String)
+    }
+
+    /// Stores content made from a record (or from nothing) as a new record with the record's source;
+    /// the secret policy applies as it does to copies from other apps (§3.10).
+    private func ingestDerived(_ items: [CanonicalItem], from id: UUID?) async -> DerivedResult {
+        let original = id.flatMap { id in history.cards.first { $0.id == id } }
+        var appSettings = original?.sourceAppBundleID.map { settings.settings(for: $0) } ?? ResolvedAppSettings()
+        var sensitiveKind: SecretKind?
+        if let text = TextDecoding.plainText(of: items), settings.secretPolicy != .off,
+           let kind = SecretDetector.detect(text, kinds: settings.secretKinds) {
+            switch settings.secretPolicy {
+            case .off: break
+            case .dontSave: return .secretNotSaved
+            case .deleteAfter(let minutes):
+                appSettings.captureMode = .deleteAfter(minutes: min(minutes, appSettings.retentionMinutes ?? minutes))
+            }
+            sensitiveKind = kind
+        }
+        let snapshot = OwnedSnapshot(
+            changeCount: 0,
+            observedAt: Date(),
+            identity: AppIdentity(bundleID: original?.sourceAppBundleID, source: .frontmost),
+            settings: appSettings,
+            items: items,
+            contentHash: MCS1.contentHash(of: items),
+            payloadSizeBytes: MCS1.payloadSize(of: items),
+            displayType: DisplayType.classify(items),
+            skippedTypes: [],
+            sourceURL: original?.sourceURL,
+            sensitiveKind: sensitiveKind
+        )
+        let enrichment = IngestEnrichment.make(for: items, sourceAppName: original?.sourceAppName)
+        switch await store.ingest(snapshot, readerSeq: monitor.coordinator.opSeq, enrichment: enrichment, limits: settings.retentionLimits) {
+        case .committed(let newID), .merged(let newID):
+            return .saved(newID)
+        case .rejected(let message), .failed(let message):
+            return .failed(message)
+        case .dropped:
+            return .failed(String(localized: "Another change is in progress. Try again."))
+        }
+    }
 
     static func isEditable(_ card: HistoryCard) -> Bool {
         [.text, .richText, .url].contains(card.displayType)
@@ -556,17 +603,19 @@ final class AppModel {
         let maxBytes = settings.maxItemBytes
         switch await monitor.destructive({ opSeq in try await store.editText(id, text: text, opSeq: opSeq, maxBytes: maxBytes) }) {
         case .success(.updated):
+            monitor.recordChanged(id)
             present(nil)
             history.storeDidChange()
-            if thenRestore { await performRestore(id, variant: .original) }
+            if thenRestore { await performRestore(id) }
             return nil
         case .success(.merged(let survivor)):
+            monitor.recordChanged(id)
             present(nil)
             history.selectedID = survivor
             history.removeLocally([id])
             history.storeDidChange()
             toasts.show(String(localized: "Merged with an existing record"))
-            if thenRestore { await performRestore(survivor, variant: .original) }
+            if thenRestore { await performRestore(survivor) }
             return nil
         case .success(.rejected(let message)):
             return message

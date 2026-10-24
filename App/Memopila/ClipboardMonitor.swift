@@ -11,6 +11,10 @@ import os
 @Observable
 final class ClipboardMonitor {
     private(set) var current: CurrentClipboard?
+    /// The record the clipboard holds now (§8.2, *In Clipboard* on its card): set by a save or a
+    /// restore of exactly that change, cleared as soon as the clipboard holds anything else.
+    private(set) var clipboardRecordID: UUID?
+    @ObservationIgnored private var clipboardRecordChangeCount: Int?
     private(set) var access: PasteboardAccess.State = .needsEnable
     private(set) var coordinator: CaptureCoordinator
     private(set) var log: [DiagnosticsEvent] = []
@@ -88,8 +92,12 @@ final class ClipboardMonitor {
 
     private func tick() {
         refreshAccess()
-        if let current, NSPasteboard.general.changeCount != current.changeCount {
+        let changeCount = NSPasteboard.general.changeCount
+        if let current, changeCount != current.changeCount {
             self.current = nil
+        }
+        if clipboardRecordID != nil, changeCount != clipboardRecordChangeCount {
+            setClipboardRecord(nil, changeCount: nil)
         }
         // Tick a copy: writing back an unchanged coordinator would still notify every observer
         // four times a second (menu bar icon, banners) through the @Observable accessor.
@@ -202,6 +210,7 @@ final class ClipboardMonitor {
         case .committed(let id), .merged(let id):
             coordinator.recordSaveSuccess()
             if current?.changeCount == snapshot.changeCount { current = nil }
+            if NSPasteboard.general.changeCount == snapshot.changeCount { setClipboardRecord(id, changeCount: snapshot.changeCount) }
             record("change \(snapshot.changeCount) saved: \(snapshot.displayType.rawValue), \(snapshot.payloadSizeBytes) bytes")
             onSaved?(id)
         case .rejected(let reason):
@@ -232,6 +241,16 @@ final class ClipboardMonitor {
 
     func dismissCurrent() { current = nil }
 
+    /// The record no longer matches the clipboard (its text was edited).
+    func recordChanged(_ id: UUID) {
+        if clipboardRecordID == id { setClipboardRecord(nil, changeCount: nil) }
+    }
+
+    private func setClipboardRecord(_ id: UUID?, changeCount: Int?) {
+        clipboardRecordChangeCount = id == nil ? nil : changeCount
+        if clipboardRecordID != id { clipboardRecordID = id }
+    }
+
     func resumeAfterStorageError() {
         storageError = nil
         coordinator.recordSaveSuccess()
@@ -246,15 +265,18 @@ final class ClipboardMonitor {
     }
 
     /// Synchronous clear → write → confirm on the main actor; publishes the token only when confirmed.
-    func write(_ items: [CanonicalItem], sourceBundleID: String?) -> WriteOutcome {
+    /// `recordID`: the record whose content this is, marked *In Clipboard*.
+    func write(_ items: [CanonicalItem], sourceBundleID: String?, recordID: UUID?) -> WriteOutcome {
         let result = autoreleasepool { PasteboardWriter.write(items, sourceBundleID: sourceBundleID) }
         switch result {
         case .written(let ownedCount):
             coordinator.publishToken(ownedCount)
             if current != nil { current = nil }
+            setClipboardRecord(recordID, changeCount: ownedCount)
             record("restored as change \(ownedCount)")
             return .written
         case .unconfirmed:
+            setClipboardRecord(recordID, changeCount: NSPasteboard.general.changeCount)
             record("restore written but not confirmed: no suppression token")
             return .written
         case .aborted:

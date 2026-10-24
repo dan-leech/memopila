@@ -283,28 +283,6 @@ private struct BannerStack: View {
                     Button("Check Again") { monitor.refreshAccess() }
                 }
             }
-            if model.settings.pasteDirectly, !model.accessibilityTrusted {
-                Banner(
-                    systemImage: "hand.point.up.left.fill",
-                    tint: .blue,
-                    message: String(localized: "To paste into apps, Memopila needs Accessibility. Until then a chosen item is only copied: paste it with ⌘V.")
-                ) {
-                    Button("Allow…") {
-                        AccessibilityBridge.requestTrust()
-                        AccessibilityBridge.openSettings()
-                    }
-                    .help(String(localized: "Turn on Memopila in System Settings → Privacy & Security → Accessibility"))
-                    Button("Only Copy") { model.settings.pasteDirectly = false }
-                        .help(String(localized: "Choosing an item only copies it; paste with ⌘V. You can change this in Settings → General."))
-                }
-                // Picks up the permission while the banner is on screen.
-                .task {
-                    while !Task.isCancelled {
-                        try? await Task.sleep(for: .seconds(2))
-                        model.refreshAccessibility()
-                    }
-                }
-            }
             if let error = model.history.loadError {
                 Banner(systemImage: "exclamationmark.triangle.fill", tint: .red, message: String(localized: "History could not be loaded: \(error)"))
             }
@@ -386,8 +364,8 @@ private struct HistoryGrid: View {
                                 insertion: .scale(scale: 0.85).combined(with: .opacity),
                                 removal: .opacity
                             ))
-                            .accessibilityAction(named: Text(model.chooseTitle)) { model.restore(card.id) }
-                            .accessibilityAction(named: Text("Preview")) { model.present(.preview(card.id)) }
+                            .accessibilityAction(named: Text("Copy to Clipboard")) { model.restore(card.id) }
+                            .accessibilityAction(named: Text("Open")) { model.present(.item(card.id)) }
                             .onAppear { model.history.cardAppeared(card) }
                         }
                     }
@@ -437,7 +415,7 @@ private struct OverlayHost: View {
             ZStack {
                 Color.black.opacity(0.25)
                     .contentShape(Rectangle())
-                    .onTapGesture { model.present(nil) }
+                    .onTapGesture { model.dismissOverlay() }
                 content(for: overlay)
                     .background(.background, in: RoundedRectangle(cornerRadius: 12))
                     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
@@ -451,10 +429,9 @@ private struct OverlayHost: View {
     @ViewBuilder
     private func content(for overlay: PanelOverlay) -> some View {
         switch overlay {
-        case .preview(let id):
-            PreviewOverlay(model: model, id: id)
-        case .editor:
-            if let state = model.editorState { EditorOverlay(model: model, state: state) }
+        case .item:
+            // A new view per item: its text view and state belong to that item.
+            if let state = model.itemState { ItemOverlay(model: model, state: state).id(state.id) }
         case .rename(let id):
             let card = model.history.cards.first { $0.id == id }
             NameOverlay(

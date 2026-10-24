@@ -102,14 +102,10 @@ private struct GeneralSettings: View {
             }
 
             Section {
-                Picker("Choosing an item", selection: $settings.pasteDirectly) {
-                    Text("Pastes it into the app you were in").tag(true)
-                    Text("Only copies it to the clipboard").tag(false)
-                }
-                .pickerStyle(.radioGroup)
-                .onChange(of: settings.pasteDirectly) { _, enabled in
-                    if enabled, !AccessibilityBridge.isTrusted { AccessibilityBridge.requestTrust() }
-                }
+                Toggle("Also paste into the app you were in", isOn: $settings.pasteAfterCopy)
+                    .onChange(of: settings.pasteAfterCopy) { _, enabled in
+                        if enabled, !AccessibilityBridge.isTrusted { AccessibilityBridge.requestTrust() }
+                    }
                 TimelineView(.periodic(from: .now, by: 2)) { _ in
                     let trusted = AccessibilityBridge.isTrusted
                     LabeledContent("Accessibility") {
@@ -121,9 +117,9 @@ private struct GeneralSettings: View {
                     }
                 }
             } header: {
-                Text("Paste")
+                Text("After Copying")
             } footer: {
-                Text("↩, a double-click or ⌘1…⌘9 choose an item; ⌘C only copies it. To paste, Memopila puts the item on the clipboard and presses ⌘V for you, which needs Accessibility. Without it items are only copied: paste them with ⌘V. When allowed, Memopila also remembers the title of the window you copied from.")
+                Text("A double-click, ↩ or ⌘1…⌘9 put an item on the clipboard and take you back to the app you were in. With this option Memopila also presses ⌘V there for you, which needs Accessibility. When allowed, Memopila also remembers the title of the window you copied from.")
             }
         }
         .formStyle(.grouped)
