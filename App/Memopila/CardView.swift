@@ -9,7 +9,7 @@ import SwiftUI
 struct CardView: View {
     let card: HistoryCard
     let index: Int
-    /// The keyboard cursor (↑ ↓ ← →, a click): where ↩ and the shortcuts act.
+    /// The selection (↑ ↓ ← →, a click): where ↩ and the shortcuts act; the usual accent border.
     let hasCursor: Bool
     let model: AppModel
     @State private var image: NSImage?
@@ -21,9 +21,9 @@ struct CardView: View {
     private var thumbnails: ThumbnailCache { model.thumbnails }
     private var isUnavailable: Bool { fileStatus?.allMissing ?? false }
     private var isMedia: Bool { secretKind == nil && (card.displayType == .image || card.displayType == .pdf) }
-    /// The selected card: the clipboard holds this record now (§8.2). Choosing another card changes
-    /// what the clipboard holds, so there is one such card, or none when the clipboard holds
-    /// something that is not in history.
+    /// The clipboard holds this record now (§8.2): a thin outline around the card, so with the
+    /// selection on it the card has a double frame. Selecting another record changes it; no card
+    /// has it when the clipboard holds something that is not in history.
     private var isOnClipboard: Bool { model.monitor.clipboardRecordID == card.id }
 
     var body: some View {
@@ -40,15 +40,23 @@ struct CardView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(RoundedRectangle(cornerRadius: Self.radius, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
-        .overlay {
-            if isOnClipboard {
-                RoundedRectangle(cornerRadius: Self.radius, style: .continuous).fill(Color.accentColor.opacity(0.1)).allowsHitTesting(false)
-            }
-        }
+
         .clipShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
-                .strokeBorder(borderColor, lineWidth: isOnClipboard ? 2.5 : hasCursor ? 2 : 1)
+                .strokeBorder(
+                    hasCursor ? Color.accentColor : Color.primary.opacity(isHovered ? 0.2 : 0.08),
+                    lineWidth: hasCursor ? 2.5 : 1
+                )
+        }
+        .overlay {
+            if isOnClipboard {
+                // Outside the card with a gap, so next to the selection border it reads as a second frame.
+                RoundedRectangle(cornerRadius: Self.radius + 4, style: .continuous)
+                    .strokeBorder(Color.accentColor, lineWidth: 1.25)
+                    .padding(-4)
+                    .allowsHitTesting(false)
+            }
         }
         .overlay(alignment: .topTrailing) { cornerControls }
         .overlay {
@@ -72,14 +80,7 @@ struct CardView: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(accessibilityText))
-        .accessibilityAddTraits(isOnClipboard ? [.isButton, .isSelected] : .isButton)
-    }
-
-    /// Accent: on the clipboard (selected). Grey: the keyboard cursor on another card.
-    private var borderColor: Color {
-        if isOnClipboard { return .accentColor }
-        if hasCursor { return Color.primary.opacity(0.5) }
-        return Color.primary.opacity(isHovered ? 0.2 : 0.08)
+        .accessibilityAddTraits(hasCursor ? [.isButton, .isSelected] : .isButton)
     }
 
     private func titleStrip(_ title: String) -> some View {
