@@ -101,6 +101,12 @@ enum ActionRegistry {
                     NSWorkspace.shared.activateFileViewerSelecting(existing)
                 }
             })
+            // The full path as text: to the clipboard and into history, as Copy Text does.
+            open.append(ActionItem(
+                id: "copyPath",
+                title: paths.count > 1 ? String(localized: "Copy Paths") : String(localized: "Copy Path"),
+                systemImage: "doc.on.clipboard"
+            ) { model.copyNewText(paths.joined(separator: "\n"), from: id) })
         }
         if !open.isEmpty { items += [.divider("open")] + open }
 

@@ -953,7 +953,7 @@ Card context menu (also behind the card's **⋯** hover button). Actions that do
 
 - **Select** (↩, the same as a double-click: the record becomes the clipboard content) · Add to / Remove from Favorites (⌘D) · *Remove from “Name”* while that collection is open · **Collections: Name, …** ▸ (*Add to Collection* ▸ when in none) with a checkmark per collection and New Collection…
 - **Edit Record** (⌘E or Space: the record window, §8.5) · Rename… · **Duplicate As ▸** — Plain Text, No Formatting · Text from Image · text actions (§3.9); the result is a new card, the clipboard is untouched
-- Open Source Page (§5.2) · Reveal in Finder (files)
+- Open Source Page (§5.2) · Reveal in Finder · Copy Path / Copy Paths (files: the full paths, one per line, as a new text card on the clipboard)
 - **Rules for <App> ▸** — the quick actions of §5.1 plus *Delete This and Stop Saving from <App>*
 - Delete (⌘⌫)
 
@@ -973,7 +973,7 @@ Opened to look at, nothing in it has the focus: ↑ ↓ ← → move to other re
 - **Text:** the whole text, editable for text, rich text and links (read-only for mixed items).
 - **Code:** syntax highlighting when the text looks like code (content heuristics; source app is an editor or terminal as a hint), kept up to date while editing. Language auto-detected; the picker overrides it and is saved as `codeLanguage`. Theme follows light/dark. Released when the view closes (§7.3). **Decision (Phase 5):** an own lightweight tokenizer in `MemopilaCore` (`CodeHighlighter`: detection plus keywords, strings, comments, numbers, keys, tags for 19 languages). Highlightr (JavaScriptCore + highlight.js) costs tens of MB and tree-sitter needs a grammar per language and has no detection; preview-grade coloring does not need either. Revisit if users ask for more precision.
 - **Image / PDF:** downsampled to the view size; the recognized text is selectable, and **Copy Selected Text** / **Copy All Text** put it on the clipboard as a new card (§3.4, §3.8).
-- **File:** QuickLook thumbnail, path, size, Reveal.
+- **File:** QuickLook thumbnail, full path (selectable; with several files each has its own copy button), size, **Reveal in Finder** and **Copy Path** / **Copy Paths** (one per line; to the clipboard and into history as a text card, like Copy Text).
 - **Color:** swatch and hex.
 
 ### 8.6 Search

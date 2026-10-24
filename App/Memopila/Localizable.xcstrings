@@ -1553,6 +1553,26 @@
         }
       }
     },
+    "Copy Path": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать путь"
+          }
+        }
+      }
+    },
+    "Copy Paths": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать пути"
+          }
+        }
+      }
+    },
     "Copy Selected Text": {
       "localizations": {
         "ru": {
@@ -1569,6 +1589,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Скопируйте что-нибудь, чтобы начать историю."
+          }
+        }
+      }
+    },
+    "Copy the full path to the clipboard": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать полный путь"
+          }
+        }
+      }
+    },
+    "Copy the full paths, one per line, to the clipboard": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать полные пути, по одному в строке"
+          }
+        }
+      }
+    },
+    "Copy this path": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать этот путь"
           }
         }
       }

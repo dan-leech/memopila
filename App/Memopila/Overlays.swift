@@ -259,7 +259,9 @@ struct RecordView: View {
                         Text(card.colorHex ?? "").font(.title.monospaced()).textSelection(.enabled)
                     }
                 case .file:
-                    FilePreview(card: card, thumbnails: model.thumbnails)
+                    FilePreview(card: card, thumbnails: model.thumbnails) { [model, id = state.id] path in
+                        model.copyNewText(path, from: id)
+                    }
                 case .text, .richText, .url, .mixed:
                     EmptyView()
                 }
@@ -680,6 +682,8 @@ struct RecordView: View {
 private struct FilePreview: View {
     let card: HistoryCard
     let thumbnails: ThumbnailCache
+    /// The full path as text, to the clipboard and into history.
+    let copyPath: @MainActor (String) -> Void
     @State private var image: NSImage?
     @State private var status: ThumbnailCache.FileStatus?
 
@@ -695,7 +699,15 @@ private struct FilePreview: View {
             .frame(width: 180, height: 140)
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(card.filePaths, id: \.self) { path in
-                    Text(path).font(.caption.monospaced()).textSelection(.enabled).lineLimit(2)
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(path).font(.caption.monospaced()).textSelection(.enabled).lineLimit(3)
+                        if card.filePaths.count > 1 {
+                            Button { copyPath(path) } label: { Image(systemName: "doc.on.clipboard") }
+                                .buttonStyle(.borderless)
+                                .controlSize(.small)
+                                .help(String(localized: "Copy this path"))
+                        }
+                    }
                 }
                 if let status {
                     if status.allMissing {
@@ -704,11 +716,19 @@ private struct FilePreview: View {
                         Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)).font(.caption).foregroundStyle(.secondary)
                     }
                 }
-                Button("Reveal in Finder") {
-                    let urls = card.filePaths.map { URL(fileURLWithPath: $0) }.filter { FileManager.default.fileExists(atPath: $0.path) }
-                    NSWorkspace.shared.activateFileViewerSelecting(urls)
+                HStack(spacing: 8) {
+                    Button("Reveal in Finder") {
+                        let urls = card.filePaths.map { URL(fileURLWithPath: $0) }.filter { FileManager.default.fileExists(atPath: $0.path) }
+                        NSWorkspace.shared.activateFileViewerSelecting(urls)
+                    }
+                    .disabled(status?.allMissing ?? false)
+                    Button(card.filePaths.count > 1 ? String(localized: "Copy Paths") : String(localized: "Copy Path")) {
+                        copyPath(card.filePaths.joined(separator: "\n"))
+                    }
+                    .help(card.filePaths.count > 1
+                        ? String(localized: "Copy the full paths, one per line, to the clipboard")
+                        : String(localized: "Copy the full path to the clipboard"))
                 }
-                .disabled(status?.allMissing ?? false)
             }
             Spacer(minLength: 0)
         }
