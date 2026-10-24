@@ -220,6 +220,20 @@ struct ClipboardStoreTests {
         #expect(try await store.card(b)?.copyCount == 2)
     }
 
+    @Test func editRichTextKeepsFormattingHTMLAndPlainText() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let id) = await ingest(store, snapshot("plain", at: 1)) else { return }
+        let rich = RichContent(type: .rtf, data: Data("{\\rtf1 {\\b bold} text}".utf8), html: Data("<b>bold</b> text".utf8))
+        #expect(try await store.editText(id, text: "bold text", rich: rich, opSeq: 1, maxBytes: 1_000) == .updated)
+        let card = try #require(try await store.card(id))
+        #expect(card.displayType == .richText)
+        #expect(card.storedTypes == [PasteboardType.rtf.rawValue, PasteboardType.html.rawValue, PasteboardType.utf8PlainText.rawValue])
+        let payload = try await store.payload(for: id)
+        #expect(payload.text == "bold text")
+        #expect(payload.items.flatMap(\.representations).map(\.type) == [.rtf, .html, .utf8PlainText])
+        #expect(try await store.editText(id, text: "bold text", rich: rich, opSeq: 2, maxBytes: 10) != .updated, "RTF and HTML count against the limit")
+    }
+
     @Test func renameIsSearchable() async throws {
         let store = try ClipboardStore(url: nil)
         guard case .committed(let id) = await ingest(store, snapshot("x")) else { return }

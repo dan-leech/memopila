@@ -7,6 +7,8 @@ import SwiftUI
 struct ChangesSheet: View {
     let original: String
     let edited: String
+    /// Formatted text whose formatting changed: said when the words did not.
+    var formattingChanged = false
     let onSave: () -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var diff: LineDiff?
@@ -30,7 +32,7 @@ struct ChangesSheet: View {
             Group {
                 if let diff {
                     if diff.isEmpty {
-                        Text("The text is the same as the saved text.")
+                        (formattingChanged ? Text("Only the formatting changed.") : Text("The text is the same as the saved text."))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {

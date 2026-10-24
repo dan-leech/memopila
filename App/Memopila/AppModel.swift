@@ -183,12 +183,17 @@ final class AppModel {
         hidePanelForWindow()
         windows.showRecord(focusText: state.focusOnLoad)
         guard state.hasText else { return }
-        Task {
-            if let text = await editorText(card.id) {
-                state.load(text)
-            } else {
-                state.error = String(localized: "The text could not be loaded.")
-            }
+        Task { await loadText(into: state) }
+    }
+
+    /// Formatted records open formatted when their RTF or HTML can be read, others as plain text.
+    private func loadText(into state: ItemState) async {
+        if state.card.displayType == .richText, let rich = await editorRichText(state.id) {
+            state.load(rich: rich)
+        } else if let text = await editorText(state.id) {
+            state.load(text)
+        } else {
+            state.error = String(localized: "The text could not be loaded.")
         }
     }
 
@@ -295,8 +300,14 @@ final class AppModel {
             state.error = String(localized: "The text is empty.")
             return false
         }
+        // Formatted text is saved as RTF and HTML besides the plain text.
+        let rich = state.richContent()
+        if state.isRich, rich == nil {
+            state.error = String(localized: "The formatting could not be saved.")
+            return false
+        }
         state.isSaving = true
-        let error = await saveEdit(state.id, text: text)
+        let error = await saveEdit(state.id, text: text, rich: rich)
         state.isSaving = false
         state.error = error
         return error == nil
@@ -820,10 +831,10 @@ final class AppModel {
     }
 
     /// Edit save (§3.6). Returns an error message, or `nil` on success; the window stays open.
-    func saveEdit(_ id: UUID, text: String) async -> String? {
+    func saveEdit(_ id: UUID, text: String, rich: RichContent? = nil) async -> String? {
         let store = store
         let maxBytes = settings.maxItemBytes
-        switch await monitor.destructive({ opSeq in try await store.editText(id, text: text, opSeq: opSeq, maxBytes: maxBytes) }) {
+        switch await monitor.destructive({ opSeq in try await store.editText(id, text: text, rich: rich, opSeq: opSeq, maxBytes: maxBytes) }) {
         case .success(.updated):
             monitor.recordChanged(id)
             history.storeDidChange()
@@ -858,7 +869,7 @@ final class AppModel {
         let state = ItemState(card: card, focusOnLoad: false, maxBytes: settings.maxItemBytes)
         itemState = state
         windows.showRecord(focusText: false)
-        if let text = await editorText(id) { state.load(text) }
+        if state.hasText { await loadText(into: state) }
     }
 
     /// Full text for the editor and preview (≤ 20 000 scalars in the preview, §7.4).
@@ -869,6 +880,26 @@ final class AppModel {
     func editorText(_ id: UUID) async -> String? {
         guard let payload = try? await store.payload(for: id) else { return nil }
         return payload.text
+    }
+
+    /// The richest readable formatted text of a record: RTFD, RTF, HTML, then a web archive.
+    /// Above 4 MB it opens as plain text, to stay light. HTML is read on the main thread, as
+    /// AppKit requires.
+    func editorRichText(_ id: UUID) async -> NSAttributedString? {
+        guard let payload = try? await store.payload(for: id) else { return nil }
+        let representations = payload.items.flatMap(\.representations)
+        let readable: [(PasteboardType, NSAttributedString.DocumentType)] = [
+            (.flatRTFD, .rtfd), (.rtf, .rtf), (.html, .html), (.webArchive, .webArchive), (.legacyWebArchive, .webArchive),
+        ]
+        for (type, documentType) in readable {
+            guard let data = representations.first(where: { $0.type == type })?.bytes, data.count <= 4 * 1_048_576 else { continue }
+            var options: [NSAttributedString.DocumentReadingOptionKey: Any] = [.documentType: documentType]
+            if documentType == .html { options[.characterEncoding] = String.Encoding.utf8.rawValue }
+            if let text = try? NSAttributedString(data: data, options: options, documentAttributes: nil), text.length > 0 {
+                return text
+            }
+        }
+        return nil
     }
 
     func clear(_ scope: ClearScope) {

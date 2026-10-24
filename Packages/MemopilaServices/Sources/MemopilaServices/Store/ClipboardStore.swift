@@ -175,7 +175,11 @@ public actor ClipboardStore {
             recognitionState: RecognitionState(rawValue: record.ocrStateRaw) ?? .off,
             storedTypes: rows.map(\.uti),
             sourceWindowTitle: record.sourceWindowTitle,
-            collectionIDs: Set(tags.map(\.collectionID))
+            collectionIDs: Set(tags.map(\.collectionID)),
+            linkTitle: rows.first { $0.uti == PasteboardType.urlName.rawValue }?.bytes
+                .flatMap { String(data: $0, encoding: .utf8) }
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 
@@ -311,8 +315,9 @@ public actor ClipboardStore {
         try context.save()
     }
 
-    /// Edit text (§3.6): in-place replacement with one plain-text item, merge on collision.
-    public func editText(_ id: UUID, text: String, opSeq: Int, maxBytes: Int) throws -> EditResult {
+    /// Edit text (§3.6): in-place replacement with one item — the formatted text when `rich` is
+    /// given, always the plain text — and merge on collision.
+    public func editText(_ id: UUID, text: String, rich: RichContent? = nil, opSeq: Int, maxBytes: Int) throws -> EditResult {
         let context = makeContext()
         guard let record = try fetchRecord(id, in: context) else { return .rejected("The record no longer exists.") }
         guard let type = DisplayType(rawValue: record.displayTypeRaw), [.text, .richText, .url].contains(type) else {
@@ -320,9 +325,16 @@ public actor ClipboardStore {
         }
         guard !text.isEmpty else { return .rejected("The text is empty.") }
         let data = Data(text.utf8)
-        guard data.count <= maxBytes else { return .rejected("The text is larger than the item size limit.") }
+        var representations: [CanonicalRepresentation] = []
+        if let rich {
+            representations.append(.bytes(rich.type, rich.data))
+            if let html = rich.html { representations.append(.bytes(.html, html)) }
+        }
+        representations.append(.bytes(.utf8PlainText, data))
+        let size = representations.reduce(0) { $0 + $1.byteCount }
+        guard size <= maxBytes else { return .rejected("The text is larger than the item size limit.") }
 
-        let items = [CanonicalItem([.bytes(.utf8PlainText, data)])]
+        let items = [CanonicalItem(representations)]
         let hash = MCS1.contentHash(of: items)
         guard hash != record.contentHash else { return .updated }
         staleGuard.recordTombstone(contentHash: record.contentHash, opSeq: opSeq)
@@ -348,15 +360,16 @@ public actor ClipboardStore {
             record.representations = []
             insertRepresentations(of: items, for: record, in: context)
             record.contentHash = hash
-            record.payloadSizeBytes = data.count
-            record.displayTypeRaw = TextDecoding.isSingleWebURL(text) ? DisplayType.url.rawValue : DisplayType.text.rawValue
+            record.payloadSizeBytes = size
+            record.displayTypeRaw = rich != nil ? DisplayType.richText.rawValue
+                : TextDecoding.isSingleWebURL(text) ? DisplayType.url.rawValue : DisplayType.text.rawValue
             record.cardPreview = TextDecoding.prefix(text, maxScalars: IngestEnrichment.cardPreviewScalars)
             record.textIndex = TextDecoding.prefix(text, maxScalars: IngestEnrichment.searchScalars)
             record.textLength = text.count
             record.lineCount = TextStats.lineCount(text)
             if record.sensitiveKind != nil { record.sensitiveKind = SecretDetector.detect(text)?.rawValue }
             record.editedAt = Date()
-            record.storedTypes = [PasteboardType.utf8PlainText.rawValue]
+            record.storedTypes = representations.map(\.type.rawValue)
             record.skippedTypes = []
             record.searchText = Self.searchText(for: record)
         }

@@ -101,6 +101,22 @@ final class ItemState {
     @ObservationIgnored private var highlightTask: Task<Void, Never>?
     /// Fit, Actual Size and zoom of an image or PDF record.
     let imageZoom = ImageZoom()
+    /// The text recognized in an image, under it; ⌘F searches it.
+    let recognizedText = TextSelection()
+    /// ⌥⌘I asks the record view to show or hide the inspector.
+    var inspectorToggleRequests = 0
+    /// The link of a URL record as it is now, for the header above its text.
+    private(set) var linkText = ""
+
+    /// Formatted text (RTF, HTML) shown and edited with its formatting (§3.6); off = as plain
+    /// text, and saving then keeps only the text.
+    private(set) var isRich = false
+    /// The record has formatted text that could be read.
+    private(set) var hasRichSource = false
+    @ObservationIgnored private var richSource: NSAttributedString?
+    /// The formatted text as the text view holds it after loading or saving: *Edited* compares
+    /// with it, so a change of formatting alone counts too.
+    @ObservationIgnored private var initialRich: NSAttributedString?
 
     /// Highlighting stops above this many UTF-16 units: colouring that much text costs more than it helps.
     private static let highlightLimit = 200_000
@@ -160,7 +176,16 @@ final class ItemState {
 
     private func applyFont() {
         guard let textView else { return }
-        textView.font = usesMonospacedFont ? .monospacedSystemFont(ofSize: fontSize, weight: .regular) : .systemFont(ofSize: fontSize)
+        if isRich {
+            // Formatted text keeps its own fonts: the size controls zoom it instead.
+            if let scrollView = textView.enclosingScrollView {
+                scrollView.allowsMagnification = true
+                scrollView.magnification = fontSize / Self.defaultFontSize
+            }
+        } else {
+            textView.enclosingScrollView?.magnification = 1
+            textView.font = usesMonospacedFont ? .monospacedSystemFont(ofSize: fontSize, weight: .regular) : .systemFont(ofSize: fontSize)
+        }
         // Line heights changed: the numbers move with them.
         textView.enclosingScrollView?.verticalRulerView?.needsDisplay = true
     }
@@ -227,7 +252,148 @@ final class ItemState {
     /// Save kept the window open: the saved text is the new starting point.
     func textSaved() {
         initialText = textView?.string ?? initialText
+        if isRich, let storage = textView?.textStorage {
+            initialRich = storage.copy() as? NSAttributedString
+            richSource = initialRich
+        }
         updateDirty()
+    }
+
+    /// Formatted text: shown with its formatting, editable as rich text.
+    func load(rich: NSAttributedString) {
+        richSource = rich
+        hasRichSource = true
+        isRich = true
+        initialText = rich.string
+        isLoaded = true
+        if let textView { showRich(in: textView) }
+        textDidChange()
+        if focusOnLoad { focus() }
+    }
+
+    private func showRich(in textView: NSTextView) {
+        guard let richSource, let storage = textView.textStorage else { return }
+        textView.isRichText = true
+        // Colours chosen for a white page stay readable in Dark Mode, as in Mail and Notes.
+        textView.usesAdaptiveColorMappingForDarkAppearance = true
+        storage.setAttributedString(richSource)
+        textView.undoManager?.removeAllActions()
+        // As the text view holds it: loading may have fixed fonts or attributes.
+        initialRich = storage.copy() as? NSAttributedString
+        applyFont()
+    }
+
+    /// *Show Formatting* in the View menu. Only without unsaved changes: the other view starts from
+    /// the stored text. Off, the text is plain — code features on — and saving keeps only the text.
+    func setShowsFormatting(_ on: Bool) {
+        guard hasRichSource, on != isRich, !isDirty, let textView, let storage = textView.textStorage else { return }
+        isRich = on
+        if on {
+            highlightTask?.cancel()
+            if highlightedLanguage != nil {
+                highlightedLanguage = nil
+                applyRulers()
+            }
+            showRich(in: textView)
+        } else {
+            let text = storage.string
+            textView.usesAdaptiveColorMappingForDarkAppearance = false
+            textView.isRichText = false
+            storage.setAttributedString(NSAttributedString(string: text, attributes: [
+                .foregroundColor: NSColor.labelColor,
+                .paragraphStyle: textView.defaultParagraphStyle ?? .default,
+            ]))
+            textView.undoManager?.removeAllActions()
+            initialRich = nil
+            initialText = text
+            applyFont()
+        }
+        textDidChange()
+    }
+
+    /// RTF (flat RTFD with attachments) and HTML of the formatted text, for saving.
+    func richContent() -> RichContent? {
+        guard isRich, let storage = textView?.textStorage else { return nil }
+        let range = NSRange(location: 0, length: storage.length)
+        let hasAttachments = storage.containsAttachments(in: range)
+        let data = hasAttachments
+            ? storage.rtfd(from: range, documentAttributes: [:])
+            : storage.rtf(from: range, documentAttributes: [:])
+        guard let data else { return nil }
+        let html = try? storage.data(from: range, documentAttributes: [
+            .documentType: NSAttributedString.DocumentType.html,
+            .characterEncoding: String.Encoding.utf8.rawValue,
+        ])
+        return RichContent(type: hasAttachments ? .flatRTFD : .rtf, data: data, html: html)
+    }
+
+    /// ⌘B, ⌘I and the toolbar: bold or italic for the selection — off when all of it has it —
+    /// or for what is typed next. One change ⌘Z undoes.
+    func toggleTrait(_ trait: NSFontTraitMask) {
+        guard isRich, let textView, let storage = textView.textStorage else { return }
+        let manager = NSFontManager.shared
+        let fallback = NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        let range = textView.selectedRange()
+        guard range.length > 0 else {
+            var attributes = textView.typingAttributes
+            let font = attributes[.font] as? NSFont ?? fallback
+            let has = manager.traits(of: font).contains(trait)
+            attributes[.font] = has ? manager.convert(font, toNotHaveTrait: trait) : manager.convert(font, toHaveTrait: trait)
+            textView.typingAttributes = attributes
+            return
+        }
+        var allHave = true
+        storage.enumerateAttribute(.font, in: range, options: []) { value, _, stop in
+            if !manager.traits(of: value as? NSFont ?? fallback).contains(trait) {
+                allHave = false
+                stop.pointee = true
+            }
+        }
+        guard textView.shouldChangeText(in: range, replacementString: nil) else { return }
+        storage.beginEditing()
+        storage.enumerateAttribute(.font, in: range, options: []) { value, subrange, _ in
+            let font = value as? NSFont ?? fallback
+            let converted = allHave ? manager.convert(font, toNotHaveTrait: trait) : manager.convert(font, toHaveTrait: trait)
+            storage.addAttribute(.font, value: converted, range: subrange)
+        }
+        storage.endEditing()
+        textView.didChangeText()
+    }
+
+    /// ⌘U and the toolbar: underline the selection, or remove it when all of it is underlined.
+    func toggleUnderline() {
+        guard isRich, let textView, let storage = textView.textStorage else { return }
+        let range = textView.selectedRange()
+        guard range.length > 0 else {
+            var attributes = textView.typingAttributes
+            if (attributes[.underlineStyle] as? Int ?? 0) != 0 {
+                attributes.removeValue(forKey: .underlineStyle)
+            } else {
+                attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+            }
+            textView.typingAttributes = attributes
+            return
+        }
+        var allUnderlined = true
+        storage.enumerateAttribute(.underlineStyle, in: range, options: []) { value, _, stop in
+            if (value as? Int ?? 0) == 0 {
+                allUnderlined = false
+                stop.pointee = true
+            }
+        }
+        guard textView.shouldChangeText(in: range, replacementString: nil) else { return }
+        if allUnderlined {
+            storage.removeAttribute(.underlineStyle, range: range)
+        } else {
+            storage.addAttribute(.underlineStyle, value: NSUnderlineStyle.single.rawValue, range: range)
+        }
+        textView.didChangeText()
+    }
+
+    /// ⌘F on an image: the find bar of the recognized text, opening its pane first.
+    func findInRecognizedText() {
+        UserDefaults.standard.set(true, forKey: "recordRecognizedTextShown")
+        recognizedText.showFind()
     }
 
     func load(_ text: String) {
@@ -243,7 +409,9 @@ final class ItemState {
         textView.isEditable = isEditable
         applyFont()
         applyInvisibles()
-        if isLoaded, textView.string.isEmpty { textView.string = initialText }
+        if isLoaded, textView.string.isEmpty {
+            if isRich { showRich(in: textView) } else { textView.string = initialText }
+        }
         applyWrapping()
         applyRulers()
         textDidChange()
@@ -270,6 +438,10 @@ final class ItemState {
         // UTF-8 takes at most 3 bytes per UTF-16 unit: far from the limit there is nothing to count.
         let bytes: Int? = length * 3 < maxBytes / 5 * 4 ? nil : text.utf8.count
         if bytes != byteCount { byteCount = bytes }
+        if card.displayType == .url {
+            let link = length < 10_000 ? text.trimmingCharacters(in: .whitespacesAndNewlines) : ""
+            if link != linkText { linkText = link }
+        }
         updateDirty()
         (textView?.enclosingScrollView?.verticalRulerView as? LineNumberRuler)?.textDidChange()
         scheduleAvailability()
@@ -277,7 +449,12 @@ final class ItemState {
     }
 
     private func updateDirty() {
-        let textChanged = isLoaded && (textView?.string ?? initialText) != initialText
+        let textChanged: Bool
+        if isRich, let storage = textView?.textStorage, let initialRich {
+            textChanged = isLoaded && !storage.isEqual(to: initialRich)
+        } else {
+            textChanged = isLoaded && (textView?.string ?? initialText) != initialText
+        }
         if textChanged != isTextDirty { isTextDirty = textChanged }
         // The dot in the close button, as in any Mac editor.
         if let window = textView?.window, window.isDocumentEdited != textChanged { window.isDocumentEdited = textChanged }
@@ -289,7 +466,11 @@ final class ItemState {
         guard let textView else { return }
         let range = NSRange(location: 0, length: (textView.string as NSString).length)
         guard textView.shouldChangeText(in: range, replacementString: initialText) else { return }
-        textView.textStorage?.replaceCharacters(in: range, with: initialText)
+        if isRich, let initialRich {
+            textView.textStorage?.replaceCharacters(in: range, with: initialRich)
+        } else {
+            textView.textStorage?.replaceCharacters(in: range, with: initialText)
+        }
         textView.didChangeText()
         textView.setSelectedRange(NSRange(location: 0, length: 0))
     }
@@ -333,7 +514,8 @@ final class ItemState {
 
     private func scheduleHighlight(after delay: Duration) {
         highlightTask?.cancel()
-        guard hasText, card.displayType != .url else { return }
+        // Formatted text keeps its own colours.
+        guard hasText, card.displayType != .url, !isRich else { return }
         highlightTask = Task { [weak self] in
             if delay > .zero { try? await Task.sleep(for: delay) }
             guard !Task.isCancelled else { return }
@@ -396,11 +578,29 @@ final class ItemState {
 final class TextSelection {
     @ObservationIgnored private weak var textView: NSTextView?
     private(set) var hasSelection = false
+    /// ⌘F came before the text view was shown.
+    @ObservationIgnored private var findsOnAttach = false
 
     func attach(_ textView: NSTextView, text: String) {
         self.textView = textView
         textView.string = text
         update()
+        if findsOnAttach {
+            findsOnAttach = false
+            Task { @MainActor in self.showFind() }
+        }
+    }
+
+    /// The find bar of the text.
+    func showFind() {
+        guard let textView else {
+            findsOnAttach = true
+            return
+        }
+        textView.window?.makeFirstResponder(textView)
+        let item = NSMenuItem()
+        item.tag = NSTextFinder.Action.showFindInterface.rawValue
+        textView.performFindPanelAction(item)
     }
 
     func update() {

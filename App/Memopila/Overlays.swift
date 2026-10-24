@@ -33,18 +33,18 @@ enum LanguageChoice: Hashable {
 /// every control has a label or a tooltip, the details sit in an inspector, and the status bar
 /// says what the keys do right now.
 ///
-/// - Toolbar: ‹ › and the position, Undo / Redo and labelled text-action menus, Find, the inspector
-///   toggle and **Select**.
-/// - Content: the text (edited in place, code highlighted as you type), the image, the file or the
-///   colour.
-/// - Inspector: title, source, highlighting language, text found in an image, details.
-/// - Status bar: what to do next, counts, Wrap lines, Revert / Save.
+/// - Toolbar: ‹ › and the position, Undo / Redo, *Transform*, bold / italic / underline for
+///   formatted text, Find, the inspector toggle and **Select**.
+/// - Content: the text (edited in place: code highlighted as you type, formatted text with its
+///   formatting), a link's header, the image with the text found in it, the file through Quick Look
+///   or the colour with its values.
+/// - Inspector (hidden in a narrow window unless asked for): title, source, collections, details.
+/// - Status bar: what to do next, counts, language, View, Changes / Revert / Save.
 struct RecordView: View {
     let model: AppModel
     @Bindable var state: ItemState
     @State private var details: RecordDetails?
     @State private var image: NSImage?
-    @State private var recognizedText = TextSelection()
     @State private var newCollectionName = ""
     @State private var showsChanges = false
     @State private var isNamingCollection = false
@@ -54,8 +54,20 @@ struct RecordView: View {
     @AppStorage("recordRecognizedTextShown") private var showsRecognizedText = true
     @AppStorage("recordRecognizedTextHeight") private var recognizedTextHeight = 170.0
     @AppStorage("recordDetailsExpanded") private var showsDetails = false
+    /// The window's width: below `inspectorMinWidth` the inspector hides unless asked for.
+    @State private var width: CGFloat = 1_000
+    @State private var showsInspectorWhenNarrow = false
 
     static let inspectorKey = "recordInspectorShown"
+    /// Narrower than this, the text or image keeps the room (first-run feedback).
+    private static let inspectorMinWidth: CGFloat = 780
+
+    private var isNarrow: Bool { width < Self.inspectorMinWidth }
+    private var inspectorVisible: Bool { isNarrow ? showsInspectorWhenNarrow : showsInspector }
+
+    private func toggleInspector() {
+        if isNarrow { showsInspectorWhenNarrow.toggle() } else { showsInspector.toggle() }
+    }
 
     private var card: HistoryCard { details?.card ?? state.card }
     private var isImage: Bool { [.image, .pdf].contains(state.card.displayType) }
@@ -68,7 +80,7 @@ struct RecordView: View {
             HStack(spacing: 0) {
                 content
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-                if showsInspector {
+                if inspectorVisible {
                     Divider()
                     inspector
                         .frame(width: 260)
@@ -79,7 +91,10 @@ struct RecordView: View {
             statusBar
         }
         .frame(minWidth: 640, maxWidth: .infinity, minHeight: 380, maxHeight: .infinity)
-        .animation(.easeOut(duration: 0.15), value: showsInspector)
+        .animation(.easeOut(duration: 0.15), value: inspectorVisible)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
+        .onChange(of: isNarrow) { _, _ in showsInspectorWhenNarrow = false }
+        .onChange(of: state.inspectorToggleRequests) { _, _ in toggleInspector() }
         .task(id: state.id) { await load() }
         // Recognition finished while the record is open: its text appears under the image.
         .onChange(of: model.recognitionTick) { _, _ in
@@ -87,7 +102,11 @@ struct RecordView: View {
         }
         .onChange(of: state.language) { _, value in model.setCodeLanguage(state.id, value.stored) }
         .sheet(isPresented: $showsChanges) {
-            ChangesSheet(original: state.initialText, edited: state.currentText() ?? state.initialText) { model.saveItem() }
+            ChangesSheet(
+                original: state.initialText,
+                edited: state.currentText() ?? state.initialText,
+                formattingChanged: state.isRich && state.isDirty
+            ) { model.saveItem() }
         }
     }
 
@@ -102,6 +121,15 @@ struct RecordView: View {
                 ToolbarIcon(systemImage: "arrow.uturn.forward", help: String(localized: "Redo (⇧⌘Z)")) { state.redo() }
                 Divider().frame(height: 18).padding(.horizontal, 4)
                 transformMenu
+                if state.isRich {
+                    ToolbarIcon(systemImage: "bold", help: String(localized: "Bold (⌘B)")) { state.toggleTrait(.boldFontMask) }
+                    ToolbarIcon(systemImage: "italic", help: String(localized: "Italic (⌘I)")) { state.toggleTrait(.italicFontMask) }
+                    ToolbarIcon(systemImage: "underline", help: String(localized: "Underline (⌘U)")) { state.toggleUnderline() }
+                }
+            }
+            if isImage, details?.recognizedText != nil {
+                Button { state.findInRecognizedText() } label: { Label("Find", systemImage: "magnifyingglass") }
+                    .help(String(localized: "Find in the text recognized in the image (⌘F)"))
             }
             if state.hasText {
                 Button { state.showFind() } label: { Label("Find", systemImage: "magnifyingglass") }
@@ -112,11 +140,11 @@ struct RecordView: View {
             if isImage { imageControls }
             Spacer(minLength: 8)
             Button {
-                showsInspector.toggle()
+                toggleInspector()
             } label: {
                 Image(systemName: "sidebar.right")
             }
-            .help(showsInspector
+            .help(inspectorVisible
                 ? String(localized: "Hide the title, source and details (⌥⌘I)")
                 : String(localized: "Show the title, source and details (⌥⌘I)"))
             .accessibilityLabel(Text("Inspector"))
@@ -218,17 +246,12 @@ struct RecordView: View {
     @ViewBuilder
     private var content: some View {
         if state.hasText {
-            TextPane(isEditable: state.isEditable, font: .monospacedSystemFont(ofSize: 12.5, weight: .regular), hasLineNumbers: true) { textView in
-                state.attach(textView)
-            } onTextChange: {
-                state.textDidChange()
-            } onSelectionChange: {
-                state.selectionDidChange()
-            } onFocusChange: { focused in
-                state.isEditingText = focused
-            }
-            .overlay {
-                if !state.isLoaded, state.error == nil { ProgressView().controlSize(.small) }
+            VStack(spacing: 0) {
+                if state.card.displayType == .url {
+                    linkHeader
+                    Divider()
+                }
+                textEditor
             }
         } else if isImage {
             GeometryReader { proxy in
@@ -245,28 +268,98 @@ struct RecordView: View {
                     recognizedTextPane(availableHeight: proxy.size.height)
                 }
             }
-        } else {
-            Group {
-                switch card.displayType {
-                case .image, .pdf:
-                    EmptyView()
-                case .color:
-                    VStack(spacing: 12) {
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(card.colorHex.flatMap(Color.init(hex:)) ?? .clear)
-                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
-                            .frame(width: 160, height: 160)
-                        Text(card.colorHex ?? "").font(.title.monospaced()).textSelection(.enabled)
-                    }
-                case .file:
-                    FilePreview(card: card, thumbnails: model.thumbnails) { [model, id = state.id] path in
-                        model.copyNewText(path, from: id)
-                    }
-                case .text, .richText, .url, .mixed:
-                    EmptyView()
+        } else if card.displayType == .file {
+            FilePreview(card: card, thumbnails: model.thumbnails) { [model, id = state.id] path in
+                model.copyNewText(path, from: id)
+            }
+        } else if card.displayType == .color {
+            colorView
+        }
+    }
+
+    /// The text, editable for text, rich text and links (read-only for mixed items).
+    private var textEditor: some View {
+        TextPane(isEditable: state.isEditable, font: .monospacedSystemFont(ofSize: 12.5, weight: .regular), hasLineNumbers: true) { textView in
+            state.attach(textView)
+        } onTextChange: {
+            state.textDidChange()
+        } onSelectionChange: {
+            state.selectionDidChange()
+        } onFocusChange: { focused in
+            state.isEditingText = focused
+        }
+        .overlay {
+            if !state.isLoaded, state.error == nil { ProgressView().controlSize(.small) }
+        }
+    }
+
+    /// A link: where it leads, large, the page title when the browser gave one, and *Open* (⌘O).
+    /// The link itself stays editable below.
+    private var linkHeader: some View {
+        let address = state.linkText
+        let url = URL(string: address)
+        let title = details?.linkTitle ?? (card.sourceURL == address ? details?.sourceWindowTitle : nil)
+        return HStack(alignment: .center, spacing: 14) {
+            Image(systemName: "link")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundStyle(.secondary)
+                .frame(width: 40, height: 40)
+                .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 9))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: url?.host() ?? address)
+                    .font(.title2.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                if let title {
+                    Text(verbatim: title).font(.callout).lineLimit(2)
+                }
+                Text(verbatim: address)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            Spacer(minLength: 8)
+            Button {
+                if let url { NSWorkspace.shared.open(url) }
+            } label: {
+                Label("Open", systemImage: "arrow.up.forward.app")
+            }
+            .controlSize(.large)
+            .disabled(url?.scheme == nil)
+            .help(String(localized: "Open the link in your browser (⌘O)"))
+        }
+        .padding(16)
+    }
+
+    /// A colour: the swatch and its HEX, RGB and HSL, each copied with one click.
+    @ViewBuilder
+    private var colorView: some View {
+        let values = card.colorHex.flatMap(ColorValues.init(hex:))
+        HStack(spacing: 28) {
+            RoundedRectangle(cornerRadius: 14)
+                .fill(card.colorHex.flatMap(Color.init(hex:)) ?? .clear)
+                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator))
+                .frame(width: 160, height: 160)
+            if let values {
+                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
+                    colorRow("HEX", values.hex)
+                    colorRow("RGB", values.rgb)
+                    colorRow("HSL", values.hsl)
                 }
             }
-            .padding(16)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func colorRow(_ name: String, _ value: String) -> some View {
+        GridRow(alignment: .firstTextBaseline) {
+            Text(verbatim: name).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Text(verbatim: value).font(.title3.monospaced()).textSelection(.enabled)
+            Button { model.copyNewText(value, from: state.id) } label: { Image(systemName: "doc.on.doc") }
+                .buttonStyle(.borderless)
+                .help(String(localized: "Copy \(name): it goes to the clipboard and into history"))
         }
     }
 
@@ -477,9 +570,9 @@ struct RecordView: View {
             if isOpen, let text {
                 Divider()
                 TextPane(isEditable: false, font: .systemFont(ofSize: 13)) { textView in
-                    recognizedText.attach(textView, text: text)
+                    state.recognizedText.attach(textView, text: text)
                 } onSelectionChange: {
-                    recognizedText.update()
+                    state.recognizedText.update()
                 }
                 .frame(height: min(CGFloat(recognizedTextHeight), maxHeight))
             }
@@ -503,8 +596,8 @@ struct RecordView: View {
     @ViewBuilder
     private func recognitionActions(_ text: String?) -> some View {
         if let text {
-            Button(recognizedText.hasSelection ? String(localized: "Copy Selected Text") : String(localized: "Copy All Text")) {
-                model.copyNewText(recognizedText.selectedOrAll ?? text, from: state.id)
+            Button(state.recognizedText.hasSelection ? String(localized: "Copy Selected Text") : String(localized: "Copy All Text")) {
+                model.copyNewText(state.recognizedText.selectedOrAll ?? text, from: state.id)
             }
             .help(String(localized: "The text goes to the clipboard and appears in history as a new item"))
         } else if details?.recognitionState == .pending {
@@ -557,7 +650,7 @@ struct RecordView: View {
                     .imageScale(.small)
             }
             Text(hint).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            if state.hasFormatting, state.isTextDirty {
+            if state.hasFormatting, !state.isRich, state.isTextDirty {
                 Label("Formatting will be removed", systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.orange)
@@ -575,7 +668,7 @@ struct RecordView: View {
                         .help(String(localized: "Size of the text against the “Largest item” limit (Settings → Apps → All Apps)"))
                 }
                 Text(stats).font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
-                if card.displayType != .url { languageMenu }
+                if card.displayType != .url, !state.isRich { languageMenu }
                 viewMenu
             } else if isImage, let width = card.pixelWidth, let height = card.pixelHeight {
                 Text(verbatim: "\(width) × \(height) px · \(ByteCount.string(card.payloadSizeBytes))")
@@ -622,7 +715,16 @@ struct RecordView: View {
             }
             .pickerStyle(.menu)
             Toggle("Show Invisible Characters", isOn: $state.showsInvisibles)
-            Toggle("Monospaced Font", isOn: $state.usesMonospacedFont)
+            if state.hasRichSource {
+                Toggle("Show Formatting", isOn: Binding.main(get: { state.isRich }, set: { [state] on in state.setShowsFormatting(on) }))
+                    .disabled(state.isDirty)
+                    .help(state.isDirty
+                        ? String(localized: "Save or revert your changes first")
+                        : String(localized: "Off: edit as plain text; saving then keeps only the text"))
+            }
+            if !state.isRich {
+                Toggle("Monospaced Font", isOn: $state.usesMonospacedFont)
+            }
             Divider()
             Button("Larger Text (⌘+)") { state.changeFontSize(by: 1) }
             Button("Smaller Text (⌘−)") { state.changeFontSize(by: -1) }
@@ -679,6 +781,9 @@ struct RecordView: View {
     }
 }
 
+/// A file record: the file itself through Quick Look — rendered only while the window shows it —
+/// then its path(s), size, *Reveal in Finder* and *Copy Path*. A file that was moved or deleted
+/// shows its stored thumbnail.
 private struct FilePreview: View {
     let card: HistoryCard
     let thumbnails: ThumbnailCache
@@ -686,37 +791,40 @@ private struct FilePreview: View {
     let copyPath: @MainActor (String) -> Void
     @State private var image: NSImage?
     @State private var status: ThumbnailCache.FileStatus?
+    /// With several files, the one shown.
+    @State private var shownPath: String?
+
+    private var previewPath: String? { shownPath ?? card.filePaths.first }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        VStack(spacing: 0) {
             Group {
-                if let image {
-                    Image(nsImage: image).resizable().scaledToFit()
+                if let path = previewPath, FileManager.default.fileExists(atPath: path) {
+                    QuickLookView(url: URL(fileURLWithPath: path))
                 } else {
-                    Image(systemName: "doc").font(.system(size: 48)).foregroundStyle(.secondary)
+                    VStack(spacing: 10) {
+                        if let image {
+                            Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: 240, maxHeight: 180)
+                        } else {
+                            Image(systemName: "doc").font(.system(size: 48)).foregroundStyle(.secondary)
+                        }
+                        Text("Unavailable: the file was moved or deleted.").font(.callout).foregroundStyle(.orange)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
-            .frame(width: 180, height: 140)
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(card.filePaths, id: \.self) { path in
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text(path).font(.caption.monospaced()).textSelection(.enabled).lineLimit(3)
-                        if card.filePaths.count > 1 {
-                            Button { copyPath(path) } label: { Image(systemName: "doc.on.clipboard") }
-                                .buttonStyle(.borderless)
-                                .controlSize(.small)
-                                .help(String(localized: "Copy this path"))
-                        }
-                    }
-                }
-                if let status {
-                    if status.allMissing {
-                        Text("Unavailable: the file was moved or deleted.").font(.caption).foregroundStyle(.orange)
-                    } else if let bytes = status.totalBytes {
-                        Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)).font(.caption).foregroundStyle(.secondary)
-                    }
+            Divider()
+            VStack(alignment: .leading, spacing: 8) {
+                if card.filePaths.count > 4 {
+                    ScrollView { paths }.frame(maxHeight: 110)
+                } else {
+                    paths
                 }
                 HStack(spacing: 8) {
+                    if let bytes = status?.totalBytes {
+                        Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)).font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 8)
                     Button("Reveal in Finder") {
                         let urls = card.filePaths.map { URL(fileURLWithPath: $0) }.filter { FileManager.default.fileExists(atPath: $0.path) }
                         NSWorkspace.shared.activateFileViewerSelecting(urls)
@@ -729,13 +837,42 @@ private struct FilePreview: View {
                         ? String(localized: "Copy the full paths, one per line, to the clipboard")
                         : String(localized: "Copy the full path to the clipboard"))
                 }
+                .controlSize(.small)
             }
-            Spacer(minLength: 0)
+            .padding(12)
         }
         .task(id: card.id) {
             status = await thumbnails.fileStatus(for: card)
             image = await thumbnails.image(for: card)
         }
+    }
+
+    private var paths: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(card.filePaths, id: \.self) { path in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    if card.filePaths.count > 1 {
+                        Button { shownPath = path } label: {
+                            Image(systemName: path == previewPath ? "eye.fill" : "eye")
+                        }
+                        .buttonStyle(.borderless)
+                        .help(String(localized: "Show this file above"))
+                    }
+                    Text(verbatim: path)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                        .lineLimit(2)
+                        .truncationMode(.middle)
+                    if card.filePaths.count > 1 {
+                        Spacer(minLength: 4)
+                        Button { copyPath(path) } label: { Image(systemName: "doc.on.clipboard") }
+                            .buttonStyle(.borderless)
+                            .help(String(localized: "Copy this path"))
+                    }
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 

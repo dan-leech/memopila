@@ -1093,6 +1093,16 @@
         }
       }
     },
+    "Bold (⌘B)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Жирный (⌘B)"
+          }
+        }
+      }
+    },
     "Cancel": {
       "localizations": {
         "ru": {
@@ -1539,6 +1549,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Скопировать"
+          }
+        }
+      }
+    },
+    "Copy %@: it goes to the clipboard and into history": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать %@: значение попадёт в буфер и в историю"
           }
         }
       }
@@ -2255,6 +2275,16 @@
         }
       }
     },
+    "Find in the text recognized in the image (⌘F)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Найти в тексте, распознанном на изображении (⌘F)"
+          }
+        }
+      }
+    },
     "First copied": {
       "localizations": {
         "ru": {
@@ -2701,6 +2731,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "На диске она не шифруется."
+          }
+        }
+      }
+    },
+    "Italic (⌘I)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Курсив (⌘I)"
           }
         }
       }
@@ -3385,6 +3425,16 @@
         }
       }
     },
+    "Off: edit as plain text; saving then keeps only the text": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выключено: редактирование как простого текста; при сохранении останется только текст"
+          }
+        }
+      }
+    },
     "One image pixel per screen pixel": {
       "localizations": {
         "ru": {
@@ -3431,6 +3481,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Показаны только первые изменения."
+          }
+        }
+      }
+    },
+    "Only the formatting changed.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменилось только оформление."
           }
         }
       }
@@ -3511,6 +3571,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Открыть изображение в Просмотре, чтобы разметить, обрезать или экспортировать"
+          }
+        }
+      }
+    },
+    "Open the link in your browser (⌘O)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть ссылку в браузере (⌘O)"
           }
         }
       }
@@ -4225,6 +4295,16 @@
         }
       }
     },
+    "Save or revert your changes first": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сначала сохраните или верните изменения"
+          }
+        }
+      }
+    },
     "Save the changes": {
       "localizations": {
         "ru": {
@@ -4515,6 +4595,16 @@
         }
       }
     },
+    "Show Formatting": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывать оформление"
+          }
+        }
+      }
+    },
     "Show Invisible Characters": {
       "localizations": {
         "ru": {
@@ -4591,6 +4681,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Показать заголовок, источник и подробности (⌥⌘I)"
+          }
+        }
+      }
+    },
+    "Show this file above": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать этот файл выше"
           }
         }
       }
@@ -4935,6 +5035,16 @@
         }
       }
     },
+    "The formatting could not be saved.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось сохранить оформление."
+          }
+        }
+      }
+    },
     "The history could not be opened, so a new one was started. The old files are kept in “%@”.": {
       "localizations": {
         "ru": {
@@ -5251,6 +5361,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Недоступно: файл перемещён или удалён."
+          }
+        }
+      }
+    },
+    "Underline (⌘U)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подчёркнутый (⌘U)"
           }
         }
       }

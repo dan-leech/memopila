@@ -14,7 +14,7 @@ All v1 features of the plan are implemented and build in CI; they have not yet b
 - Red *Current — not saved* card for oversized, unsupported or failed copies, with *Save Anyway* and per-app quick fixes; format rules (keep / skip types per app, e.g. for Photoshop) and a clipboard inspector.
 - Per-app settings: *Don't save*, *Delete after*, size limit, text recognition, source page; quick actions on every card and app with Undo.
 - Pause capture, *Skip next copy* (menu, optional hotkeys).
-- *Edit Record*: one window to look at and edit a record — syntax highlighting while you type, line numbers for code, invisible characters, *Changes…* against the saved text, the standard *Save / Don’t Save / Cancel* sheet instead of lost edits, *Copied from <page>*, text recognized in images (Vision, on device), copied as a new card.
+- *Edit Record*: one window to look at and edit a record — formatted text edited with its formatting (saved as RTF, HTML and plain text), files through Quick Look, colours as HEX / RGB / HSL, links with *Open*, syntax highlighting while you type, line numbers for code, invisible characters, *Changes…* against the saved text, the standard *Save / Don’t Save / Cancel* sheet instead of lost edits, *Copied from <page>*, text recognized in images (Vision, on device), copied as a new card.
 - Text actions, titles, favorites, collections; *Duplicate As*; ⌘K actions panel; full keyboard map (PLAN §8.3).
 - The card the clipboard holds has a thin green line (inside the blue selection border when it is also selected); a double-click makes another record the clipboard content and takes you back to your app. Optional paste after copying (Accessibility), launch at login, tooltips on every control, English and Russian.
 

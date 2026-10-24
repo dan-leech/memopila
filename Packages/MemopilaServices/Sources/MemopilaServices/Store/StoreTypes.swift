@@ -54,6 +54,8 @@ public struct RecordDetails: Sendable, Equatable {
     public let storedTypes: [String]
     public let sourceWindowTitle: String?
     public let collectionIDs: Set<UUID>
+    /// The page title a browser put next to a copied link (`public.url-name`).
+    public let linkTitle: String?
 }
 
 /// Sidebar scopes (§8.2).
@@ -152,6 +154,20 @@ public enum StoreError: Error, Sendable, Equatable {
 }
 
 /// Payload ready for Restore, already verified (§3.5).
+/// Formatted text saved from the record window (§3.6): RTF, or flat RTFD when it holds
+/// attachments, plus HTML for apps that read only HTML (browsers, web apps).
+public struct RichContent: Sendable, Equatable {
+    public let type: PasteboardType
+    public let data: Data
+    public let html: Data?
+
+    public init(type: PasteboardType, data: Data, html: Data?) {
+        self.type = type
+        self.data = data
+        self.html = html
+    }
+}
+
 public struct RestorePayload: Sendable {
     public let items: [CanonicalItem]
     public let sourceBundleID: String?

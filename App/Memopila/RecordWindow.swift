@@ -49,8 +49,10 @@ enum RecordKeys {
         let responder = window.firstResponder
         if key.code == kVK_Escape {
             // Esc inside the find bar closes the find bar, not the window.
-            if let responder = responder as? NSView, let textView = state.textView, responder !== textView,
-               let scrollView = textView.enclosingScrollView, responder.isDescendant(of: scrollView) {
+            // Also the find bar of the text recognized in an image.
+            if let view = responder as? NSView,
+               let findBar = sequence(first: view, next: \.superview).compactMap({ ($0 as? NSScrollView)?.findBarView }).first,
+               view.isDescendant(of: findBar) {
                 return false
             }
             // The title or the new-collection field: Esc only leaves it (the title saves itself).
@@ -71,8 +73,8 @@ enum RecordKeys {
             return true
         }
         if flags == [.option, .command], key.letter == "i" {
-            let key = RecordView.inspectorKey
-            UserDefaults.standard.set(!(UserDefaults.standard.object(forKey: key) as? Bool ?? true), forKey: key)
+            // The view decides: a narrow window shows it only on request.
+            state.inspectorToggleRequests += 1
             return true
         }
         // ⌘+ / ⌘− / ⌘0: the image's zoom, or the text's size.
@@ -97,9 +99,18 @@ enum RecordKeys {
                 model.copyItem()
                 return true
             }
+            let isImage = [.image, .pdf].contains(state.card.displayType)
             switch key.letter {
             case "s": model.saveItem()
             case "f" where state.hasText: state.showFind()
+            case "f" where isImage: state.findInRecognizedText()
+            // Formatted text, while it is being edited.
+            case "b" where state.isRich && responder === state.textView: state.toggleTrait(.boldFontMask)
+            case "i" where state.isRich && responder === state.textView: state.toggleTrait(.italicFontMask)
+            case "u" where state.isRich && responder === state.textView: state.toggleUnderline()
+            case "o" where state.card.displayType == .url:
+                guard let url = URL(string: state.linkText), url.scheme != nil else { return true }
+                NSWorkspace.shared.open(url)
             case "y": model.dismissRecord()
             case "e" where state.isEditable: state.focus()
             default: return false
