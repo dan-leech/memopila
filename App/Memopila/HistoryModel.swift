@@ -15,6 +15,13 @@ final class HistoryModel {
     var search = "" {
         didSet { if search != oldValue { scheduleSearch() } }
     }
+    /// The filter bar (§8.2): what kind of records, and since when; combined with the sidebar.
+    var kindFilter: KindFilter = .all {
+        didSet { if kindFilter != oldValue { reload(selectFirst: true) } }
+    }
+    var periodFilter: PeriodFilter = .anyTime {
+        didSet { if periodFilter != oldValue { reload(selectFirst: true) } }
+    }
     private(set) var cards: [HistoryCard] = []
     private(set) var totalCount = 0
     var selectedID: UUID? {
@@ -58,7 +65,18 @@ final class HistoryModel {
         self.store = store
     }
 
-    var query: HistoryQuery { HistoryQuery(scope: scope, search: search) }
+    var query: HistoryQuery {
+        HistoryQuery(scope: scope, search: search, kinds: kindFilter.kinds, since: periodFilter.since(now: Date()))
+    }
+
+    /// The sidebar or the filter bar narrows what the grid shows.
+    var isFiltered: Bool { scope != .all || kindFilter != .all || periodFilter != .anyTime }
+
+    func clearFilters() {
+        scope = .all
+        kindFilter = .all
+        periodFilter = .anyTime
+    }
 
     /// For `List(selection:)`; deselecting falls back to History.
     var sidebarSelection: HistoryScope? {
@@ -304,4 +322,66 @@ final class HistoryModel {
     }
 
     var isStaleForOpen: Bool { isStale }
+}
+
+/// The kinds in the filter bar (§8.2). PDFs count as images, mixed copies as text.
+enum KindFilter: CaseIterable, Hashable {
+    case all, text, links, images, files, colors
+
+    var kinds: Set<DisplayType> {
+        switch self {
+        case .all: []
+        case .text: [.text, .richText, .mixed]
+        case .links: [.url]
+        case .images: [.image, .pdf]
+        case .files: [.file]
+        case .colors: [.color]
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .all: String(localized: "All")
+        case .text: String(localized: "Text")
+        case .links: String(localized: "Links")
+        case .images: String(localized: "Images")
+        case .files: String(localized: "Files")
+        case .colors: String(localized: "Colors")
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .all: "square.grid.2x2"
+        case .text: "text.alignleft"
+        case .links: "link"
+        case .images: "photo"
+        case .files: "doc"
+        case .colors: "paintpalette"
+        }
+    }
+}
+
+/// The period in the filter bar (§8.2), by when a record was last copied.
+enum PeriodFilter: CaseIterable, Hashable {
+    case anyTime, today, week, month
+
+    func since(now: Date) -> Date? {
+        let calendar = Calendar.current
+        switch self {
+        case .anyTime: return nil
+        case .today: return calendar.startOfDay(for: now)
+        case .week: return calendar.date(byAdding: .day, value: -7, to: now)
+        case .month: return calendar.date(byAdding: .day, value: -30, to: now)
+        }
+    }
+
+    var title: String {
+        switch self {
+        case .anyTime: String(localized: "Any Time")
+        case .today: String(localized: "Today")
+        case .week: String(localized: "Last 7 Days")
+        case .month: String(localized: "Last 30 Days")
+        }
+    }
 }

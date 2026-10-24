@@ -164,6 +164,20 @@ struct ClipboardStoreTests {
         #expect(try await store.page(HistoryQuery(search: "editor"), offset: 0, limit: 10).count == 3, "source app name is searchable")
     }
 
+    @Test func filterBarKindsAndPeriod() async throws {
+        let store = try ClipboardStore(url: nil)
+        _ = await ingest(store, snapshot("plain words", at: 100))
+        _ = await ingest(store, snapshot("https://example.com", at: 200))
+        _ = await ingest(store, snapshot("more words", at: 300))
+        let text = HistoryQuery(kinds: [.text, .richText])
+        #expect(try await store.page(text, offset: 0, limit: 10).map(\.preview) == ["more words", "plain words"])
+        #expect(try await store.count(HistoryQuery(kinds: [.url])) == 1)
+        let recent = HistoryQuery(since: Date(timeIntervalSince1970: 150))
+        #expect(try await store.count(recent) == 2)
+        let recentText = HistoryQuery(search: "words", kinds: [.text], since: Date(timeIntervalSince1970: 250))
+        #expect(try await store.page(recentText, offset: 0, limit: 10).map(\.preview) == ["more words"])
+    }
+
     @Test func scopes() async throws {
         let store = try ClipboardStore(url: nil)
         guard case .committed(let a) = await ingest(store, snapshot("a", at: 1, app: "com.a.app")),

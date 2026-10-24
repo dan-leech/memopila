@@ -652,6 +652,13 @@ public actor ClipboardStore {
             let ids = try context.fetch(FetchDescriptor<RecordTag>(predicate: #Predicate { $0.collectionID == collectionID })).map(\.recordID)
             and(#Predicate { ids.contains($0.id) })
         }
+        if !query.kinds.isEmpty {
+            let raws = query.kinds.map(\.rawValue)
+            and(#Predicate { raws.contains($0.displayTypeRaw) })
+        }
+        if let since = query.since {
+            and(#Predicate { $0.lastCopiedAt >= since })
+        }
         for word in query.words {
             and(#Predicate { $0.searchText.localizedStandardContains(word) })
         }

@@ -18,6 +18,7 @@ struct HistoryView: View {
                 VStack(spacing: 0) {
                     topBar
                     BannerStack(model: model)
+                    FilterBar(history: model.history)
                     HistoryGrid(model: model)
                 }
             }
@@ -40,11 +41,25 @@ struct HistoryView: View {
         @Bindable var history = model.history
         return HStack(spacing: 12) {
             Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            // The sidebar choice stays visible here, also with the sidebar hidden (§8.2).
+            if history.scope != .all {
+                ScopeChip(model: model)
+            }
             TextField("Search", text: $history.search)
                 .textFieldStyle(.plain)
                 .font(.title3)
                 .focused($searchFocused)
                 .accessibilityLabel(Text("Search history"))
+            if !history.search.isEmpty {
+                Button {
+                    history.search = ""
+                    model.focusSearch()
+                } label: {
+                    Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+                }
+                .help(String(localized: "Clear the search (Esc)"))
+                .accessibilityLabel(Text("Clear the search"))
+            }
 
             if model.monitor.isPaused || model.monitor.skipArmed {
                 Image(systemName: model.monitor.isPaused ? "pause.circle.fill" : "forward.end.circle.fill")
@@ -141,6 +156,114 @@ private struct PanelMenu: View {
     }
 }
 
+// MARK: - Filters (§8.2)
+
+/// The sidebar choice in the search field, with ✕ to go back to all of History.
+private struct ScopeChip: View {
+    let model: AppModel
+
+    var body: some View {
+        let history = model.history
+        HStack(spacing: 4) {
+            Image(systemName: symbol(history.scope))
+            Text(title(history.scope)).lineLimit(1)
+            Button {
+                history.scope = .all
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.borderless)
+            .help(String(localized: "Show all of History"))
+            .accessibilityLabel(Text("Show all of History"))
+        }
+        .font(.system(size: 12, weight: .medium))
+        .padding(.leading, 8)
+        .padding(.trailing, 6)
+        .padding(.vertical, 3)
+        .foregroundStyle(Color.accentColor)
+        .background(Color.accentColor.opacity(0.15), in: Capsule())
+        .frame(maxWidth: 180)
+        .fixedSize()
+    }
+
+    private func title(_ scope: HistoryScope) -> String {
+        switch scope {
+        case .all: String(localized: "History")
+        case .favorites: String(localized: "Favorites")
+        case .app(let bundleID): AppInfo.displayName(for: bundleID, fallback: model.history.apps.first { $0.bundleID == bundleID }?.name)
+        case .type(let type): type.title
+        case .collection(let id): model.history.collections.first { $0.id == id }?.name ?? String(localized: "Collection")
+        }
+    }
+
+    private func symbol(_ scope: HistoryScope) -> String {
+        switch scope {
+        case .all: "clock"
+        case .favorites: "heart"
+        case .app: "app"
+        case .type(let type): type.systemImage
+        case .collection: "folder"
+        }
+    }
+}
+
+/// Kind and period above the grid; they combine with the sidebar and the search.
+private struct FilterBar: View {
+    let history: HistoryModel
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(visibleKinds, id: \.self) { kind in
+                let isOn = history.kindFilter == kind
+                Button {
+                    history.kindFilter = kind
+                } label: {
+                    Label(kind.title, systemImage: kind.systemImage)
+                        .labelStyle(.titleAndIcon)
+                        .font(.system(size: 12, weight: isOn ? .semibold : .regular))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
+                        .foregroundStyle(isOn ? Color.white : Color.primary)
+                        .background(isOn ? Color.accentColor : Color.primary.opacity(0.07), in: Capsule())
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+                .help(kind == .all ? String(localized: "Every kind of item") : String(localized: "Only \(kind.title.lowercased())"))
+            }
+            Spacer(minLength: 8)
+            Menu {
+                ForEach(PeriodFilter.allCases, id: \.self) { period in
+                    Button {
+                        history.periodFilter = period
+                    } label: {
+                        if period == history.periodFilter {
+                            Label(period.title, systemImage: "checkmark")
+                        } else {
+                            Text(period.title)
+                        }
+                    }
+                }
+            } label: {
+                Label(history.periodFilter.title, systemImage: "calendar")
+                    .font(.system(size: 12, weight: history.periodFilter == .anyTime ? .regular : .semibold))
+                    .foregroundStyle(history.periodFilter == .anyTime ? Color.secondary : Color.accentColor)
+            }
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
+            .buttonStyle(.borderless)
+            .fixedSize()
+            .help(String(localized: "Only items copied in this period"))
+        }
+        .padding(.horizontal, 12)
+        .padding(.bottom, 4)
+    }
+
+    /// Colours only when there are any; the rest always, so the bar does not jump.
+    private var visibleKinds: [KindFilter] {
+        KindFilter.allCases.filter { $0 != .colors || history.types.contains(.color) || history.kindFilter == .colors }
+    }
+}
+
 // MARK: - Sidebar
 
 /// A collection in the sidebar: a card dropped on it joins it (§3.5).
@@ -182,13 +305,6 @@ private struct SidebarView: View {
                 Section("Apps") {
                     ForEach(history.apps) { app in
                         appRow(app)
-                    }
-                }
-            }
-            if !history.types.isEmpty {
-                Section("Types") {
-                    ForEach(history.types, id: \.self) { type in
-                        Label(type.title, systemImage: type.systemImage).tag(HistoryScope.type(type))
                     }
                 }
             }
@@ -408,18 +524,28 @@ private struct HistoryGrid: View {
                 Image(systemName: history.search.isEmpty ? "list.clipboard" : "magnifyingglass")
                     .font(.largeTitle)
                     .foregroundStyle(.tertiary)
-                Text(emptyMessage).foregroundStyle(.secondary)
+                Text(emptyMessage).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                if history.isFiltered {
+                    Button("Show All of History") { history.clearFilters() }
+                        .padding(.top, 4)
+                }
             }
+            .padding(24)
         }
     }
 
     private var emptyMessage: String {
         let history = model.history
-        if !history.search.isEmpty { return String(localized: "No matches.") }
+        if !history.search.isEmpty {
+            return history.isFiltered ? String(localized: "No matches with these filters.") : String(localized: "No matches.")
+        }
+        if history.kindFilter != .all || history.periodFilter != .anyTime {
+            return String(localized: "Nothing matches the filters.")
+        }
         switch history.scope {
         case .all: return String(localized: "Copy something to start your history.")
         case .favorites: return String(localized: "No favorites yet. Press ⌘D on a card to add one.")
-        case .collection: return String(localized: "This collection is empty. Add items from a card's menu.")
+        case .collection: return String(localized: "This collection is empty. Drop a card on it in the sidebar, or use Collections in a card's menu.")
         case .app, .type: return String(localized: "Nothing here.")
         }
     }

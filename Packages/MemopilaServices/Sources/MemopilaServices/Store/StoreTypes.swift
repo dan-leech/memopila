@@ -66,10 +66,16 @@ public enum HistoryScope: Sendable, Hashable {
 public struct HistoryQuery: Sendable, Hashable {
     public var scope: HistoryScope
     public var search: String
+    /// The filter bar's kind (§8.2): records of these display types; empty = every type.
+    public var kinds: Set<DisplayType>
+    /// The filter bar's period: records copied since this date; `nil` = any time.
+    public var since: Date?
 
-    public init(scope: HistoryScope = .all, search: String = "") {
+    public init(scope: HistoryScope = .all, search: String = "", kinds: Set<DisplayType> = [], since: Date? = nil) {
         self.scope = scope
         self.search = search
+        self.kinds = kinds
+        self.since = since
     }
 
     var words: [String] {

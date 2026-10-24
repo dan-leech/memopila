@@ -681,6 +681,16 @@
         }
       }
     },
+    "All": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Все"
+          }
+        }
+      }
+    },
     "Allow in System Settings…": {
       "localizations": {
         "ru": {
@@ -829,6 +839,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Любое приложение"
+          }
+        }
+      }
+    },
+    "Any Time": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "За всё время"
           }
         }
       }
@@ -1113,6 +1133,26 @@
         }
       }
     },
+    "Clear the search": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очистить поиск"
+          }
+        }
+      }
+    },
+    "Clear the search (Esc)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очистить поиск (Esc)"
+          }
+        }
+      }
+    },
     "Click the text to edit · ← → other records · ↩ selects · Esc closes": {
       "localizations": {
         "ru": {
@@ -1159,6 +1199,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Закрыть"
+          }
+        }
+      }
+    },
+    "Collection": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Коллекция"
           }
         }
       }
@@ -1785,6 +1835,16 @@
         }
       }
     },
+    "Every kind of item": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Все виды записей"
+          }
+        }
+      }
+    },
     "Favorite": {
       "localizations": {
         "ru": {
@@ -2375,6 +2435,26 @@
         }
       }
     },
+    "Last 30 Days": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "За 30 дней"
+          }
+        }
+      }
+    },
+    "Last 7 Days": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "За 7 дней"
+          }
+        }
+      }
+    },
     "Last copied": {
       "localizations": {
         "ru": {
@@ -2605,6 +2685,16 @@
         }
       }
     },
+    "No matches with these filters.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "С этими фильтрами ничего не найдено."
+          }
+        }
+      }
+    },
     "No matches.": {
       "localizations": {
         "ru": {
@@ -2725,12 +2815,42 @@
         }
       }
     },
+    "Nothing matches the filters.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Под фильтры ничего не подходит."
+          }
+        }
+      }
+    },
     "Now": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Сейчас"
+          }
+        }
+      }
+    },
+    "Only %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Только %@"
+          }
+        }
+      }
+    },
+    "Only items copied in this period": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Только записи, скопированные за этот период"
           }
         }
       }
@@ -3615,12 +3735,32 @@
         }
       }
     },
+    "Show All of History": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать всю историю"
+          }
+        }
+      }
+    },
     "Show Sidebar": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Показать боковую панель"
+          }
+        }
+      }
+    },
+    "Show all of History": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать всю историю"
           }
         }
       }
@@ -4055,12 +4195,12 @@
         }
       }
     },
-    "This collection is empty. Add items from a card's menu.": {
+    "This collection is empty. Drop a card on it in the sidebar, or use Collections in a card's menu.": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Коллекция пуста. Добавляйте элементы из меню карточки."
+            "value": "Коллекция пуста. Перетащите на неё карточку в боковой панели или используйте «Коллекции» в меню карточки."
           }
         }
       }
@@ -4121,6 +4261,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Каждое Слово С Заглавной"
+          }
+        }
+      }
+    },
+    "Today": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сегодня"
           }
         }
       }
