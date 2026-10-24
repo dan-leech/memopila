@@ -54,3 +54,16 @@ jobs:
           xcodebuild -version
           xcodebuild -project App/Memopila.xcodeproj -scheme Memopila -configuration Debug \
             -destination 'platform=macOS' CODE_SIGNING_ALLOWED=NO -quiet build
+      # The same build as release.yml (optimized, arm64 + x86_64, ad-hoc signed), so a tag
+      # never meets a Release-only failure for the first time.
+      - name: Build Release (as release.yml)
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=build/DD/Build/Products/Release/Memopila.app
+          xcodebuild -project App/Memopila.xcodeproj -scheme Memopila -configuration Release \
+            -destination 'generic/platform=macOS' -derivedDataPath build/DD \
+            ONLY_ACTIVE_ARCH=NO CODE_SIGNING_ALLOWED=NO -quiet build
+          lipo -archs "$app/Contents/MacOS/Memopila"
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict "$app"

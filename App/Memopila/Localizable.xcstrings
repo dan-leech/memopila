@@ -811,6 +811,16 @@
         }
       }
     },
+    "Allow Memopila in System Settings → General → Login Items.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Разрешите Memopila в Системных настройках → Основные → Объекты входа."
+          }
+        }
+      }
+    },
     "Allow in System Settings…": {
       "localizations": {
         "ru": {

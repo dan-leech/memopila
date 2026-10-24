@@ -416,7 +416,7 @@
             <li><strong>macOS 15.4</strong> (Sequoia) or later.</li>
             <li><strong>Clipboard access</strong> set to <em>Always Allow</em> when macOS asks.</li>
             <li><strong>Accessibility</strong>, optional, for paste after copying.</li>
-            <li>To build from source: <strong>Xcode 26</strong> or later.</li>
+            <li>To build from source: <strong>Xcode 26</strong> or later (macOS 15.6 or later).</li>
           </ul>
         </div>
         <div class="card">
@@ -424,12 +424,12 @@
           <ol>
             <li>Download the <strong>.zip</strong> or <strong>.dmg</strong> from the <a href="https://github.com/dan-leech/memopila/releases/latest">latest release</a>.</li>
             <li>Move <strong>Memopila.app</strong> to <strong>Applications</strong>.</li>
-            <li>Open it and choose <strong>Enable capture</strong>, then <strong>Always Allow</strong> when macOS asks about the clipboard.</li>
+            <li>Open it and choose <strong>Enable Capture</strong>, then <strong>Always Allow</strong> when macOS asks about the clipboard.</li>
           </ol>
         </div>
         <div class="card">
           <h3>First launch of an unsigned build</h3>
-          <p class="mb">Right-click the app in Finder and choose <strong>Open</strong>. If macOS only offers <em>Done</em>, click <strong>Open Anyway</strong> in System Settings → Privacy &amp; Security. Or run:</p>
+          <p class="mb">Open the app once and click <em>Done</em> when macOS blocks it, then click <strong>Open Anyway</strong> in System Settings → Privacy &amp; Security. Or, before the first launch, run:</p>
           <pre><code>xattr -dr com.apple.quarantine /Applications/Memopila.app</code></pre>
           <p class="mt small">After an update you may need to allow clipboard access again.</p>
         </div>

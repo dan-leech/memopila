@@ -27,7 +27,8 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+  # One group for every release: a tag push and a manual run of the same version never race.
+  group: release
   cancel-in-progress: false
 
 jobs:
@@ -282,7 +283,7 @@ jobs:
             printf '1. Download `Memopila-%s.zip` (or `Memopila-%s.dmg`) below.\n' "$RELEASE_VERSION" "$RELEASE_VERSION"
             cat <<'EOF'
           2. Unzip it (or open the disk image) and move **Memopila.app** to **Applications**.
-          3. Open Memopila and choose **Enable capture** in the panel banner or the menu bar menu. When macOS asks whether Memopila may read the clipboard, choose **Always Allow**. If capture stays paused, set Memopila to *Always Allow* in **System Settings → Privacy & Security**.
+          3. Open Memopila and choose **Enable Capture** in the panel banner or the menu bar menu. When macOS asks whether Memopila may read the clipboard, choose **Always Allow**. If capture stays paused, set Memopila to *Always Allow* in **System Settings → Privacy & Security**.
           4. Optional: for paste after copying, turn on *Settings → General → After Copying → Also paste into the app you were in* and allow Memopila in **System Settings → Privacy & Security → Accessibility**.
 
           Requires macOS 15.4 or later. Only one app can hold the ⌥⌘V shortcut: quit Pasta (or another app using it) first, or pick another shortcut in Settings.
@@ -297,8 +298,8 @@ jobs:
               cat <<'EOF'
           > [!WARNING]
           > **Unsigned build.** This build is not signed with a Developer ID or notarized by Apple, so macOS blocks it on first launch. Use either of these:
-          > - In Finder, right-click **Memopila.app** → **Open** → **Open**. If macOS offers only *Done*, open **System Settings → Privacy & Security** and click **Open Anyway**.
-          > - Or run in Terminal: `xattr -dr com.apple.quarantine /Applications/Memopila.app`
+          > - Open Memopila once and click **Done** when macOS says it was not opened. Then click **Open Anyway** next to the Memopila message in **System Settings → Privacy & Security** (right-click → Open no longer works since macOS 15).
+          > - Or, before the first launch, run in Terminal: `xattr -dr com.apple.quarantine /Applications/Memopila.app`
           >
           > macOS ties clipboard access and Accessibility to the app's signature, and every unsigned build has a new one. After an update, choose **Always Allow** again when asked. If you use auto-paste, remove Memopila from the Accessibility list and add it back.
 

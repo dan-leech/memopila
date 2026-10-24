@@ -171,6 +171,11 @@ final class SettingsStore {
             do {
                 if newValue { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
                 launchAtLoginError = nil
+                // Turned off in Login Items before: registering succeeds but macOS waits for the user.
+                if newValue, SMAppService.mainApp.status == .requiresApproval {
+                    launchAtLoginError = String(localized: "Allow Memopila in System Settings → General → Login Items.")
+                    SMAppService.openSystemSettingsLoginItems()
+                }
             } catch {
                 launchAtLoginError = error.localizedDescription
             }

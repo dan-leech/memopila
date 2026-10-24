@@ -67,15 +67,15 @@ Memopila lives in the menu bar and keeps a history of what you copy: text, rich 
 
 1. Download `Memopila-<version>.zip` (or the `.dmg`) from the [latest release](https://github.com/dan-leech/memopila/releases/latest). Pre-releases are listed on the [Releases](https://github.com/dan-leech/memopila/releases) page.
 2. Unzip it and move **Memopila.app** to **/Applications**.
-3. **First launch of an unsigned build.** Releases built without a Developer ID certificate are signed ad hoc, and Gatekeeper blocks them at first. Use either of these:
-   - In Finder, right-click **Memopila.app** → **Open** → **Open**. On macOS 15 and later the dialog may only offer *Done*. If so, go to **System Settings → Privacy & Security** and click **Open Anyway** next to the Memopila message.
-   - Or clear the quarantine flag in Terminal:
+3. **First launch of an unsigned build.** Releases built without a Developer ID certificate are signed ad hoc, and Gatekeeper blocks them at first. Since macOS 15, right-click → **Open** no longer gets past it. Use either of these:
+   - Open Memopila once and click **Done** when macOS says it was not opened. Then open **System Settings → Privacy & Security**, scroll to *Security* and click **Open Anyway** next to the Memopila message. Confirm with your password, then click **Open Anyway** again. The button stays for about an hour after the blocked attempt.
+   - Or, before the first launch, clear the quarantine flag in Terminal:
 
      ```sh
      xattr -dr com.apple.quarantine /Applications/Memopila.app
      ```
 
-4. **Allow clipboard access.** Choose **Enable capture** in the panel banner or the menu bar menu. When macOS asks whether Memopila may read the clipboard, choose **Always Allow**. If capture stays paused, open **System Settings → Privacy & Security** and set Memopila to *Always Allow*.
+4. **Allow clipboard access.** Choose **Enable Capture** in the panel banner or the menu bar menu. When macOS asks whether Memopila may read the clipboard, choose **Always Allow**. If capture stays paused, open **System Settings → Privacy & Security** and set Memopila to *Always Allow*.
 5. **Optional: Accessibility.** This is needed only for *Settings → General → After Copying → Also paste into the app you were in* and for ⌥↩. Memopila asks for it when you turn the option on. You can also add it in **System Settings → Privacy & Security → Accessibility**.
 
 > [!IMPORTANT]
@@ -85,13 +85,13 @@ Only one app can hold **⌥⌘V**. Quit Pasta (or any other app using that short
 
 ## Build from source
 
-Requirements: macOS 15.4 or later, Xcode 26 or later.
+Requirements: Xcode 26 or later, which needs macOS 15.6 or later. The app itself runs on macOS 15.4 or later.
 
 1. Open `App/Memopila.xcodeproj`.
 2. Target **Memopila** → *Signing & Capabilities* → choose your **Team** (a free Apple ID personal team is enough). Use a stable Apple Development identity rather than *Sign to Run Locally*: macOS ties the clipboard access choice to the app's signature.
 3. Run. The panel opens and Memopila appears in the menu bar. A click on the icon opens the panel; a right-click shows a short menu. If the icon is missing, the menu bar is full: on a Mac with a notch, icons that do not fit are hidden. ⌥⌘V, or opening Memopila again from Finder or Spotlight, still opens the panel, and Diagnostics shows where the icon is.
 4. Quit Pasta first, or pick another shortcut in Settings. Only one app can hold ⌥⌘V.
-5. On first launch choose **Enable capture** (menu bar menu or the panel banner). If macOS asks about clipboard access, allow it. If capture stays paused, open System Settings → Privacy & Security and set Memopila to *Always Allow*.
+5. On first launch choose **Enable Capture** (menu bar menu or the panel banner). If macOS asks about clipboard access, allow it. If capture stays paused, open System Settings → Privacy & Security and set Memopila to *Always Allow*.
 
 Settings → **Apps** and the **Rules for <App> ▸** submenu on each card hold per-app settings. Settings → **Apps → All Apps** has the size limit, global format rules and **Inspect** for the current clipboard.
 

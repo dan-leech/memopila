@@ -223,6 +223,7 @@ T = {
 "More": "Ещё",
 "Copied": "Скопировано",
 "Cut": "Вырезать",
+"Allow Memopila in System Settings → General → Login Items.": "Разрешите Memopila в Системных настройках → Основные → Объекты входа.",
 "Could not register %@ (error %lld).": "Не удалось зарегистрировать %@ (ошибка %lld).",
 "%@ is in use by another app (for example Pasta). Choose another shortcut or quit that app.": "%@ занято другим приложением (например, Pasta). Выберите другое сочетание или закройте то приложение.",
 "The image could not be shown.": "Не удалось показать изображение.",
