@@ -31,6 +31,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Opened by hand (Finder, Xcode): show the panel, so the app is visibly running even when the
         // menu bar icon is hidden. Not at login.
         if !Self.launchedAsLoginItem { model.panel.show() }
+        // Settings opens at once later on, as in Pasta.
+        Task { [model] in
+            try? await Task.sleep(for: .seconds(1))
+            model.windows.prepare()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

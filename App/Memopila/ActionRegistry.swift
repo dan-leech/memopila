@@ -44,9 +44,10 @@ enum ActionRegistry {
     /// shown disabled, so the menu stays short.
     static func cardActions(_ card: HistoryCard, model: AppModel) -> [ActionItem] {
         let id = card.id
-        // The same as a double-click (§3.4): the item goes to the clipboard and the focus goes back.
+        // The same as a double-click (§3.4): the record becomes what the clipboard holds (the selected
+        // card) and the focus goes back to the app.
         var items: [ActionItem] = [
-            ActionItem(id: "copy", title: String(localized: "Copy to Clipboard"), systemImage: "doc.on.clipboard", shortcut: "↩") {
+            ActionItem(id: "select", title: String(localized: "Select"), systemImage: "checkmark.circle", shortcut: "↩") {
                 model.restore(id)
             },
             ActionItem(
@@ -57,13 +58,10 @@ enum ActionRegistry {
             ) { model.toggleFavorite(id) },
             collectionsMenu(for: card, model: model),
             .divider("view"),
-            // One view to look at an item and to edit its text (§8.5).
-            ActionItem(
-                id: "open",
-                title: String(localized: "Open"),
-                systemImage: "eye",
-                shortcut: "Space"
-            ) { model.present(.item(id)) },
+            // One window to look at a record and edit its title and text (§8.5).
+            ActionItem(id: "edit", title: String(localized: "Edit Record"), systemImage: "pencil", shortcut: "⌘E") {
+                model.openRecord(id)
+            },
         ]
         items.append(ActionItem(id: "rename", title: String(localized: "Rename…"), systemImage: "tag", shortcut: "⌘R") {
             model.present(.rename(id))

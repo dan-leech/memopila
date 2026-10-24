@@ -18,7 +18,11 @@ final class HistoryModel {
     private(set) var cards: [HistoryCard] = []
     private(set) var totalCount = 0
     var selectedID: UUID? {
-        didSet { if !isApplyingLoadedSelection { selectionRevision += 1 } }
+        didSet {
+            guard !isApplyingLoadedSelection else { return }
+            selectionRevision += 1
+            followsClipboard = false
+        }
     }
     private(set) var apps: [AppSummary] = []
     private(set) var types: [DisplayType] = []
@@ -39,6 +43,9 @@ final class HistoryModel {
     /// late does not undo the user's ↑ ↓ or click.
     @ObservationIgnored private var selectionRevision = 0
     @ObservationIgnored private var isApplyingLoadedSelection = false
+    /// The record the clipboard holds (§8.2): the selection shows it until the user moves it.
+    @ObservationIgnored var clipboardRecordID: () -> UUID? = { nil }
+    @ObservationIgnored private var followsClipboard = false
     @ObservationIgnored private var isLoadingMore = false
     @ObservationIgnored private var isActive = false
     @ObservationIgnored private var isStale = true
@@ -69,16 +76,35 @@ final class HistoryModel {
 
     // MARK: Lifecycle
 
-    /// Panel opens: fresh search, selection on the first card (§8.1). Cards still loaded from the
-    /// last open stay visible and navigable until the reload replaces them.
-    func activate() {
+    /// Panel opens: fresh search, the selection on the card the clipboard holds — none when it holds
+    /// something that is not in history (§8.1, §8.2). Coming back from a record or Settings keeps
+    /// the search and the selection.
+    func activate(keepingState: Bool = false) {
         isActive = true
+        guard !keepingState else {
+            reload(selectFirst: false)
+            reloadSidebar()
+            return
+        }
         if !search.isEmpty { search = "" }
         searchTask?.cancel()
         isSearchPending = false
-        applyLoadedSelection(cards.first?.id)
+        followsClipboard = true
+        applyLoadedSelection(defaultSelection())
         reload(selectFirst: true)
         reloadSidebar()
+    }
+
+    /// The clipboard changed while the panel is open: the selection follows it unless the user moved it.
+    func clipboardDidChange() {
+        if followsClipboard { applyLoadedSelection(defaultSelection()) }
+    }
+
+    /// Empty search: the card the clipboard holds, or nothing. A search: its first result.
+    private func defaultSelection() -> UUID? {
+        guard search.isEmpty else { return cards.first?.id }
+        guard let id = clipboardRecordID(), cards.contains(where: { $0.id == id }) else { return nil }
+        return id
     }
 
     func deactivate() {
@@ -145,7 +171,9 @@ final class HistoryModel {
                 loadError = nil
                 isStale = false
                 let userMoved = revision != selectionRevision
-                if (selectFirst && !userMoved) || selectedIndex == nil { applyLoadedSelection(cards.first?.id) }
+                if !userMoved, selectFirst || followsClipboard || selectedIndex == nil {
+                    applyLoadedSelection(defaultSelection())
+                }
             } catch {
                 guard generation == self.generation else { return }
                 loadError = error.localizedDescription
@@ -231,7 +259,11 @@ final class HistoryModel {
 
     func moveSelection(by offset: Int) {
         guard !cards.isEmpty else { return }
-        let current = selectedIndex ?? 0
+        // Nothing selected (the clipboard holds something else): the first move lands on the first card.
+        guard let current = selectedIndex else {
+            selectedID = cards.first?.id
+            return
+        }
         let next = min(max(current + offset, 0), cards.count - 1)
         selectedID = cards[next].id
     }

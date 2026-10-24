@@ -75,10 +75,11 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    func show() {
+    /// `keepingState`: back from a record or Settings, with the same search and selection.
+    func show(keepingState: Bool = false) {
         let panel = panel ?? makePanel()
         self.panel = panel
-        model.panelWillShow()
+        model.panelWillShow(keepingState: keepingState)
         position(panel)
         panel.makeKeyAndOrderFront(nil)
     }
@@ -94,15 +95,10 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Nothing in the panel takes the keys: they all come to `handleKey`.
-    func clearFocus() {
-        panel?.makeFirstResponder(nil)
-    }
-
     /// Esc: close an overlay, clear a non-empty search, otherwise close (§3.4).
     func cancel() {
         if model.overlay != nil {
-            model.dismissOverlay()
+            model.present(nil)
         } else if !model.history.search.isEmpty {
             model.history.search = ""
         } else {
@@ -186,8 +182,6 @@ final class PanelController: NSObject, NSWindowDelegate {
         switch model.overlay {
         case nil:
             return handleGridKey(key, flags: flags)
-        case .item:
-            return handleItemKey(key, flags: flags)
         case .actions:
             guard let state = model.actionsState else { return false }
             switch key.code {
@@ -266,60 +260,9 @@ final class PanelController: NSObject, NSWindowDelegate {
         return true
     }
 
-    /// The item view (§8.5). While its text has the focus, keys edit the text; otherwise ↑ ↓ ← →
-    /// move to other items, Space closes and ↩ copies, as in the grid.
-    private func handleItemKey(_ key: KeyPress, flags: NSEvent.ModifierFlags) -> Bool {
-        guard let state = model.itemState else { return false }
-        let responder = panel?.firstResponder
-        if key.code == kVK_Escape {
-            // Esc inside the find bar closes the find bar, not the view.
-            if let responder = responder as? NSView, let textView = state.textView, responder !== textView,
-               let scrollView = textView.enclosingScrollView, responder.isDescendant(of: scrollView) {
-                return false
-            }
-            model.dismissOverlay()
-            return true
-        }
-        if flags == .command {
-            switch key.letter {
-            case "s": model.saveItem(); return true
-            // With no text selected (a selection is copied as text, above).
-            case "c": model.copyItem(); return true
-            case "f" where state.hasText: state.showFind(); return true
-            case "y": model.dismissOverlay(); return true
-            case "e" where state.isEditable: state.focus(); return true
-            default: if key.isReturn { model.copyItem(); return true }
-            }
-            return false
-        }
-        // A text view or the title field is editing: the keys are theirs.
-        guard !(responder is NSTextView), flags.isEmpty else { return false }
-        let history = model.history
-        switch key.code {
-        case kVK_Space: model.dismissOverlay()
-        case _ where key.isReturn: model.copyItem()
-        case kVK_UpArrow, kVK_DownArrow, kVK_LeftArrow, kVK_RightArrow:
-            // Unsaved changes stay on screen until they are saved or discarded.
-            guard !state.isDirty else { return true }
-            switch key.code {
-            case kVK_UpArrow: history.moveSelectionVertically(-1)
-            case kVK_DownArrow: history.moveSelectionVertically(1)
-            case kVK_LeftArrow: history.moveSelection(by: -1)
-            default: history.moveSelection(by: 1)
-            }
-            if let id = history.selectedID { model.present(.item(id)) }
-        default: return false
-        }
-        return true
-    }
-
-    /// Space, ⌘Y, ⌘E (with the cursor in the text) and the eye button: the item view (§8.5).
+    /// Space, ⌘Y, ⌘E (with the cursor in the text) and the pencil: the record window (§8.5).
     private func openSelected(focusText: Bool = false) {
-        if case .item? = model.overlay {
-            model.dismissOverlay()
-        } else if let id = model.history.selectedID {
-            model.present(.item(id), focusText: focusText)
-        }
+        if let id = model.history.selectedID { model.openRecord(id, focusText: focusText) }
     }
 
     /// Cut / copy / paste / select all / undo in text fields. A non-activating panel does not get

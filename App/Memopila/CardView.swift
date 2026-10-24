@@ -9,7 +9,8 @@ import SwiftUI
 struct CardView: View {
     let card: HistoryCard
     let index: Int
-    let isSelected: Bool
+    /// The keyboard cursor (↑ ↓ ← →, a click): where ↩ and the shortcuts act.
+    let hasCursor: Bool
     let model: AppModel
     @State private var image: NSImage?
     @State private var fileStatus: ThumbnailCache.FileStatus?
@@ -20,7 +21,9 @@ struct CardView: View {
     private var thumbnails: ThumbnailCache { model.thumbnails }
     private var isUnavailable: Bool { fileStatus?.allMissing ?? false }
     private var isMedia: Bool { secretKind == nil && (card.displayType == .image || card.displayType == .pdf) }
-    /// The clipboard holds this item now (§8.2).
+    /// The selected card: the clipboard holds this record now (§8.2). Choosing another card changes
+    /// what the clipboard holds, so there is one such card, or none when the clipboard holds
+    /// something that is not in history.
     private var isOnClipboard: Bool { model.monitor.clipboardRecordID == card.id }
 
     var body: some View {
@@ -37,13 +40,15 @@ struct CardView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(RoundedRectangle(cornerRadius: Self.radius, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
+        .overlay {
+            if isOnClipboard {
+                RoundedRectangle(cornerRadius: Self.radius, style: .continuous).fill(Color.accentColor.opacity(0.1)).allowsHitTesting(false)
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
-                .strokeBorder(
-                    isSelected ? Color.accentColor : Color.primary.opacity(isHovered ? 0.2 : 0.08),
-                    lineWidth: isSelected ? 2.5 : 1
-                )
+                .strokeBorder(borderColor, lineWidth: isOnClipboard ? 2.5 : hasCursor ? 2 : 1)
         }
         .overlay(alignment: .topTrailing) { cornerControls }
         .overlay {
@@ -67,7 +72,14 @@ struct CardView: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(accessibilityText))
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAddTraits(isOnClipboard ? [.isButton, .isSelected] : .isButton)
+    }
+
+    /// Accent: on the clipboard (selected). Grey: the keyboard cursor on another card.
+    private var borderColor: Color {
+        if isOnClipboard { return .accentColor }
+        if hasCursor { return Color.primary.opacity(0.5) }
+        return Color.primary.opacity(isHovered ? 0.2 : 0.08)
     }
 
     private func titleStrip(_ title: String) -> some View {
@@ -101,9 +113,8 @@ struct CardView: View {
                     help: card.isFavorite ? String(localized: "Remove from Favorites (⌘D)") : String(localized: "Add to Favorites (⌘D)")
                 ) { model.toggleFavorite(card.id) }
                 .symbolEffect(.bounce, value: card.isFavorite)
-                CardIconButton(systemImage: "eye", help: String(localized: "Open: look at it and edit it (Space)")) {
-                    model.history.selectedID = card.id
-                    model.present(.item(card.id))
+                CardIconButton(systemImage: "pencil", help: String(localized: "Edit Record (Space or ⌘E)")) {
+                    model.openRecord(card.id)
                 }
                 Menu {
                     CardContextMenu(card: card, model: model)
@@ -217,24 +228,10 @@ struct CardView: View {
             Text(metric).lineLimit(1)
             Spacer(minLength: 2)
             badges
-            if isOnClipboard {
-                // In place of the time: what a clipboard manager must always show.
-                Label("In Clipboard", systemImage: "doc.on.clipboard.fill")
-                    .labelStyle(.titleAndIcon)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.green, in: Capsule())
-                    .help(String(localized: "This is what the clipboard holds now"))
-                    .transition(.scale.combined(with: .opacity))
-            } else {
-                TimelineView(.periodic(from: .now, by: 60)) { context in
-                    Text(RelativeTime.short(card.lastCopiedAt, now: context.date))
-                }
+            TimelineView(.periodic(from: .now, by: 60)) { context in
+                Text(RelativeTime.short(card.lastCopiedAt, now: context.date))
             }
         }
-        .animation(.easeOut(duration: 0.2), value: isOnClipboard)
         .font(.system(size: 10.5))
         .foregroundStyle(.secondary)
     }

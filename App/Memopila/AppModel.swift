@@ -4,10 +4,8 @@ import MemopilaServices
 import Observation
 import SwiftUI
 
-/// Panel overlays (§8.4, §8.5, §3.6). Shown inside the panel, never as separate windows.
+/// Panel overlays (§8.4). Shown inside the panel; a record opens in its own window (§8.5).
 enum PanelOverlay: Equatable {
-    /// One view to look at an item and edit its text and title (§8.5, §3.6).
-    case item(UUID)
     case rename(UUID)
     case actions(UUID)
     case newCollection(addingRecord: UUID?)
@@ -113,6 +111,7 @@ final class AppModel {
 
         monitor.panelIsKey = { [weak self] in self?.panel.isKey ?? false }
         monitor.onSaved = { [weak self] _ in self?.didSave() }
+        history.clipboardRecordID = { [weak monitor] in monitor?.clipboardRecordID }
         recognition.onUpdate = { [weak self] _ in self?.history.storeDidChange() }
         settings.onRetentionChange = { [weak self] in self?.runRetention() }
         settings.onRecognitionChange = { [weak self] bundleID in self?.enableRecognition(forApp: bundleID) }
@@ -136,35 +135,16 @@ final class AppModel {
     // MARK: Overlays
 
     /// Shows an overlay (or `nil` to close it); search takes focus again when it closes.
-    /// `focusText`: the item view starts with the cursor in its text (⌘E).
-    func present(_ next: PanelOverlay?, focusText: Bool = false) {
+    func present(_ next: PanelOverlay?) {
         switch next {
         case .actions(let id)?:
             guard let card = history.cards.first(where: { $0.id == id }) else { return }
             actionsState = ActionsPanelState(items: ActionRegistry.cardActions(card, model: self).flatMap { $0.flattened() })
-            itemState = nil
-        case .item(let id)?:
-            if let itemState, itemState.id == id {
-                if focusText, itemState.isEditable { itemState.focus() }
-            } else {
-                guard let card = history.cards.first(where: { $0.id == id }) else { return }
-                openItem(card, focusText: focusText)
-            }
-            actionsState = nil
         default:
             actionsState = nil
-            itemState = nil
         }
         overlay = next
         if next == nil { focusSearchToken += 1 }
-    }
-
-    /// Esc, a click outside or Close: unsaved changes in the item view ask first.
-    func dismissOverlay() {
-        guard case .item? = overlay, let state = itemState, state.isDirty, !state.isConfirmingDiscard else {
-            return present(nil)
-        }
-        state.isConfirmingDiscard = true
     }
 
     func focusSearch() {
@@ -177,11 +157,21 @@ final class AppModel {
         action.run?()
     }
 
-    private func openItem(_ card: HistoryCard, focusText: Bool) {
+    // MARK: Record window (§8.5, §3.6)
+
+    /// *Edit Record* (Space, ⌘E, the pencil): the record opens in its own window, which replaces the
+    /// panel as Settings does and can be moved and resized. `focusText` puts the cursor in the text (⌘E).
+    func openRecord(_ id: UUID, focusText: Bool = false) {
+        if let itemState, itemState.id == id {
+            if focusText, itemState.isEditable { itemState.focus() }
+            return
+        }
+        guard let card = history.cards.first(where: { $0.id == id }) else { return }
         let state = ItemState(card: card, focusOnLoad: focusText && Self.isEditable(card))
         itemState = state
-        // Opened to look at: nothing has the keyboard focus, so ↑ ↓ ← → move to other items and Space closes.
-        if !state.focusOnLoad { panel.clearFocus() }
+        if history.selectedID != id { history.selectedID = id }
+        hidePanelForWindow()
+        windows.showRecord(focusText: state.focusOnLoad)
         guard state.hasText else { return }
         Task {
             if let text = await editorText(card.id) {
@@ -192,8 +182,37 @@ final class AppModel {
         }
     }
 
-    /// Save (⌘S) in the item view: title and text; the view closes. `thenCopy` puts the result on
-    /// the clipboard as a double-click would.
+    /// Esc, the close button or ⌘W: unsaved changes ask first. `false` while the window stays open to ask.
+    @discardableResult
+    func dismissRecord() -> Bool {
+        if let state = itemState, state.isDirty, !state.isConfirmingDiscard {
+            state.isConfirmingDiscard = true
+            return false
+        }
+        closeRecord()
+        return true
+    }
+
+    /// The close button or ⌘W: `false` keeps the window open to ask about unsaved changes.
+    func recordMayClose() -> Bool {
+        guard let state = itemState, state.isDirty, !state.isConfirmingDiscard else { return true }
+        state.isConfirmingDiscard = true
+        return false
+    }
+
+    /// The panel comes back, unless the record went to the clipboard: then the focus goes back to
+    /// the app the user came from, as after a double-click (a pinned panel still comes back).
+    func closeRecord(returningToPanel: Bool = true) {
+        windows.closeRecord(returningToPanel: returningToPanel || isPinned)
+    }
+
+    /// The record window closed, whichever way.
+    func recordWindowDidClose() {
+        itemState = nil
+    }
+
+    /// Save (⌘S): title and text; the window closes. `thenCopy` puts the result on the clipboard as a
+    /// double-click would.
     func saveItem(thenCopy: Bool = false) {
         guard let state = itemState, !state.isSaving else { return }
         var text: String?
@@ -215,32 +234,30 @@ final class AppModel {
                 state.error = error
             } else {
                 state.isSaving = false
-                present(nil)
+                closeRecord(returningToPanel: !thenCopy)
                 history.storeDidChange()
                 if thenCopy { await performRestore(state.id) }
             }
         }
     }
 
-    /// *Copy to Clipboard* in the item view (↩, ⌘↩): unsaved changes are saved first.
+    /// *Put on Clipboard* in the record window (↩, ⌘↩): unsaved changes are saved first.
     func copyItem() {
         guard let state = itemState else { return }
-        if state.isDirty {
-            saveItem(thenCopy: true)
-        } else {
-            present(nil)
-            restore(state.id)
-        }
+        if state.isDirty { return saveItem(thenCopy: true) }
+        closeRecord(returningToPanel: false)
+        restore(state.id)
     }
 
     // MARK: Panel lifecycle (§8.1, §7.3)
 
-    func panelWillShow() {
+    /// `keepingState`: back from a record or Settings, with the same search and selection.
+    func panelWillShow(keepingState: Bool = false) {
         refreshPreviousApp()
         purgeTask?.cancel()
         present(nil)
         toasts.dismiss()
-        history.activate()
+        history.activate(keepingState: keepingState)
         focusSearchToken += 1
     }
 
@@ -257,9 +274,12 @@ final class AppModel {
         history.deactivate()
         purgeTask?.cancel()
         purgeTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(10))
-            guard !Task.isCancelled else { return }
-            self?.purgeCaches()
+            // Not while a record or Settings replaces the panel: it comes back with the same cards.
+            while true {
+                try? await Task.sleep(for: .seconds(10))
+                guard !Task.isCancelled, let self else { return }
+                if !self.windows.isAnyVisible { return self.purgeCaches() }
+            }
         }
     }
 
@@ -327,11 +347,12 @@ final class AppModel {
 
     // MARK: Restore (§3.4)
 
-    /// ↩, double-click, ⌘C: waits for a pending search so the restored card is the one the results show.
+    /// ↩, ⌘C: waits for a pending search so the restored card is the one the results show. Nothing
+    /// selected (the clipboard holds something not in history) → nothing to do.
     func restoreSelected(paste: Bool? = nil) {
         Task {
             await history.settle()
-            guard let id = history.selectedID ?? history.cards.first?.id else { return }
+            guard let id = history.selectedID else { return }
             await performRestore(id, paste: paste)
         }
     }
@@ -604,13 +625,13 @@ final class AppModel {
         switch await monitor.destructive({ opSeq in try await store.editText(id, text: text, opSeq: opSeq, maxBytes: maxBytes) }) {
         case .success(.updated):
             monitor.recordChanged(id)
-            present(nil)
+            closeRecord(returningToPanel: !thenRestore)
             history.storeDidChange()
             if thenRestore { await performRestore(id) }
             return nil
         case .success(.merged(let survivor)):
             monitor.recordChanged(id)
-            present(nil)
+            closeRecord(returningToPanel: !thenRestore)
             history.selectedID = survivor
             history.removeLocally([id])
             history.storeDidChange()
@@ -795,11 +816,13 @@ final class AppModel {
         panel.close(returningFocus: false)
     }
 
-    /// The last of Settings and Diagnostics closed; `true` when the panel they replaced came back.
-    func secondaryWindowDidClose() -> Bool {
+    /// The last of the record, Settings and Diagnostics closed; `true` when the panel they replaced
+    /// came back. `returningToPanel: false` (a record went to the clipboard) leaves it closed.
+    func secondaryWindowDidClose(returningToPanel: Bool = true) -> Bool {
         guard panelHiddenForWindow else { return false }
         panelHiddenForWindow = false
-        panel.show()
+        guard returningToPanel else { return false }
+        panel.show(keepingState: true)
         return true
     }
 

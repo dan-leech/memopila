@@ -1143,16 +1143,6 @@
         }
       }
     },
-    "Close (Esc)": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Закрыть (Esc)"
-          }
-        }
-      }
-    },
     "Collections": {
       "localizations": {
         "ru": {
@@ -1299,16 +1289,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Скопируйте что-нибудь, чтобы начать историю."
-          }
-        }
-      }
-    },
-    "Copy to Clipboard": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Скопировать в буфер обмена"
           }
         }
       }
@@ -1701,6 +1681,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Правка"
+          }
+        }
+      }
+    },
+    "Edit Record": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Редактировать запись"
+          }
+        }
+      }
+    },
+    "Edit Record (Space or ⌘E)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Редактировать запись (пробел или ⌘E)"
           }
         }
       }
@@ -2325,6 +2325,16 @@
         }
       }
     },
+    "Make this record the clipboard content and go back to the app you were in (↩)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Положить эту запись в буфер обмена и вернуться в приложение, в котором вы были (↩)"
+          }
+        }
+      }
+    },
     "Memopila": {
       "localizations": {
         "ru": {
@@ -2655,16 +2665,6 @@
         }
       }
     },
-    "Open: look at it and edit it (Space)": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Открыть: посмотреть и изменить (пробел)"
-          }
-        }
-      }
-    },
     "OpenAI key": {
       "localizations": {
         "ru": {
@@ -2881,16 +2881,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Приватные ключи"
-          }
-        }
-      }
-    },
-    "Put the item on the clipboard and go back to the app you were in (↩)": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Положить запись в буфер обмена и вернуться в приложение, в котором вы были (↩)"
           }
         }
       }
@@ -3275,7 +3265,7 @@
         }
       }
     },
-    "Save the changes, put the item on the clipboard and go back to the app you were in (⌘↩)": {
+    "Save the changes, make this record the clipboard content and go back to the app you were in (⌘↩)": {
       "localizations": {
         "ru": {
           "stringUnit": {
@@ -3401,6 +3391,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Секреты"
+          }
+        }
+      }
+    },
+    "Select": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать"
           }
         }
       }
@@ -3861,16 +3861,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Коллекция пуста. Добавляйте элементы из меню карточки."
-          }
-        }
-      }
-    },
-    "This is what the clipboard holds now": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Именно это сейчас лежит в буфере обмена"
           }
         }
       }

@@ -32,6 +32,8 @@ struct HistoryView: View {
         .background(.regularMaterial)
         .onAppear { searchFocused = true }
         .onChange(of: model.focusSearchToken) { _, _ in searchFocused = true }
+        // The selection shows what the clipboard holds until the user moves it (§8.2).
+        .onChange(of: model.monitor.clipboardRecordID) { _, _ in model.history.clipboardDidChange() }
     }
 
     private var topBar: some View {
@@ -351,7 +353,7 @@ private struct HistoryGrid: View {
                             CardView(
                                 card: card,
                                 index: index,
-                                isSelected: card.id == model.history.selectedID,
+                                hasCursor: card.id == model.history.selectedID,
                                 model: model
                             )
                             .frame(height: cardHeight)
@@ -364,8 +366,8 @@ private struct HistoryGrid: View {
                                 insertion: .scale(scale: 0.85).combined(with: .opacity),
                                 removal: .opacity
                             ))
-                            .accessibilityAction(named: Text("Copy to Clipboard")) { model.restore(card.id) }
-                            .accessibilityAction(named: Text("Open")) { model.present(.item(card.id)) }
+                            .accessibilityAction(named: Text("Select")) { model.restore(card.id) }
+                            .accessibilityAction(named: Text("Edit Record")) { model.openRecord(card.id) }
                             .onAppear { model.history.cardAppeared(card) }
                         }
                     }
@@ -415,7 +417,7 @@ private struct OverlayHost: View {
             ZStack {
                 Color.black.opacity(0.25)
                     .contentShape(Rectangle())
-                    .onTapGesture { model.dismissOverlay() }
+                    .onTapGesture { model.present(nil) }
                 content(for: overlay)
                     .background(.background, in: RoundedRectangle(cornerRadius: 12))
                     .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(.separator))
@@ -429,9 +431,6 @@ private struct OverlayHost: View {
     @ViewBuilder
     private func content(for overlay: PanelOverlay) -> some View {
         switch overlay {
-        case .item:
-            // A new view per item: its text view and state belong to that item.
-            if let state = model.itemState { ItemOverlay(model: model, state: state).id(state.id) }
         case .rename(let id):
             let card = model.history.cards.first { $0.id == id }
             NameOverlay(

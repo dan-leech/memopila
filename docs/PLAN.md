@@ -14,7 +14,7 @@
 - **Pasta-parity UI** (§8): menu-bar app; hotkey window with sidebar (History, Favorites, Apps, Types, Collections), search and a card grid with thumbnails.
 - Capture clipboard history as **deduplicated canonical snapshots** of allowlisted formats (text, rich text, URL, image, PDF, color, files) plus formats the user opts into with **format rules** (§3.2.2).
 - **Show the current clipboard even when it is not saved**: a red *Current — not saved* card with the reason and quick fixes (§3.2.3).
-- **Copy to Clipboard** (double-click, ↩, ⌘1…⌘9, as in Pasta): rewrite the pasteboard, move the item to the top, close the window and return focus to the previous app. Optional **paste after copying** (Settings → General, off by default, Accessibility) also presses ⌘V there. Text that is not a record yet — the text found in an image (selected or all), a source link — goes to the clipboard **as a new card**: history always shows what the clipboard holds, and the card that holds it is marked *In Clipboard* (§8.2). First-run feedback: a paste-first default, *Paste as Plain Text* (⇧⌘V in the target app does that) and copies that never appeared in history were all wrong for a clipboard manager.
+- **The selected card is the clipboard.** Memopila shows what the clipboard holds, extended by history: the card the clipboard holds is the **selected** one (accent border and tint); **Select** (double-click, ↩, ⌘1…⌘9) makes another record the clipboard content — it moves to the top, the window closes and the focus returns to the previous app. No card is selected when the clipboard holds something that is not in history. The keyboard cursor (↑ ↓ ← →, a click) is a separate grey ring. Optional **paste after copying** (Settings → General, off by default, Accessibility) also presses ⌘V. Text that is not a record yet — the text found in an image (selected or all), a source link — goes to the clipboard **as a new card**, so it is selected too. First-run feedback: a paste-first default, *Paste as Plain Text* (⇧⌘V in the target app does that), copies that never appeared in history and a separate *In Clipboard* label were all wrong for a clipboard manager.
 - **Edit records**: edit text content and set a custom title on any record (§3.6).
 - **Per-app settings** (§5.1): save / don't save / delete after a short time, format rules, text recognition, source page — set in two clicks from any card through the actions menu (§8.4).
 - **Pause capture** (timed) and **Skip next copy** (§3.7).
@@ -363,7 +363,7 @@ Applies to `public.file-url` and `NSFilenamesPboardType` before storage, hash, a
 
 ### 3.4 Restore to Clipboard (not paste)
 
-User-facing name: **Restore** (menu: *Copy to Clipboard*).
+User-facing name: **Select** (internally Restore).
 
 **Focus and keys:**
 
@@ -376,7 +376,7 @@ User-facing name: **Restore** (menu: *Copy to Clipboard*).
 
 **Variants:**
 
-- **Restore:** all stored representations; the record is marked *In Clipboard*.
+- **Restore:** all stored representations; the record becomes the selected card.
 - **New text** (`copyNewText`): the text found in an image (the selection, else all of it), a source link (⌥-click), the Diagnostics report. Stored as a new record with the original's source (secret policy applies, §3.10), then written like a restore — never a clipboard write that history does not show. The window stays open: this copies part of an item, like ⌘C in its text.
 - Text actions and other transformations do not copy: they create a new card (*Duplicate As*, §3.9). No *Copy as plain text*: ⇧⌘V (Paste and Match Style) in the target app does it.
 - **Paste after copying** (Settings → General → *After Copying*, off by default): once the panel has given up key status (it closes; when pinned it resigns key and stays visible), post ⌘V through the session event tap, on the key that types *v* in the current Latin layout (Dvorak, AZERTY) and with only ⌘ set. Requires Accessibility; without it items are only copied.
@@ -473,17 +473,17 @@ If a mandatory gate fails → amend this PLAN with a fallback (layout, commit or
 
 **Custom title** — any record: `customTitle: String?`. Shown on the card above the content preview; searchable; not part of `contentHash`. Shortcut ⌘R or context menu **Rename…**; empty title clears it.
 
-**Edit text** — records with `displayType` `text`, `richText` or `url` (not images, PDFs, colors, files, mixed), in the **item view** (§8.5): one overlay for looking at an item and editing it (first-run feedback: preview and editor were nearly the same screen behind two buttons).
+**Edit text** — records with `displayType` `text`, `richText` or `url` (not images, PDFs, colors, files, mixed), in the **record window** (§8.5): one window for looking at a record and editing it (first-run feedback: preview and editor were nearly the same screen behind two buttons, and an overlay could not be moved).
 
 - The text is editable in place — click into it, or open with ⌘E — with code highlighted as you type (re-coloured 0.3 s after the last edit, up to 200 000 UTF-16 units). The **title** field sits at the top (saved with the text). A toolbar holds Undo / Redo, *Change Case*, *Lines and Spaces*, *JSON*, *Encode and Decode* menus with the text actions (§3.9, on the selection or the whole text, undoable) and *Find* (⌘F, system find bar); the footer has live line and character counts, a *Wrap lines* checkbox, an *Edited* mark and, with changes, **Revert** and **Save** (⌘S). Esc, a click outside or Close with unsaved changes asks *Discard your changes?* first; Esc in the find bar closes the find bar.
 - Records with rich formats (RTF, RTFD, HTML, web archive) are shown as plain text; once edited they show *Formatting will be removed*. Rich-text editing is deferred.
-- **Save** replaces the record's representations **in place** with one item holding `public.utf8-plain-text`. Recompute `contentHash`, `payloadSizeBytes`, `cardPreview`, `searchText`; `displayType` becomes `url` if the whole text is a single URL, else `text`. Keep favorite, collections, `copyCount`, timestamps, `customTitle`, source page; set `editedAt`. No version history. The record is no longer *In Clipboard* (the clipboard still holds the old text).
-- **Copy to Clipboard** in the item view (↩ when the text is not being edited, ⌘↩ always) saves unsaved changes first, then restores (§3.4).
+- **Save** replaces the record's representations **in place** with one item holding `public.utf8-plain-text`. Recompute `contentHash`, `payloadSizeBytes`, `cardPreview`, `searchText`; `displayType` becomes `url` if the whole text is a single URL, else `text`. Keep favorite, collections, `copyCount`, timestamps, `customTitle`, source page; set `editedAt`. No version history. The record is no longer the selected card (the clipboard still holds the old text).
+- **Select** in the record window (↩ when the text is not being edited, ⌘↩ always) saves unsaved changes first, then restores (§3.4); the window closes and the focus goes back to the app.
 - Empty text → save disabled. Text larger than `maxSinglePayloadBytes` → save rejected with a message.
 - **Dedup collision:** if the new hash equals another record → merge into that record (favorite = OR; collections = union; `copyCount` = sum; `firstCopiedAt` = min; `lastCopiedAt` = max; `customTitle` = the existing one, else the edited one), delete the edited record, select the survivor, show *Merged with an existing record*. One transaction.
 - **Concurrency:** Edit is a `ClipboardStore` mutation; it adds the old hash to the tombstones (§3.2 coordination rule 5). Record deleted meanwhile → *Record no longer exists*.
 
-**Tests:** plain edit; rich → plain with warning; URL detection; collision merge; title shown and searchable; Copy to Clipboard with unsaved changes; text action in the editor + undo; in-flight capture of pre-edit content not recreated.
+**Tests:** plain edit; rich → plain with warning; URL detection; collision merge; title shown and searchable; Select with unsaved changes; text action in the editor + undo; in-flight capture of pre-edit content not recreated.
 
 ### 3.7 Pause capture and Skip next copy
 
@@ -900,7 +900,7 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 
 - **Sidebar** (toggle button, ⌥⌘S as in Pasta; ⌃⌘S also works): **History**, **Favorites**; **Apps** — source apps with icons, most recent first (right-click → **<App> ▸** quick actions, §5.1); **Types** — only types present (Text, Rich text, URL, Image, PDF, Color, File); **Collections**; **+ New Collection** pinned at the bottom. No item counts (as in Pasta). A selection filters the grid; search applies inside it.
 - **Top bar** at the window's top edge (transparent title bar, no traffic lights): search field, then sidebar toggle, pin and a gear menu as in Pasta — Pause / Resume (⌘.), Skip Next Copy, Clear History…, Pin Window (⌘P), Hide Sidebar (⌥⌘S), Settings… (⌘,), Quit.
-- **Grid:** a fixed **columns × rows** grid that fills the visible area, as in Pasta — 3 × 3 by default, presets 2 × 2 … 6 × 5 in Settings → General and with ⌘+ / ⌘−; cards resize with the window; new and removed cards scale and fade in and out (store changes only, not searches); cards on a solid text-background color (darker than the panel in dark mode), selected card with an accent border. A custom title sits in its own tinted strip so it never reads as clipboard content. Hovering a card shows ♥ (favorite), 👁 (open the item view) and ⋯ (menu); after a copy with the window pinned the card shows a checkmark and the trackpad gives haptic feedback.
+- **Grid:** a fixed **columns × rows** grid that fills the visible area, as in Pasta — 3 × 3 by default, presets 2 × 2 … 6 × 5 in Settings → General and with ⌘+ / ⌘−; cards resize with the window; new and removed cards scale and fade in and out (store changes only, not searches); cards on a solid text-background color (darker than the panel in dark mode). The **selected** card — the one the clipboard holds — has an accent border and tint; the keyboard cursor on another card has a grey ring. When the panel opens the cursor starts on the selected card (none when the clipboard holds something else) and follows clipboard changes until the user moves it. A custom title sits in its own tinted strip so it never reads as clipboard content. Hovering a card shows ♥ (favorite), ✎ (Edit Record) and ⋯ (menu); after a copy with the window pinned the card shows a checkmark and the trackpad gives haptic feedback.
 - **Card content:**
   - Text — `customTitle` (if set) as a heading, then the first lines, monospaced (no syntax colors on cards).
   - URL — monospaced, link color.
@@ -909,7 +909,7 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
   - File — QuickLook thumbnail or icon + file name; *Unavailable* dimmed when missing.
   - Secret (§3.10) — kind and the first characters, masked.
 - **Drag and drop:** a card drags into other apps (as in Pasta) with its stored types, loaded from the store only when the drop target asks; file cards drag as the file.
-- **Card footer:** source app icon (type icon when unknown) + metric (*N lines, M characters* for multi-line text, *N characters*, *W × H px*, *N files · 12.3 MB*, *#RRGGBB*) + relative time (*Now*, *2m*, *3h*, *4d*) — or, on the card the clipboard holds now, a green **In Clipboard** label in its place; badges: heart (favorite), pencil (edited), **T** (text found in image), clock (expires soon). Tooltip: source page (§5.2). Cards have no border except the selection; ⌘1…⌘9 hints appear while ⌘ is held.
+- **Card footer:** source app icon (type icon when unknown) + metric (*N lines, M characters* for multi-line text, *N characters*, *W × H px*, *N files · 12.3 MB*, *#RRGGBB*) + relative time (*Now*, *2m*, *3h*, *4d*) badges: heart (favorite), pencil (edited), **T** (text found in image), clock (expires soon). Tooltip: source page (§5.2). Cards have no border except the selection and the cursor; ⌘1…⌘9 hints appear while ⌘ is held.
 - **Red Current card** first in History (§3.2.3).
 - **Banners** above the grid: Enable capture (onboarding), Capture paused (access policy or user pause, with Resume), storage errors.
 - Empty states for History, filters and search.
@@ -924,8 +924,8 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 | ⌘1 … ⌘9 | Copy the Nth visible card |
 | ⌘C | Copy the selected card, never pasting (even with *paste after copying*) |
 | ⌘K | Actions panel for the selection (§8.4) |
-| Space (grid focused) / ⌘Y (anywhere) | Open or close the item view (§8.5); in it, ↑ ↓ ← → move to other items while its text is not being edited |
-| ⌘E | Item view with the cursor in the text (§3.6) |
+| Space (grid focused) / ⌘Y (anywhere) | Edit Record: the record window (§8.5); in it, ↑ ↓ ← → move to other records while its text is not being edited, Space closes |
+| ⌘E | Edit Record with the cursor in the text (§3.6) |
 | ⌘R | Rename (custom title) |
 | ⌘D | Toggle favorite |
 | ⌘⌫ | Delete selected (favorites ask for confirmation) |
@@ -943,17 +943,17 @@ All actions come from `ActionRegistry`, so the context menu, the **⌘K panel** 
 
 Card context menu (also behind the card's **⋯** hover button). Actions that do not apply are left out rather than shown disabled, so the menu stays short (first-run feedback: four "Copy…" items side by side were confusing):
 
-- **Copy to Clipboard** (↩, the same as a double-click) · Add to / Remove from Favorites (⌘D) · Add to Collection ▸
-- **Open** (Space: the item view, §8.5) · Rename… · **Duplicate As ▸** — Plain Text, No Formatting · Text from Image · text actions (§3.9); the result is a new card, the clipboard is untouched
+- **Select** (↩, the same as a double-click: the record becomes the clipboard content) · Add to / Remove from Favorites (⌘D) · Add to Collection ▸
+- **Edit Record** (⌘E or Space: the record window, §8.5) · Rename… · **Duplicate As ▸** — Plain Text, No Formatting · Text from Image · text actions (§3.9); the result is a new card, the clipboard is untouched
 - Open Source Page (§5.2) · Reveal in Finder (files)
 - **Rules for <App> ▸** — the quick actions of §5.1 plus *Delete This and Stop Saving from <App>*
 - Delete (⌘⌫)
 
 Gear menu: Pause Capture ▸ 5 / 15 min · 1 hour · Until I Resume (⌘.) — or Resume · Skip Next Copy · Clear History… · Pin Window (⌘P) · Hide Sidebar (⌥⌘S) · Settings… · About · Diagnostics… · Quit.
 
-### 8.5 Item view
+### 8.5 Record window
 
-One in-window overlay (not the system Quick Look panel) to look at an item and to edit it (§3.6), opened by Space, ⌘Y, the 👁 button, **Open** or ⌘E (cursor in the text). Header: source app icon, the **title** field, *Copied from example.com* (click opens, ⌥-click copies the link as a new card), the language picker for text, ⓘ (details: first / last copied, copy count, size, stored formats, skipped formats), **Copy to Clipboard** and Close. Opened to look at, nothing in it has the focus: ↑ ↓ ← → move to other items (not with unsaved changes), Space closes, ↩ copies. Clicking into the text edits it.
+One window (not the system Quick Look panel) to look at a record and to edit it (§3.6), opened by Space, ⌘Y, the ✎ button, **Edit Record** or ⌘E (cursor in the text). Like Settings it replaces the panel, which comes back when it closes; unlike an overlay it can be moved and resized and remembers its frame; it is built once and kept, so it opens at once. Header: source app icon, the **title** field, *Copied from example.com* (click opens, ⌥-click copies the link as a new card), the language picker for text, ⓘ (details: first / last copied, copy count, size, stored formats, skipped formats) and **Select**. Opened to look at, nothing in it has the focus: ↑ ↓ ← → move to other records (not with unsaved changes), Space or Esc closes, ↩ selects. Clicking into the text edits it. The close button, ⌘W and Esc ask before discarding changes. Settings is built a second after launch for the same reason.
 
 - **Text:** the whole text, editable for text, rich text and links (read-only for mixed items).
 - **Code:** syntax highlighting when the text looks like code (content heuristics; source app is an editor or terminal as a hint), kept up to date while editing. Language auto-detected; the picker overrides it and is saved as `codeLanguage`. Theme follows light/dark. Released when the view closes (§7.3). **Decision (Phase 5):** an own lightweight tokenizer in `MemopilaCore` (`CodeHighlighter`: detection plus keywords, strings, comments, numbers, keys, tags for 19 languages). Highlightr (JavaScriptCore + highlight.js) costs tens of MB and tree-sitter needs a grammar per language and has no detection; preview-grade coloring does not need either. Revisit if users ask for more precision.

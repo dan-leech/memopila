@@ -3,7 +3,7 @@ import MemopilaCore
 import MemopilaServices
 import SwiftUI
 
-// MARK: - Item view (§8.5, §3.6)
+// MARK: - Record window content (§8.5, §3.6)
 
 /// `nil` in the store = detect automatically; `plain` = no highlighting; otherwise a language.
 enum LanguageChoice: Hashable {
@@ -28,11 +28,11 @@ enum LanguageChoice: Hashable {
     }
 }
 
-/// One view to look at an item and to edit it (first-run feedback: preview and editor were two
-/// screens for nearly the same thing). Text, rich text and links are edited in place, with code
+/// One view to look at a record and to edit it, in its own window (first-run feedback: preview and
+/// editor were two screens for nearly the same thing, and an overlay could not be moved). Text, rich text and links are edited in place, with code
 /// highlighted as you type; images show the text found in them; files and colours show what they
 /// are. The title, the source and the details are part of the same view.
-struct ItemOverlay: View {
+struct RecordView: View {
     let model: AppModel
     @Bindable var state: ItemState
     @State private var details: RecordDetails?
@@ -92,18 +92,12 @@ struct ItemOverlay: View {
             .buttonStyle(.borderless)
             .help(String(localized: "Details: when it was copied, size, formats"))
             .accessibilityLabel(Text("Details"))
-            Button("Copy to Clipboard") { model.copyItem() }
+            // ↩ and ⌘↩ come through the window's key handler: ↩ must stay a new line while typing.
+            Button("Select") { model.copyItem() }
+                .buttonStyle(.borderedProminent)
                 .help(state.isDirty
-                    ? String(localized: "Save the changes, put the item on the clipboard and go back to the app you were in (⌘↩)")
-                    : String(localized: "Put the item on the clipboard and go back to the app you were in (↩)"))
-            Button {
-                model.dismissOverlay()
-            } label: {
-                Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary)
-            }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Close (Esc)"))
-            .accessibilityLabel(Text("Close"))
+                    ? String(localized: "Save the changes, make this record the clipboard content and go back to the app you were in (⌘↩)")
+                    : String(localized: "Make this record the clipboard content and go back to the app you were in (↩)"))
         }
         .padding(.horizontal, 14)
         .padding(.top, 12)
@@ -321,7 +315,7 @@ struct ItemOverlay: View {
             if state.isConfirmingDiscard {
                 Text("Discard your changes?").font(.callout)
                 Button("Keep Editing") { state.isConfirmingDiscard = false }
-                Button("Discard", role: .destructive) { model.present(nil) }
+                Button("Discard", role: .destructive) { model.closeRecord() }
             } else if state.isDirty {
                 Button("Revert") { state.revert() }
                     .help(String(localized: "Go back to the saved text and title"))
