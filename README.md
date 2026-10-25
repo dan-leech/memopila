@@ -58,8 +58,8 @@ Memopila lives in the menu bar and keeps a history of what you copy: text, rich 
 - **Select several cards** to favorite or delete them together. *Undo* is available after a delete.
 
 ### Everyday comfort
-- **Double-click, ↩ or ⌘1…⌘9** puts a record on the clipboard and takes you back to your app.
-- Optional **paste after copying** (needs Accessibility).
+- **Choose for Clipboard** (double-click, ↩ or ⌘1…⌘9) puts a record on the clipboard and takes you back to your app.
+- Optional **auto-paste** after choosing (needs Accessibility).
 - Launch at login, tooltips on every control, and a full keyboard map.
 - English and Russian.
 
@@ -76,7 +76,7 @@ Memopila lives in the menu bar and keeps a history of what you copy: text, rich 
      ```
 
 4. **Allow clipboard access.** Choose **Enable Capture** in the panel banner or the menu bar menu. When macOS asks whether Memopila may read the clipboard, choose **Always Allow**. If capture stays paused, open **System Settings → Privacy & Security** and set Memopila to *Always Allow*.
-5. **Optional: Accessibility.** This is needed only for *Settings → General → After Copying → Also paste into the app you were in* and for ⌥↩. Memopila asks for it when you turn the option on. You can also add it in **System Settings → Privacy & Security → Accessibility**.
+5. **Optional: Accessibility.** This is needed only for *Settings → General → Auto-Paste After Choosing → Paste into the app you were in* and for ⌥↩. Memopila asks for it when you turn the option on. You can also add it in **System Settings → Privacy & Security → Accessibility**.
 
 > [!IMPORTANT]
 > macOS ties clipboard access and Accessibility to the app's signature, and an unsigned (ad-hoc signed) build gets a new one with every release. After an update you may need to choose **Always Allow** again. If you use auto-paste, remove Memopila from the Accessibility list and add it back.
@@ -122,9 +122,9 @@ CI (`.github/workflows/ci.yml`) runs the core tests on Linux and macOS and the s
 |------|--------|
 | **⌥⌘V** | Open or close the panel (can be changed in Settings) |
 | Typing / **⌘F** | Search |
-| **↩** / double-click | Put the record on the clipboard and go back to your app |
-| **⌥↩** | The same, then paste into that app (Accessibility) |
-| **⌘1 … ⌘9** | Select one of the first nine cards |
+| **↩** / double-click | Choose for Clipboard — go back to your app |
+| **⌥↩** | Choose and Paste (Accessibility) |
+| **⌘1 … ⌘9** | Choose for Clipboard: the first nine cards |
 | **Space** / **⌘E** | Edit Record |
 | **⌘K** | All actions for the card |
 | **⌘D** | Add to or remove from Favorites |
@@ -144,7 +144,7 @@ The full keyboard map is in [PLAN §8.3](docs/PLAN.md#83-keyboard).
 - **Secrets in plain copies:** tokens, private keys, JWTs and card numbers are recognized on your Mac. By default they are saved masked on the card and deleted after 8 hours. Settings → Privacy can switch to *Don't save* or *Save as usual*, change the time, or turn off single kinds. ⌘D keeps a secret for good. Detection is pattern-based and cannot catch every secret.
 - **Pause** and **Skip next copy:** content copied while capture is paused or skipped is never read.
 - **Universal Clipboard:** you can ignore content that comes from your other devices.
-- **Accessibility** is used only for paste after copying (and, while it is allowed, to remember the title of the window you copied from).
+- **Accessibility** is used only for auto-paste (and, while it is allowed, to remember the title of the window you copied from).
 
 > [!NOTE]
 > Per-app settings such as *Don't save* identify the source app by the self-reported `org.nspasteboard.source` pasteboard marker when present, otherwise by the frontmost app at copy time. Neither is authenticated: another app can claim a different bundle ID, and a copy made in the background can be attributed to the wrong app. This is a convenience filter, not a security boundary. *Strict* mode skips copies without a valid marker whenever an app is set to *Don't save*. For one-off secrets use *Pause* or *Skip next copy*. Other clipboard managers may also compete for global hotkeys or pasteboard access.

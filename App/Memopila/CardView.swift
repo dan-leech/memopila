@@ -63,8 +63,8 @@ struct CardView: View {
         }
         .overlay(alignment: .topTrailing) { cornerControls }
         .overlay {
-            if model.copiedCardID == card.id {
-                CopiedBadge(pasted: model.copiedCardWasPasted).transition(.scale(scale: 0.6).combined(with: .opacity))
+            if model.chooseBadgeCardID == card.id {
+                ChooseBadge(pasted: model.chooseBadgeWasPasted).transition(.scale(scale: 0.6).combined(with: .opacity))
             }
         }
         .opacity(isUnavailable ? 0.55 : 1)
@@ -72,7 +72,7 @@ struct CardView: View {
         .onHover { hovering in
             withAnimation(.easeOut(duration: 0.12)) { isHovered = hovering }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: model.copiedCardID)
+        .animation(.spring(response: 0.3, dampingFraction: 0.7), value: model.chooseBadgeCardID)
         .help(card.sourceURL.map { String(localized: "Copied from \($0)") } ?? "")
         // Formatted text shows formatted, as in the record window (owner feedback).
         .task(id: card.displayType == .richText && secretKind == nil ? ThumbnailCache.richKey(for: card) : "") {
@@ -438,8 +438,8 @@ private struct CardIconButton: View {
     }
 }
 
-/// Shown on a card for a moment after it was pasted or copied while the window is pinned.
-private struct CopiedBadge: View {
+/// Shown on a card for a moment after Choose for Clipboard while the window is pinned.
+private struct ChooseBadge: View {
     let pasted: Bool
 
     var body: some View {
@@ -447,7 +447,7 @@ private struct CopiedBadge: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 26, weight: .semibold))
                 .foregroundStyle(.green)
-            Text(pasted ? String(localized: "Pasted") : String(localized: "Copied")).font(.caption.bold())
+            Text(pasted ? String(localized: "Pasted") : String(localized: "On Clipboard")).font(.caption.bold())
         }
         .padding(12)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))

@@ -37,7 +37,7 @@ struct RecordWindowContent: View {
 }
 
 /// Keys of the record window (§8.5). While a text view or the title has the focus, keys edit it and
-/// Esc stops editing; otherwise ↑ ↓ ← → move to other records, Space or Esc closes and ↩ selects.
+/// Esc stops editing; otherwise ↑ ↓ ← → move to other records, Space or Esc closes and ↩ to clipboard.
 @MainActor
 enum RecordKeys {
     static func handle(_ event: NSEvent, in window: NSWindow, model: AppModel) -> Bool {

@@ -34,7 +34,7 @@ enum LanguageChoice: Hashable {
 /// says what the keys do right now.
 ///
 /// - Toolbar: ‹ › and the position, Undo / Redo, *Transform*, bold / italic / underline for
-///   formatted text, Find, the inspector toggle and **Select**.
+///   formatted text, Find, the inspector toggle and **Choose for Clipboard**.
 /// - Content: the text (edited in place: code highlighted as you type, formatted text with its
 ///   formatting), a link's header, the image with the text found in it, the file through Quick Look
 ///   or the colour with its values.
@@ -156,15 +156,15 @@ struct RecordView: View {
             // ↩ and ⌘↩ come through the window's key handler: ↩ must stay a new line while typing.
             Button { model.copyItem() } label: {
                 ShortcutLabel(
-                    title: state.isDirty ? String(localized: "Save and Select") : String(localized: "Select"),
+                    title: state.isDirty ? String(localized: "Save and Choose") : String(localized: "Choose for Clipboard"),
                     shortcut: state.isDirty || state.isEditingText ? "⌘↩" : "↩"
                 )
             }
             .buttonStyle(.borderedProminent)
             .disabled(state.isDirty && cannotSaveReason != nil)
             .help(state.isDirty
-                ? cannotSaveReason ?? String(localized: "Save the changes, make this record the clipboard content and go back to the app you were in (⌘↩)")
-                : String(localized: "Make this record the clipboard content and go back to the app you were in (↩)"))
+                ? cannotSaveReason ?? String(localized: "Save and Choose: save, put on the clipboard and go back to the app you were in (⌘↩)")
+                : String(localized: "Choose for Clipboard: put on the clipboard and go back to the app you were in (↩)"))
         }
         .buttonStyle(.borderless)
         .labelStyle(.titleAndIcon)
@@ -781,18 +781,18 @@ struct RecordView: View {
     /// What the keys do right now.
     private var hint: String {
         if state.isDirty {
-            return String(localized: "⌘S saves · ⌘↩ saves and selects · Esc asks to save")
+            return String(localized: "⌘S saves · ⌘↩ Save and Choose · Esc asks to save")
         }
         if state.isEditingText {
             return String(localized: "Editing · Esc stops editing")
         }
         if state.isEditable {
-            return String(localized: "Click the text to edit · ← → other records · ↩ selects · Esc closes")
+            return String(localized: "Click the text to edit · ← → other records · ↩ to clipboard · Esc closes")
         }
         if isImage {
-            return String(localized: "⌘+ ⌘− zoom · ⌘0 fit · ← → other records · ↩ selects · Esc closes")
+            return String(localized: "⌘+ ⌘− zoom · ⌘0 fit · ← → other records · ↩ to clipboard · Esc closes")
         }
-        return String(localized: "← → other records · ↩ selects · Esc closes")
+        return String(localized: "← → other records · ↩ to clipboard · Esc closes")
     }
 
     /// The selection when there is one, else the whole text.

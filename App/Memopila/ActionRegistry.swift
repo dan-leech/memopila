@@ -47,11 +47,11 @@ enum ActionRegistry {
         // The same as a double-click (§3.4): the record becomes what the clipboard holds (the selected
         // card) and the focus goes back to the app.
         var items: [ActionItem] = [
-            ActionItem(id: "select", title: String(localized: "Select"), systemImage: "checkmark.circle", shortcut: "↩") {
+            ActionItem(id: "choose", title: String(localized: "Choose for Clipboard"), systemImage: "checkmark.circle", shortcut: "↩") {
                 model.restore(id)
             },
-            // Once, without turning on *Also paste* in Settings.
-            ActionItem(id: "select.paste", title: String(localized: "Select and Paste"), systemImage: "doc.on.clipboard", shortcut: "⌥↩") {
+            // Once, without turning on auto-paste in Settings.
+            ActionItem(id: "choose.paste", title: String(localized: "Choose and Paste"), systemImage: "doc.on.clipboard", shortcut: "⌥↩") {
                 model.restore(id, paste: true)
             },
             ActionItem(
@@ -129,8 +129,8 @@ enum ActionRegistry {
         return items
     }
 
-    /// Several selected cards: favorites, collections and delete for all of them. *Select* stays so
-    /// that it can say why it does not apply: the clipboard holds one record.
+    /// Several selected cards: favorites, collections and delete for all of them. *Choose for
+    /// Clipboard* stays so that it can say why it does not apply: the clipboard holds one record.
     static func selectionActions(_ ids: [UUID], model: AppModel) -> [ActionItem] {
         let cards = model.history.cards.filter { ids.contains($0.id) }
         let count = ids.count
@@ -144,7 +144,7 @@ enum ActionRegistry {
             ) { model.setMembership(ids, collection: collection.id, isMember: !allIn) }
         }
         var items: [ActionItem] = [
-            ActionItem(id: "selection.select", title: String(localized: "Select"), systemImage: "checkmark.circle", shortcut: "↩") {
+            ActionItem(id: "selection.choose", title: String(localized: "Choose for Clipboard"), systemImage: "checkmark.circle", shortcut: "↩") {
                 model.restoreSelected()
             },
             ActionItem(

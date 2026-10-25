@@ -300,7 +300,7 @@ final class PanelController: NSObject, NSWindowDelegate {
             default: return false
             }
         }
-        // ⌥↩: select and paste this once, whatever *Also paste* says.
+        // ⌥↩: choose for clipboard and paste this once, whatever auto-paste says.
         if flags == .option, key.isReturn {
             model.restoreSelected(paste: true)
             return true
@@ -374,7 +374,7 @@ final class PanelController: NSObject, NSWindowDelegate {
 
     /// Cut / copy / paste / select all / undo in text fields. A non-activating panel does not get
     /// them from the main menu, so they go to the first responder directly. ⌘C without a text
-    /// selection copies the selected card instead.
+    /// selection runs Choose for Clipboard instead.
     private func forwardEditCommand(_ key: KeyPress, flags: NSEvent.ModifierFlags) -> Bool? {
         guard let textView = panel?.firstResponder as? NSTextView else { return nil }
         switch (key.letter, flags) {
@@ -392,7 +392,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         case ("x", .command):
             selector = #selector(NSText.cut(_:))
         case ("c", .command):
-            // Without a text selection ⌘C copies the selected card.
+            // Without a text selection ⌘C is Choose for Clipboard (never auto-paste).
             guard textView.selectedRange().length > 0 else { return nil }
             selector = #selector(NSText.copy(_:))
         case ("v", .command): selector = #selector(NSText.paste(_:))

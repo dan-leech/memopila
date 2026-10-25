@@ -284,7 +284,7 @@ jobs:
             cat <<'EOF'
           2. Unzip it (or open the disk image) and move **Memopila.app** to **Applications**.
           3. Open Memopila and choose **Enable Capture** in the panel banner or the menu bar menu. When macOS asks whether Memopila may read the clipboard, choose **Always Allow**. If capture stays paused, set Memopila to *Always Allow* in **System Settings → Privacy & Security**.
-          4. Optional: for paste after copying, turn on *Settings → General → After Copying → Also paste into the app you were in* and allow Memopila in **System Settings → Privacy & Security → Accessibility**.
+          4. Optional: for auto-paste, turn on *Settings → General → Auto-Paste After Choosing → Paste into the app you were in* and allow Memopila in **System Settings → Privacy & Security → Accessibility**.
 
           Requires macOS 15.4 or later. Only one app can hold the ⌥⌘V shortcut: quit Pasta (or another app using it) first, or pick another shortcut in Settings.
 

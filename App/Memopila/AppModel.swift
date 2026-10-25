@@ -81,10 +81,10 @@ final class AppModel {
     var isCommandHeld = false
     /// ⌥ is held in the panel: the gear menu also offers Diagnostics.
     var isOptionHeld = false
-    /// The card just copied while the window is pinned; it shows a checkmark for a moment.
-    private(set) var copiedCardID: UUID?
-    /// The badge on that card says Pasted rather than Copied.
-    private(set) var copiedCardWasPasted = false
+    /// The card just chosen while the window is pinned; it shows a checkmark for a moment.
+    private(set) var chooseBadgeCardID: UUID?
+    /// The badge on that card says Pasted rather than On Clipboard.
+    private(set) var chooseBadgeWasPasted = false
     /// Bumped whenever search should take focus (open, ⌘F, overlay closed).
     private(set) var focusSearchToken = 0
     /// Bumped when a click on a card takes the keyboard from the search to the cards.
@@ -352,7 +352,7 @@ final class AppModel {
         itemState = nil
     }
 
-    /// Save (⌘S): the text is saved and the window stays open — only Select and Esc close it.
+    /// Save (⌘S): the text is saved and the window stays open — only Choose for Clipboard and Esc close it.
     func saveItem() {
         Task { await saveText() }
     }
@@ -384,7 +384,7 @@ final class AppModel {
         return error == nil
     }
 
-    /// *Select* in the record window (↩, ⌘↩; ⌥↩ also pastes): unsaved changes are saved first.
+    /// *Choose for Clipboard* in the record window (↩, ⌘↩; ⌥↩ also pastes): unsaved changes are saved first.
     func copyItem(paste: Bool? = nil) {
         guard let state = itemState else { return }
         if state.isDirty {
@@ -480,7 +480,7 @@ final class AppModel {
         focusSearch()
     }
 
-    /// The app that keeps the focus behind the non-activating panel: the target of Paste after restore.
+    /// The app that keeps the focus behind the non-activating panel: the target of auto-paste after Choose for Clipboard.
     func refreshPreviousApp() {
         previousApp = NSWorkspace.shared.frontmostApplication.flatMap {
             $0.bundleIdentifier == ClipboardMonitor.ownBundleID ? nil : $0
@@ -597,8 +597,8 @@ final class AppModel {
         Task { await performRestore(id, paste: paste) }
     }
 
-    /// *Select* from a card's menu: several selected cards cannot all go to the clipboard.
-    func select(_ id: UUID, paste: Bool? = nil) {
+    /// *Choose for Clipboard* from a card's menu: several selected cards cannot all go to the clipboard.
+    func choose(_ id: UUID, paste: Bool? = nil) {
         if history.selection.count > 1, history.isSelected(id) {
             _ = singleSelection()
             return
@@ -607,7 +607,7 @@ final class AppModel {
     }
 
     /// Puts the item on the clipboard, moves it to the top and gives the focus back to the app the
-    /// user came from, as in Pasta. *Paste after copying* (off by default) also presses ⌘V there;
+    /// user came from, as in Pasta. *Auto-paste* (off by default) also presses ⌘V there;
     /// `paste` overrides that setting. `true` when the clipboard now holds the item.
     @discardableResult
     private func performRestore(_ id: UUID, paste: Bool? = nil) async -> Bool {
@@ -630,7 +630,7 @@ final class AppModel {
             // needs a moment to take the focus back before ⌘V reaches it.
             let wasActive = NSApp.isActive
             if isPinned {
-                showCopied(id, pasted: pastes)
+                showChooseBadge(id, pasted: pastes)
                 // Pinned: the panel stays visible but gives the key focus back to the target app.
                 if pastes {
                     // The panel keeps the keyboard while pinned: give it back, or ⌘V would paste
@@ -711,17 +711,17 @@ final class AppModel {
             history.storeDidChange()
             return fail(String(localized: "The item no longer exists."))
         } catch {
-            return fail(String(localized: "This item can't be restored: its stored data is damaged."))
+            return fail(String(localized: "This item can't go to the clipboard: its stored data is damaged."))
         }
     }
 
-    private func showCopied(_ id: UUID, pasted: Bool) {
-        copiedCardID = id
-        copiedCardWasPasted = pasted
+    private func showChooseBadge(_ id: UUID, pasted: Bool) {
+        chooseBadgeCardID = id
+        chooseBadgeWasPasted = pasted
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
         Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(900))
-            if self?.copiedCardID == id { self?.copiedCardID = nil }
+            if self?.chooseBadgeCardID == id { self?.chooseBadgeCardID = nil }
         }
     }
 
@@ -914,7 +914,7 @@ final class AppModel {
 
     // MARK: Several selected cards
 
-    /// ↩ and Select with several cards selected: the clipboard holds one record.
+    /// ↩ and Choose for Clipboard with several cards selected: the clipboard holds one record.
     private func singleSelection() -> UUID? {
         let selection = history.selection
         guard selection.count <= 1 else {

@@ -357,7 +357,7 @@ final class ClipboardMonitor {
             return .failed(String(localized: "Another app changed the clipboard. Try again."))
         case .failed:
             record("restore failed: writeObjects returned false")
-            return .failed(String(localized: "Could not write to the clipboard."))
+            return .failed(String(localized: "Could not put this on the clipboard."))
         }
     }
 

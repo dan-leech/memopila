@@ -97,7 +97,7 @@ private struct GeneralSettings: View {
             }
 
             Section {
-                Toggle("Also paste into the app you were in", isOn: $settings.pasteAfterCopy)
+                Toggle("Paste into the app you were in", isOn: $settings.pasteAfterCopy)
                     .onChange(of: settings.pasteAfterCopy) { _, enabled in
                         if enabled, !AccessibilityBridge.isTrusted { AccessibilityBridge.requestTrust() }
                     }
@@ -114,9 +114,9 @@ private struct GeneralSettings: View {
                     isTrusted = AccessibilityBridge.isTrusted
                 }
             } header: {
-                Text("After Copying")
+                Text("Auto-Paste After Choosing")
             } footer: {
-                Text("A double-click, ↩ or ⌘1…⌘9 put an item on the clipboard and take you back to the app you were in. With this option Memopila also presses ⌘V there for you, which needs Accessibility. When allowed, Memopila also remembers the title of the window you copied from.")
+                Text("Choose for Clipboard (double-click, ↩ or ⌘1…⌘9) puts an item on the clipboard and takes you back to the app you were in. With this option Memopila also presses ⌘V there for you, which needs Accessibility. When allowed, Memopila also remembers the title of the window you copied from.")
             }
 
             RecognitionSections(settings: model.settings)

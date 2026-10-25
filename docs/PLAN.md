@@ -14,7 +14,7 @@
 - **Pasta-parity UI** (§8): menu-bar app; hotkey window with sidebar (History, Favorites, Apps, Types, Collections), search and a card grid with thumbnails.
 - Capture clipboard history as **deduplicated canonical snapshots** of allowlisted formats (text, rich text, URL, image, PDF, color, files) plus formats the user opts into with **format rules** (§3.2.2).
 - **Show the current clipboard even when it is not saved**: a red *Current — not saved* card with the reason and quick fixes (§3.2.3).
-- **The selected card is the clipboard.** Memopila shows what the clipboard holds, extended by history: the card the clipboard holds has a thin (1 pt) green line, drawn over the inner side of the selection's accent border (↑ ↓ ← →, a click), so the selected card on the clipboard has a double frame: blue outside, green next to the content. **Select** (double-click, ↩, ⌘1…⌘9) makes the selected record the clipboard content — it moves to the top, the window closes and the focus returns to the previous app. No card has the green line when the clipboard holds something that is not in history. Optional **paste after copying** (Settings → General, off by default, Accessibility) also presses ⌘V. Text that is not a record yet — the text found in an image (selected or all), a source link — goes to the clipboard **as a new card**, so that card gets the green line. First-run feedback: a paste-first default, *Paste as Plain Text* (⇧⌘V in the target app does that), copies that never appeared in history and a separate *In Clipboard* label were all wrong for a clipboard manager.
+- **The selected card is the clipboard.** Memopila shows what the clipboard holds, extended by history: the card the clipboard holds has a thin (1 pt) green line, drawn over the inner side of the selection's accent border (↑ ↓ ← →, a click), so the selected card on the clipboard has a double frame: blue outside, green next to the content. **Choose for Clipboard** (double-click, ↩, ⌘1…⌘9) makes the selected record the clipboard content — it moves to the top, the window closes and the focus returns to the previous app. No card has the green line when the clipboard holds something that is not in history. Optional **auto-paste** (Settings → General → *Auto-Paste After Choosing*, off by default, Accessibility) also presses ⌘V. Text that is not a record yet — the text found in an image (selected or all), a source link — goes to the clipboard **as a new card**, so that card gets the green line. First-run feedback: a paste-first default, *Paste as Plain Text* (⇧⌘V in the target app does that), copies that never appeared in history and a separate *In Clipboard* label were all wrong for a clipboard manager.
 - **Edit records**: edit text content and set a custom title on any record (§3.6).
 - **Per-app settings** (§5.1): save / don't save / delete after a short time, format rules, text recognition, source page — set in two clicks from any card through the actions menu (§8.4).
 - **Pause capture** (timed) and **Skip next copy** (§3.7).
@@ -365,7 +365,7 @@ Applies to `public.file-url` and `NSFilenamesPboardType` before storage, hash, a
 
 ### 3.4 Restore to Clipboard (not paste)
 
-User-facing name: **Select** (internally Restore).
+User-facing name: **Choose for Clipboard** (internally Restore).
 
 **Focus and keys:**
 
@@ -381,7 +381,7 @@ User-facing name: **Select** (internally Restore).
 - **Restore:** all stored representations; the record gets the green clipboard line.
 - **New text** (`copyNewText`): the text found in an image (the selection, else all of it), a source link (⌥-click), the Diagnostics report. Stored as a new record with the original's source (secret policy applies, §3.10), then written like a restore — never a clipboard write that history does not show. The window stays open: this copies part of an item, like ⌘C in its text.
 - Text actions and other transformations do not copy: they create a new card (*Duplicate As*, §3.9). No *Copy as plain text*: ⇧⌘V (Paste and Match Style) in the target app does it.
-- **Paste after copying** (Settings → General → *After Copying*, off by default): once the panel has given up key status (it closes; when pinned it resigns key and stays visible), post ⌘V through the session event tap, on the key that types *v* in the current Latin layout (Dvorak, AZERTY) and with only ⌘ set. Requires Accessibility; without it items are only copied.
+- **Auto-paste** (Settings → General → *Auto-Paste After Choosing*, off by default): once the panel has given up key status (it closes; when pinned it resigns key and stays visible), post ⌘V through the session event tap, on the key that types *v* in the current Latin layout (Dvorak, AZERTY) and with only ⌘ set. Requires Accessibility; without it items are only put on the clipboard.
 
 **After any confirmed write** (Restore or a variant): the store moves the source record to the top: `lastCopiedAt = max(lastCopiedAt, restoreTime)`; `copyCount` unchanged. The written content is suppressed by the token, so variant outputs (plain text, text actions, recognized text) are **not** added to history; to keep a transformed text, apply the action in the editor and save (§3.6).
 
@@ -477,20 +477,20 @@ If a mandatory gate fails → amend this PLAN with a fallback (layout, commit or
 
 **Edit text** — records with `displayType` `text`, `richText` or `url` (not images, PDFs, colors, files, mixed) that hold **one** pasteboard item (a copy of several bookmarks or notes is shown read-only: the window shows the first item's text, and saving would drop the others — review finding), in the **record window** (§8.5): one window for looking at a record and editing it (first-run feedback: preview and editor were nearly the same screen behind two buttons, and an overlay could not be moved).
 
-- The text is editable in place — click into it, or open with ⌘E — with code highlighted as you type (re-coloured 0.3 s after the last edit, up to 200 000 UTF-16 units). The **title** is a labelled field in the inspector; it saves itself when the field is left, on ↩ and before the window moves on or closes; Tab goes on to the text, Esc only leaves the field. The toolbar holds Undo / Redo and one **Transform** menu with the text actions in sections *Case*, *Lines*, *JSON*, *Encode* (§3.9, on the selected text or all of it, undoable; first-run feedback: four menus took the toolbar); an action that does not apply to that text is disabled with its reason as a tooltip, as in ⌘K (checked off the main thread 0.25 s after an edit or a selection change, up to 100 000 UTF-16 units; above that every action stays on and reports when it does not apply). *Find* is ⌘F, *Find and Replace* ⌥⌘F (system find bar). The status bar has live counts (the selection's characters and lines when there is one), the text's size once it is within 80 % of the *Largest item* limit (orange, red above it — then Save is disabled with the reason instead of failing), the *View* menu, an *Edited* mark (and the dot in the close button) and, with changes, **Changes…**, **Revert** (undoable with ⌘Z) and **Save** (⌘S). No separate *Save and Close* (⇧⌘S is *Save As* / *Duplicate* on the Mac): Esc then ↩ saves and closes, ⌘↩ saves and selects.
-- **Save never closes the window**; only Select and Esc / ⌘W / the close button do (first-run feedback). Save is disabled while saving or loading and when the text is empty, with the reason as a tooltip; *Save and Select* likewise.
+- The text is editable in place — click into it, or open with ⌘E — with code highlighted as you type (re-coloured 0.3 s after the last edit, up to 200 000 UTF-16 units). The **title** is a labelled field in the inspector; it saves itself when the field is left, on ↩ and before the window moves on or closes; Tab goes on to the text, Esc only leaves the field. The toolbar holds Undo / Redo and one **Transform** menu with the text actions in sections *Case*, *Lines*, *JSON*, *Encode* (§3.9, on the selected text or all of it, undoable; first-run feedback: four menus took the toolbar); an action that does not apply to that text is disabled with its reason as a tooltip, as in ⌘K (checked off the main thread 0.25 s after an edit or a selection change, up to 100 000 UTF-16 units; above that every action stays on and reports when it does not apply). *Find* is ⌘F, *Find and Replace* ⌥⌘F (system find bar). The status bar has live counts (the selection's characters and lines when there is one), the text's size once it is within 80 % of the *Largest item* limit (orange, red above it — then Save is disabled with the reason instead of failing), the *View* menu, an *Edited* mark (and the dot in the close button) and, with changes, **Changes…**, **Revert** (undoable with ⌘Z) and **Save** (⌘S). No separate *Save and Close* (⇧⌘S is *Save As* / *Duplicate* on the Mac): Esc then ↩ saves and closes, ⌘↩ Save and Choose.
+- **Save never closes the window**; only Choose for Clipboard and Esc / ⌘W / the close button do (first-run feedback). Save is disabled while saving or loading and when the text is empty, with the reason as a tooltip; *Save and Choose* likewise.
 - **Unsaved text never blocks:** closing (Esc, Space, ⌘W, the close button) and moving to another record (‹ ›, ↑ ↓ ← →) show the standard sheet *Do you want to save the changes to this record?* — **Save** (↩) saves and goes on, **Don’t Save** (⌘D) drops the text edit and goes on, **Cancel** (Esc) stays. First-run feedback: the arrows silently stopped working and the inline *Discard your changes?* in the status bar was easy to miss. A changed title is never lost: it saves itself either way. Esc while editing without changes only leaves the text; Esc in the find bar closes the find bar.
 - **Changes…** opens a sheet with the edited text against the saved one, line by line (removed / added lines with both line numbers, 3 lines of context, unchanged runs folded), with *Save* (↩) and *Close* (Esc). Computed once when opened, off the main thread, and bounded (`LineDiff` in `MemopilaCore`): the common start and end are skipped without comparing, at most 500 differing lines per side are matched (beyond that the middle shows as removed, then added), at most 2 000 rows, lines cut at 1 000 characters.
 - **View** menu (how the text is shown, never what is saved, kept for the next record): *Wrap Lines*; *Line Numbers* — *Automatic (for Code)* (shown when the text is highlighted as code), *Always*, *Never*; *Show Invisible Characters* (· space, → tab, ° no-break space, ¬ line break, drawn over the visible part only); *Monospaced Font* (on by default, for logs, JSON and code; off = the system font for prose, independent of highlighting); text size (⌘+ / ⌘− / ⌘0). Line numbers count lines of text, not wrapped rows; the line starts are recounted on each edit only while numbers show. Deliberately no minimap, folding, multiple cursors or other IDE features: the window stays light (§7.3).
 - **Formatted text** (records with RTF, RTFD, HTML or a web archive) opens with its formatting and is edited as rich text, in the same text view — nothing is added for it but AppKit's own rich text (first-run feedback: shown plain it lost what made it rich). It reads the richest readable format — RTFD, RTF, HTML, web archive — up to 4 MB (above that, plain text, to stay light). Nothing blocks the app while it loads: RTF is read off the main thread, HTML through WebKit's asynchronous loader (which may wait for remote images and styles; review finding: a browser copy froze the app; it runs in a short-lived WebKit process, whose sandbox messages in Xcode's console are harmless), web archives up to 1 MB with a 2 s limit. Bold ⌘B, italic ⌘I, underline ⌘U (toolbar buttons too) toggle on the selection or for what is typed next, undoable; the text actions replace text and keep the formatting of where they start. It is shown as a document with a wider margin, on the page `RichPage` decides, the same for its card: **the background the copy names** (its document background, or one on most of its text — a styled web page, code from VS Code) in its own colours; **a dark page** when it names none and most of its text is light (code from a dark editor theme); **else none of its own**: it follows the window — white in Light Mode, and in Dark Mode a dark page with the colours inverted (AppKit's adaptive colour mapping; owner feedback: black text on a white page was not expected for a copy without a background). It is zoomed so the size most of the text has reads at about 14 pt (× 1 … 2.5; first-run feedback: Dark Mode colour mapping and the 9–11 pt of web and app text were hard to read). Fonts are the record's own: ⌘+ / ⌘− zoom further instead; no highlighting, language or monospaced font. Wrapped lines follow the zoom and the window size (the text view is kept as wide as what shows, in document units); links open in front of the record window. *Edited* compares text and formatting, so a change of formatting alone counts; *Changes…* says *Only the formatting changed.* when the words did not. **Formatting** is a toggle button in the toolbar, shown on and highlighted while the text is formatted (⇧⌘T, as TextEdit's *Make Plain Text*; also *View → Show Formatting*; owner feedback: the View menu was not where anyone looks). Off keeps the text as it is now, edits included, without its formatting, with the code features: the record counts as changed, so **Save stores only the text** at once (*Formatting will be removed*; owner feedback: there was no quick way to save a record plain). On brings the stored formatting back while the plain text is still the stored one; once the plain text is edited, *Revert* brings back both. **Remove Formatting** (the eraser beside B I U, ⌘\, as CKEditor's *Remove Format*) takes bold, italic, underline, strike-through, colours, background and links off the selection or all the text, in the font most of the text has and the page's text colour; lists and paragraphs stay; undoable.
 - **Save** of formatted text writes one item with RTF (flat RTFD when it holds attachments), HTML (for browsers and web apps, which read only HTML) and `public.utf8-plain-text`, all counted against the size limit; `displayType` stays `richText`. Otherwise **Save** replaces the record's representations **in place** with one item holding `public.utf8-plain-text`. Recompute `contentHash`, `payloadSizeBytes`, `cardPreview`, `searchText`; `displayType` becomes `url` if the whole text is a single URL, else `text`. Keep favorite, collections, `copyCount`, timestamps, `customTitle`, source page; set `editedAt`. No version history. The record loses the green clipboard line (the clipboard still holds the old text).
-- **Select** in the record window (↩ when the text is not being edited, ⌘↩ always) saves unsaved changes first, then restores (§3.4); the window closes and the focus goes back to the app.
+- **Choose for Clipboard** in the record window (↩ when the text is not being edited, ⌘↩ always) saves unsaved changes first, then restores (§3.4); the window closes and the focus goes back to the app.
 - Empty text → save disabled. Text larger than `maxSinglePayloadBytes` → save rejected with a message.
 - **Secrets** (§3.10) in saved text are treated as in a copy: masked only while detection is on and for the enabled kinds; *Don't save* refuses the save with a message; *Delete after* sets `expiresAt` (unless favorite) and re-arms the expiry timer.
 - **Dedup collision:** if the new hash equals another record → merge into that record (favorite = OR; collections = union; `copyCount` = sum; `firstCopiedAt` = min; `lastCopiedAt` = max; `customTitle` = the existing one, else the edited one), delete the edited record, select the survivor, show *Merged with an existing record*; the record window then shows the survivor. One transaction.
 - **Concurrency:** Edit is a `ClipboardStore` mutation; it adds the old hash to the tombstones (§3.2 coordination rule 5). Record deleted meanwhile → *Record no longer exists*.
 
-**Tests:** plain edit; rich → plain with warning; URL detection; collision merge; line diff for *Changes…* (`LineDiffTests`); title shown and searchable; Select with unsaved changes; text action in the editor + undo; in-flight capture of pre-edit content not recreated.
+**Tests:** plain edit; rich → plain with warning; URL detection; collision merge; line diff for *Changes…* (`LineDiffTests`); title shown and searchable; Choose for Clipboard with unsaved changes; text action in the editor + undo; in-flight capture of pre-edit content not recreated.
 
 ### 3.7 Pause capture and Skip next copy
 
@@ -690,7 +690,7 @@ Cards also get a top-level **Delete and Don't Save from <App>**. Every settings 
   1. `org.chromium.source-url` — seen in pasteboard dumps from Chromium-based apps; which apps write it and its exact format **(spike)**.
   2. Safari / WebKit: the main resource URL of a stored `com.apple.webarchive` representation (`WebMainResource` → `WebResourceURL`).
   3. Other browsers, e.g. Firefox **(spike: find their types)**.
-  4. Window title: only when Accessibility is already granted (for paste after copying) — title of the frontmost app's focused window at detection time. Never prompts for Accessibility by itself.
+  4. Window title: only when Accessibility is already granted (for auto-paste) — title of the frontmost app's focused window at detection time. Never prompts for Accessibility by itself.
 - Only `http`, `https` and `file` URLs up to 2 048 bytes; anything else is ignored.
 - **UI:** preview line *Copied from example.com* (click opens it in the default browser; ⌥-click copies the URL); card tooltip; context menu **Open Source Page**; search matches host, URL and window title (§8.6).
 - The source-page types are metadata only: never stored as representations and never kept by format rules.
@@ -820,7 +820,7 @@ No mandatory Repository / UseCase / Coordinator layers. Add test seams only wher
 | `TextActions` (pure) | §3.9 |
 | `CodeHighlighter` | Lazy, preview only (§8.5) |
 | Read models | Immutable `Sendable` DTOs; card DTOs carry no payload bytes and no thumbnail data |
-| `PasteboardWriter` | Verify → build items → synchronous clear/write/confirm on the main actor; variants; paste after copying (§3.4) |
+| `PasteboardWriter` | Verify → build items → synchronous clear/write/confirm on the main actor; variants; auto-paste (§3.4) |
 | `WindowPresenter` | Non-activating panel, screen choice, pin, frame per display (§8.1) |
 | `HotKeyMonitor` | Carbon register/unregister for the window, Pause and Skip hotkeys; rebind keeps old until new succeeds (§2) |
 | `LoginItemManager` | `SMAppService.mainApp` |
@@ -839,7 +839,7 @@ UI refreshes from store-published change notifications + explicit paged reloads;
 - **Configuration lives in `UserDefaults`, not SwiftData** (`SettingsStore`): it is small, read on every capture, and must not depend on the history store opening. `AppProfile` and `FormatRule` are `Codable` values stored as JSON.
 - `AppProfile` — `bundleID` (unique by construction), `captureMode` (`save` / `dontSave` / `deleteAfter(minutes)`), `sizeLimitMiB?`, `recognizeText`, `recordSourcePage`.
 - `FormatRule` — `appBundleID?` (nil = all apps), `typePattern?`, `isPrefix`, `action`, `maxSizeMiB?`; list order is the tie-breaker.
-- `AppSettings` — window hotkey, pause / skip hotkeys, identity mode, retention, size limit, `showDockIcon`, `loginAtStart`, `pasteAfterRestore`, `ignoreRemoteClipboard`, `silentDefaultVerifiedOSBuild`, `pausedUntil?`, `pausedIndefinitely`, text recognition on/off + languages, window frame per display. Polling interval is fixed (250 ms).
+- `AppSettings` — window hotkey, pause / skip hotkeys, identity mode, retention, size limit, `showDockIcon`, `loginAtStart`, `pasteAfterCopy` (auto-paste after Choose for Clipboard), `ignoreRemoteClipboard`, `silentDefaultVerifiedOSBuild`, `pausedUntil?`, `pausedIndefinitely`, text recognition on/off + languages, window frame per display. Polling interval is fixed (250 ms).
 
 ### 7.3 Memory budgets
 
@@ -930,9 +930,9 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 |-----|--------|
 | Typing | Goes to search |
 | ↑ ↓ ← → | Move selection (also while search is focused) |
-| ↩ / double-click | Copy the selected card to the clipboard and go back to the app (§3.4) |
-| ⌘1 … ⌘9 | Copy the Nth visible card |
-| ⌘C | Copy the selected card, never pasting (even with *paste after copying*) |
+| ↩ / double-click | Choose for Clipboard — go back to the app (§3.4) |
+| ⌘1 … ⌘9 | Choose for Clipboard: the Nth visible card |
+| ⌘C | Choose for Clipboard without pasting (even with *auto-paste*) |
 | ⌘K | Actions panel for the selection (§8.4) |
 | Space (empty search or keyboard on the cards) / ⌘Y (anywhere) | Edit Record: the record window (§8.5); in it, ↑ ↓ ← → move to other records while its text is not being edited, Space closes |
 | ⌘E | Edit Record with the cursor in the text (§3.6) |
@@ -940,7 +940,7 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 | ⌘D | Toggle favorite |
 | ⌘⌫; ⌫ / ⌦ only after a click on a card | Delete the selected cards; *Undo* in the message for 6 s (favorites ask first). A click on a card takes the keyboard from the search to the cards; in the search ⌫ / ⌦ only edit its text, also when it is empty (user feedback), and a held key never deletes cards. Typing with the keyboard on the cards goes back to the search |
 | ⌘A with an empty search | Select every loaded card |
-| ⌥↩ / ⌥ double-click | Select and paste, once |
+| ⌥↩ / ⌥ double-click | Choose and Paste, once |
 | ⇧ ↑ ↓ ← →, ⌘-click, ⇧-click | Select several cards |
 | ⌘/ | Keyboard shortcuts |
 | ⌘F | Focus search |
@@ -957,7 +957,7 @@ All actions come from `ActionRegistry`, so the context menu, the **⌘K panel** 
 
 Card context menu (also behind the card's **⋯** hover button). Actions that do not apply are left out rather than shown disabled, so the menu stays short (first-run feedback: four "Copy…" items side by side were confusing):
 
-- **Select** (↩, the same as a double-click: the record becomes the clipboard content) · Add to / Remove from Favorites (⌘D) · *Remove from “Name”* while that collection is open · **Collections: Name, …** ▸ (*Add to Collection* ▸ when in none) with a checkmark per collection and New Collection…
+- **Choose for Clipboard** (↩, the same as a double-click: the record becomes the clipboard content) · Add to / Remove from Favorites (⌘D) · *Remove from “Name”* while that collection is open · **Collections: Name, …** ▸ (*Add to Collection* ▸ when in none) with a checkmark per collection and New Collection…
 - **Edit Record** (⌘E or Space: the record window, §8.5) · Rename… · **Duplicate As ▸** — Plain Text, No Formatting · Text from Image · text actions (§3.9); the result is a new card, the clipboard is untouched
 - Open Source Page (§5.2) · Reveal in Finder · Copy Path / Copy Paths (files: the full paths, one per line, as a new text card on the clipboard)
 - **Rules for <App> ▸** — the quick actions of §5.1 plus *Delete This and Stop Saving from <App>*
@@ -970,12 +970,12 @@ Gear menu: Pause Capture ▸ 5 / 15 min · 1 hour · Until I Resume (⌘.) — o
 
 One window (not the system Quick Look panel) to look at a record and to edit it (§3.6), opened by Space, ⌘Y, the ✎ button, **Edit Record** or ⌘E (cursor in the text). Like Settings it replaces the panel, which comes back when it closes; unlike an overlay it can be moved and resized and remembers its frame; it is built once and kept, so it opens at once (Settings is built a second after launch for the same reason). The window title is the record's title or type, the subtitle its source app. First-run feedback: icon-only controls and details behind an ⓘ left too much to guess, so the window is laid out as:
 
-- **Toolbar:** ‹ › with *3 of 120* (the panel's current list, loading the next page near the end; with unsaved changes they ask to save first), Undo / Redo, *Transform* and Find (text only), the inspector toggle (⌥⌘I) and **Select** (↩; *Save and Select* ⌘↩ with changes).
+- **Toolbar:** ‹ › with *3 of 120* (the panel's current list, loading the next page near the end; with unsaved changes they ask to save first), Undo / Redo, *Transform* and Find (text only), the inspector toggle (⌥⌘I) and **Choose for Clipboard** (↩; *Save and Choose* ⌘↩ with changes).
 - **Content:** the text, the image, the file or the colour. Images and PDFs zoom (⌘+ / ⌘− / ⌘0, pinch, toolbar: percent, *Fit*, *Actual Size* = one image pixel per screen pixel), scroll when larger than the window, sit on the background Preview and Quick Look use (no checkerboard: a window screenshot's transparent shadow margin showed as a strange patterned frame) and open in Preview (*Open in Preview*, from a temporary file); loaded up to 4096 px. **Text in Image** sits under the image (first-run feedback: in the inspector it was out of sight): a header with the state — line count, *Recognizing…*, *No text found*, *Could not be recognized*, *Off for this app* with **Recognize Text** (turns recognition on for the source app) — and *Copy Selected Text* / *Copy All Text*; below it the selectable text. The pane folds away with its chevron and gets taller or shorter by dragging its header; both are kept. A recognition that finishes while the record is open shows at once.
 - **Inspector** (right, can be hidden; in a window narrower than 780 pt it hides itself and shows only when asked, so the text or image keeps the room), short and in separated sections (first-run feedback: everything in one pile): **Title** field, **Source** (app, page link — click opens, ⌥-click copies it as a new card — and window title), **Collections** (the ones the record is in, each with ⓧ to remove it, or *In no collection*, then **Add to Collection** — a menu with a checkmark per collection and *New Collection…*, which asks for the name in place), **Details** folded by default (first / last copied, copies, size, readable format names, skipped formats). The highlighting language moved to the status bar, the text in an image under the image.
-- **Status bar:** what the keys do right now — *Click the text to edit · ← → other records · ↩ selects · Esc closes*, *Editing · Esc stops editing*, or *⌘S saves · ⌘↩ saves and selects · Esc asks to save* — then counts or the selection, the **language** menu (text: the language highlighted, *Automatic (detected …)*, *Plain Text* or a language, saved as `codeLanguage`, as in code editors), *View*, *Edited*, **Changes…** / **Revert** / **Save** (§3.6); for images and PDFs the pixel size and the stored size.
+- **Status bar:** what the keys do right now — *Click the text to edit · ← → other records · ↩ to clipboard · Esc closes*, *Editing · Esc stops editing*, or *⌘S saves · ⌘↩ Save and Choose · Esc asks to save* — then counts or the selection, the **language** menu (text: the language highlighted, *Automatic (detected …)*, *Plain Text* or a language, saved as `codeLanguage`, as in code editors), *View*, *Edited*, **Changes…** / **Revert** / **Save** (§3.6); for images and PDFs the pixel size and the stored size.
 
-Opened to look at, nothing in it has the focus: ↑ ↓ ← → move to other records (with unsaved changes after the save sheet), Space or Esc closes, ↩ selects. Every control has a label or a tooltip with its shortcut.
+Opened to look at, nothing in it has the focus: ↑ ↓ ← → move to other records (with unsaved changes after the save sheet), Space or Esc closes, ↩ to clipboard (Choose for Clipboard). Every control has a label or a tooltip with its shortcut.
 
 - **Text:** the whole text, editable for text, rich text (with its formatting, §3.6) and links (read-only for mixed items).
 - **Link:** a header above the editable link — the host large, the page title when the browser put one on the clipboard (`public.url-name`, or the window title when the link is the page's own address), the full link — and **Open** (⌘O) in the default browser.
@@ -997,7 +997,7 @@ Opening Settings or Diagnostics hides the panel; closing them brings it back. Bo
 
 Five tabs (first-run feedback: seven, with Formats repeating Apps, were too many):
 
-- **General:** all three shortcuts (window, pause, skip), grid, clipboard access status (§3.1), launch at login, *After Copying: Also paste into the app you were in* (off by default) with Accessibility status, text recognition on/off and languages (§3.8).
+- **General:** all three shortcuts (window, pause, skip), grid, clipboard access status (§3.1), launch at login, *Auto-Paste After Choosing: Paste into the app you were in* (off by default) with Accessibility status, text recognition on/off and languages (§3.8).
 - **History:** *Keep up to* and *Delete items older than* as pickers (presets plus any current value), *Storage limit*, usage (items, favorites, stored data of the limit, location), Clear History (`.nonFavorites`) and Clear Everything (`.all`), both confirmed.
 - **Privacy:** Secrets (§3.10), identity mode Standard / Strict with the trust-boundary note (§5), Ignore content from other devices, a plain list of what Memopila does with data (§9).
 - **Apps:** per-app settings (§5.1); **All Apps** at the top holds the size limit, the format rules for all apps and *Inspect Current Clipboard* (§3.2.2).
@@ -1020,7 +1020,7 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 | Pause / Skip next copy | Content copied while paused or skipped is never read (§3.7) |
 | Markers | Skip entire change; test each identifier (§3.1) |
 | Self-writes | Suppress only a confirmed `ownedCount` once (§3.4) |
-| Accessibility | Only for **paste after copying** (§3.4, off by default; asked for when it is turned on); when granted, also used for source window titles (§5.2) |
+| Accessibility | Only for **auto-paste** (§3.4, off by default; asked for when it is turned on); when granted, also used for source window titles (§5.2) |
 | Text recognition | On device; no network (§3.8) |
 | Files | Paths only; display-only QuickLook thumbnails; Unavailable when missing (§3.3) |
 | At-rest encryption | None in v1 |
@@ -1065,7 +1065,7 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 
 ### Phase 6 — Polish
 
-**Done when:** login item, window frame per display, paste after copying (§3.4), privacy copy does not over-claim (§9), VoiceOver labels on cards and controls, English and Russian localization, UI checked on 15.x without Liquid Glass, all memory budgets re-verified.
+**Done when:** login item, window frame per display, auto-paste (§3.4), privacy copy does not over-claim (§9), VoiceOver labels on cards and controls, English and Russian localization, UI checked on 15.x without Liquid Glass, all memory budgets re-verified.
 
 ---
 
@@ -1075,7 +1075,7 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 |-------|-------------------------|----------|
 | Unit | §3.1 markers; §3.2 size budget; §3.2.2 format policy; §3.3 paths/coalesce; §3.9 text actions; §4 MCS1/file list; §5 identity / per-app settings; §5.2 source page parsing; §6 retention / expiry / preflight; §3.6 edit/merge; §7.4 decode | TDD on the owning section |
 | Integration | §3.2 coordination (Clear/Delete/Edit races, save failures); §3.4 Writer + token; §3.5 SwiftData rows, integrity, rollback; §3.7 pause / skip; §3.8 recognition queue | Contract test first; seams for store failures and the frontmost app |
-| System / manual | §3.1 access alerts on each OS of the matrix; §2 hotkeys/Dock; §8.1 panel focus; login; paste after copying | Automate stable cases; OS dialogs on concrete versions |
+| System / manual | §3.1 access alerts on each OS of the matrix; §2 hotkeys/Dock; §8.1 panel focus; login; auto-paste | Automate stable cases; OS dialogs on concrete versions |
 | Performance | §7.3 memory budgets; §8.6 search budget | Scripted scenarios + `phys_footprint`; Instruments before each phase is done |
 
 **Rules:**

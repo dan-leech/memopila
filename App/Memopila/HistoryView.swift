@@ -80,8 +80,8 @@ struct HistoryView: View {
                     .foregroundStyle(model.isPinned ? Color.accentColor : Color.secondary)
             }
             .help(model.isPinned
-                ? String(localized: "Unpin (⌘P): the window closes after you choose an item or switch apps")
-                : String(localized: "Pin (⌘P): keep the window open after choosing an item and when you switch apps"))
+                ? String(localized: "Unpin (⌘P): the window closes after Choose for Clipboard or when you switch apps")
+                : String(localized: "Pin (⌘P): keep the window open after Choose for Clipboard and when you switch apps"))
             .accessibilityLabel(model.isPinned ? Text("Unpin window") : Text("Pin window"))
 
             Menu {
@@ -596,7 +596,8 @@ private struct HistoryGrid: View {
                                 insertion: .scale(scale: 0.85).combined(with: .opacity),
                                 removal: .opacity
                             ))
-                            .accessibilityAction(named: Text("Select")) { model.restore(card.id) }
+                            .accessibilityAction(named: Text("Choose for Clipboard")) { model.restore(card.id) }
+                            .accessibilityAction(named: Text("Choose and Paste")) { model.restore(card.id, paste: true) }
                             .accessibilityAction(named: Text("Edit Record")) { model.openRecord(card.id) }
                             .onAppear { model.history.cardAppeared(card) }
                         }
@@ -835,10 +836,10 @@ private struct ShortcutsOverlay: View {
 
     private let groups: [Group] = [
         Group(title: String(localized: "Choose"), rows: [
-            Row(keys: "↩ / " + String(localized: "double-click"), action: String(localized: "Select: put the record on the clipboard and go back")),
-            Row(keys: "⌥↩ / ⌥ " + String(localized: "double-click"), action: String(localized: "Select and paste into the app you were in")),
-            Row(keys: "⌘1 … ⌘9", action: String(localized: "Select the first nine cards")),
-            Row(keys: "⌘C", action: String(localized: "Select, never pasting")),
+            Row(keys: "↩ / " + String(localized: "double-click"), action: String(localized: "Choose for Clipboard: put the record on the clipboard and go back")),
+            Row(keys: "⌥↩ / ⌥ " + String(localized: "double-click"), action: String(localized: "Choose and Paste into the app you were in")),
+            Row(keys: "⌘1 … ⌘9", action: String(localized: "Choose for Clipboard: the first nine cards")),
+            Row(keys: "⌘C", action: String(localized: "Choose for Clipboard without pasting")),
         ]),
         Group(title: String(localized: "Move and select"), rows: [
             Row(keys: "↑ ↓ ← →", action: String(localized: "Move between cards")),
