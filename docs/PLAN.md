@@ -43,7 +43,7 @@
 | Policy | Decision |
 |--------|----------|
 | **Data** | Local only under Application Support; no account, sync, or cloud. No link previews or analytics. Opening HTML/web archives from history strips fetchable subresources (archive-local bytes kept). User-initiated `http` / `https` / `mailto` clicks open outside Memopila in the Mac’s default browser or mail app |
-| **Distribution (v1)** | Build and run from source (Xcode). Sign with a stable **Apple Development** identity (a free personal team is enough), not ad-hoc "Sign to Run Locally": the per-app pasteboard access choice in System Settings is tied to the app's code identity, and an identity that changes on every build is expected to reset it **(spike)**. Downloadable binary is a later deliverable |
+| **Distribution (v1)** | Build and run from source (Xcode). Sign with a stable **Apple Development** identity (a free personal team is enough), not ad-hoc "Sign to Run Locally": the per-app pasteboard access choice in System Settings is tied to the app's code identity, and an identity that changes on every build is expected to reset it. **Recorded (2026-10-25):** with Apple Development (`MT4H78KT2X`), repeated Xcode rebuilds keep Always Allow — confirmed by ongoing owner use and Diagnostics on 15.6 / 26.6 / 27.0. Downloadable / notarized binary is a later deliverable (`release.yml`) |
 | **Sandbox** | **Not sandboxed** in v1. Store file **URLs/paths** for restore; no security-scoped bookmarks |
 | **Stack** | SwiftUI + AppKit, Swift 6 language mode. Build with the current Xcode (27.x) and macOS 27 SDK |
 | **Minimum macOS** | **15.4.** Covers every release Apple still supports (15, 26, 27; Sonoma support ended September 2026). Sequoia is still a sizeable share of Macs — it was about half of active installs in January 2026, while Tahoe reached about 54 % of devices by the end of August 2026 — so a 26.0 minimum would cut a noticeable part of potential GitHub users. 15.4 rather than 15.0 makes `accessBehavior` always available. Cost: one more OS in the test matrix, and the UI must look right without Liquid Glass (standard controls; glass-specific APIs behind `#available(macOS 26, *)`, 27-only APIs behind `#available(macOS 27, *)`). macOS 14 is out: no SwiftData `#Index` / `#Unique`. Raise the minimum when Apple drops Sequoia |
@@ -248,7 +248,7 @@ All observation for one change — types, markers, app identity, per-app setting
 | **Any other UTI** | Skip, unless a format rule keeps it (§3.2.2) |
 | **File promises** / deferred file providers | Skip in v1 |
 
-**Universal Clipboard:** content copied on another device arrives lazily over the network; reading it may block and counts against the size budget. It is captured like local content, but without a marker its source is **Unknown**, never the app in front on this Mac (review finding). Setting **Ignore content from other devices** (default off) skips changes that carry the remote-clipboard type (`com.apple.is-remote-clipboard` **(spike: verify identifier)**).
+**Universal Clipboard:** content copied on another device arrives lazily over the network; reading it may block and counts against the size budget. It is captured like local content, but without a marker its source is **Unknown**, never the app in front on this Mac (review finding). Setting **Ignore content from other devices** (default off) skips changes that carry the remote-clipboard type (`com.apple.is-remote-clipboard` — used as `PasteboardType.remoteClipboard`; covered by `SnapshotReaderTests`).
 
 **Representation fidelity:** non-file representations keep original bytes and UTI. Derived UTF-8 (preview/search) is outside the restore path. File-reference representations follow §3.3.
 
@@ -458,7 +458,7 @@ flowchart TD
 
 - `ClipboardRecord` — metadata only (§7.2); list and search fetch these rows only.
 - `PayloadRepresentation` — one row per stored representation: `itemIndex`, `repIndex`, `uti`, `kind` (`bytes` | `filePaths`), `bytes: Data?` with `@Attribute(.externalStorage)`, `paths: [String]?`, `byteCount`. Relationship from the record with **cascade** delete.
-- `RecordThumbnail` — one optional row per record (`data`, longest side ≤ 512 px, alpha preserved; HEIC if the spike confirms alpha support, else PNG). Separate entity so list fetches never load it; cascade delete.
+- `RecordThumbnail` — one optional row per record (`data`, longest side ≤ 512 px, alpha preserved). **Decision:** PNG when the source has alpha, else JPEG (`Thumbnailer` / ImageIO) — HEIC-as-thumb was not worth the decode path. Separate entity so list fetches never load it; cascade delete.
 - `ClipboardRecord.payloadSizeBytes = Σ byteCount` (bytes count, or Σ UTF-8 path bytes); `storageFormatVersion = 1`.
 - Never put `bytes` or thumbnail data in `#Predicate` filters.
 
@@ -882,6 +882,16 @@ History lives on disk; RAM holds only what is on screen plus bounded caches. Bud
 
 **Verification:** Phase 1 records baselines; Phases 3–6 assert the budgets in a scripted scenario (UI test + `task_vm_info.phys_footprint`) and with Instruments (Allocations, VM Tracker) before the phase is done.
 
+**Baselines recorded (2026-10-25, host 27.0.1 / 26A434, Debug build from Xcode, `footprint(1)` phys_footprint):**
+
+| Scenario | Result | Budget |
+|----------|--------|--------|
+| Dev session, Memopila running (panel used in session; ~14 MB on-disk `History.store`) | **83 MB** | window open ≤ 150 MB — under |
+| Idle, window closed, 500 records | — | ≤ 50 MB — **not separately sampled this pass** |
+| Capture of size S / recognition / preview highlighter | — | still post-1.0 if chasing hard numbers |
+
+Release/ad-hoc binary and a cold idle sample may sit lower than Debug; re-check if Activity Monitor shows sustained > budget.
+
 ### 7.4 Preview and search extraction
 
 Full payload stays in `PayloadRepresentation` regardless of these caps.
@@ -1050,39 +1060,58 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 
 **SSOT:** normative rules live in §3–§8. This section states phase done-when only.
 
+**1.0.0 reality (2026-10-25):** Phases 2–6 **product** done-whens are met in the app (features shipped). Phase 1 **shell and implemented spikes** are met; several Phase 1 / §7.3 **recorded measurements** and OS matrix cells remain **post-1.0 follow-ups** (listed under each phase). Do not treat an open follow-up as a missing v1 feature.
+
 ### Phase 1 — Spikes + shell
 
-**Done when:**
+**Done for 1.0.0:**
 
-- Storage spike (§3.5 items 1–5) recorded, including memory baselines (§7.3).
-- Access spike (§3.1 questions 1–5) recorded on 15.x, 26.x, 27.0.x and 27.2+.
-- Window spike: non-activating panel — text input, Esc, focus stays in the previous app, full-screen spaces, multiple displays — on 15.x and 27.x.
-- Carbon hotkey works on 27.x; the conflict error appears when Pasta holds ⌥⌘V.
-- Off-main `NSPasteboard` reads; timer cadence with the window closed (App Nap, Low Power Mode); ImageIO HEIC thumbnails with alpha.
-- Text recognition: Russian and English availability, time and memory on a 5K screenshot (15 / 26 / 27).
-- Source page and identity: which common apps write `org.chromium.source-url`, `org.nspasteboard.source`; Safari web archive URL; Firefox types.
-- Signing: the pasteboard access choice survives a rebuild with the Apple Development identity.
-- App shell: menu bar, panel, hotkey, Esc/Enter rules, Enable capture onboarding, Capture paused banner.
+- App shell: menu bar, non-activating panel, hotkey, Esc/Enter rules, Enable capture onboarding, Capture paused banner.
+- Carbon hotkey on 27.x; conflict path when another app holds ⌥⌘V.
+- Off-main pasteboard reads (`SnapshotReader` via `Task.detached`); short-lived store contexts; thumbnails PNG-with-alpha / JPEG (see §3.5).
+- Access Always Allow path recorded on 15.6.1, 26.6.2, 27.0.1 (§3.1 table). Remote-clipboard UTI wired and unit-tested.
+- Signing: Always Allow survives Apple Development rebuilds (§2 Distribution).
+- §7.3 first baseline: **83 MB** phys_footprint in a Debug session (§7.3 table); under the window-open budget.
+- VoiceOver: labels on search, kind/period filters, cards, Current/password cards, icon controls (`accessibilityLabel`); dedicated VO tour of the sidebar still optional.
+
+**Post-1.0 follow-ups (verification, not missing product):**
+
+- Storage spike §3.5 items 1–5 **results written down**; colder §7.3 samples (idle closed; capture/recognition peaks).
+- Access §3.1 questions 1–5 fully (clean `.default` / which call alerts / deny / KVO / exact Settings pane); **27.2+** when Apple ships it.
+- Window spike checklist on 15.x and 27.x (text input, Esc, previous-app focus, full-screen Spaces, multi-display) — code path exists; formal pass not logged.
+- App Nap / Low Power Mode: if poll lag > 1 s, hold `ProcessInfo` activity (fallback in §3.2; not coded yet).
+- Recognition RU/EN quality/time/memory on a 5K shot across 15 / 26 / 27.
+- Source-page survey (which apps write Chromium / Safari archive / Firefox types).
 
 ### Phase 2 — First vertical slice
 
 **Done when:** plain text end to end — capture → MCS1 → store → grid → Restore — with markers (§3.1), app identity (§5), access gates (§3.1), capture coordination (§3.2), Restore token (§3.4), Current card statuses (§3.2.3), Pause and Skip next copy with the menu bar menu (§3.7, §8.8), launch observation (§3.2).
 
+**1.0.0:** met.
+
 ### Phase 3 — History UI, search, per-app settings, retention
 
 **Done when:** Pasta layout (§8.2) with Apps sidebar and kind/period filter bar, keyboard map (§8.3), paged DTOs, thumbnails pipeline (§7.1), search within budget (§8.6), dedup merges (§4), per-app capture modes and short retention (§5.1, §6), actions menu with ⌘K and quick actions (§8.4), source page (§5.2), retention + storage preflight (§6), memory budgets for idle and window open (§7.3).
+
+**1.0.0:** product met; window-open footprint sample recorded (§7.3); idle-closed sample still a follow-up.
 
 ### Phase 4 — Formats and files
 
 **Done when:** all allowlisted representations (§3.2.1), redundant-image rule and format rules (global and per app) + inspector (§3.2.2), Save anyway, files with coalesce / normalization / QuickLook thumbnails / Unavailable (§3.3), integrity before Restore (§3.5), Clear scopes (§3.2), capture memory budget (§7.3). Decide on the lazy TIFF provider.
 
+**1.0.0:** product met; lazy TIFF stays deferred (§12) unless a measured need appears; capture footprint measurement is post-1.0.
+
 ### Phase 5 — Editing, text tools, recognition
 
 **Done when:** custom titles and text editing with merge on collision (§3.6), text actions in menus and the editor (§3.9), Copy as plain text (§3.4), code highlighting in the preview within budget (§8.5), text recognition with search and Copy text (§3.8), Favorites, Collections (`RecordTag`), unfavorite + `maxCount`, Settings `maxCount` shrink (§6), preview overlay (§8.5).
 
+**1.0.0:** met (recognition quality matrix → Phase 1 follow-up).
+
 ### Phase 6 — Polish
 
 **Done when:** login item, window frame per display, auto-paste (§3.4), privacy copy does not over-claim (§9), VoiceOver labels on cards and controls, English and Russian localization, UI checked on 15.x without Liquid Glass, all memory budgets re-verified.
+
+**1.0.0:** product/polish met enough to ship; labels present for VO; dedicated sidebar VO tour and colder §7.3 samples remain follow-ups; 15.x UI exercised in the Sequoia VM during access spike.
 
 ---
 
@@ -1106,6 +1135,10 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 
 ## 12. Deferred (next versions)
 
+**Post-1.0 verification** (from §10): colder §7.3 samples + storage spike write-up; access on 27.2+; App Nap activity if lag; optional dedicated VO sidebar tour; optional Firefox/Chromium source survey.
+
+**Later product / distribution:**
+
 - Rich-text editing, image editing, edit history
 - Auto-rules (conditional transforms, auto-tagging), snippets
 - Paste stack (sequential paste), drag-out, undo-delete, multi-select batch actions
@@ -1115,5 +1148,6 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 - Custom blob store (only after a failed storage spike **and** a PLAN amendment)
 - App-level encryption at rest — decided against for now (owner: FileVault, secret detection and *Don't Save* cover what the history holds)
 - Eyedropper-from-image, lock, export/import, iCloud
-- Notarized binary / MAS
+- Notarized binary / MAS (CI `release.yml` ready when Developer ID secrets exist)
+- Split god files (`AppModel` / `Overlays` / `HistoryView`) only when a change forces it — not a release gate
 - Not planned: link previews fetched from the network (privacy)
