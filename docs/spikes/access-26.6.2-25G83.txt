@@ -1,0 +1,13 @@
+macOS Version 26.6.2 (Build 25G83) (25G83)
+accessBehavior: alwaysAllow, capture: allowed
+8:39:39  content read: 528 bytes of public.utf8-plain-text  [alwaysAllow → alwaysAllow]
+8:39:38  types: 1 item(s); item 1: public.utf8-plain-text, org.nspasteboard.source  [alwaysAllow → alwaysAllow]
+8:39:38  changeCount: 2  [alwaysAllow → alwaysAllow]
+8:39:28  content read: 28 bytes of public.file-url  [alwaysAllow → alwaysAllow]
+8:39:27  types: 1 item(s); item 1: public.file-url, public.utf16-external-plain-text, public.utf8-plain-text, com.apple.icns  [alwaysAllow → alwaysAllow]
+8:39:27  changeCount: 1  [alwaysAllow → alwaysAllow]
+8:39:31  own write 2 suppressed
+8:39:31  restored as change 2
+8:39:14  change 1 saved: file, 63 bytes, from com.apple.finder
+8:38:59  change 0 skipped: empty
+8:38:58  access → allowed (behavior alwaysAllow)

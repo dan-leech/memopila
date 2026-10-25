@@ -1,7 +1,7 @@
 # Memopila — Clipboard Manager Plan
 
 **Document type:** DESIGN  
-**Status:** v1 plan (implemented in the app). Statements marked **(spike)** remain open checks on specific OS versions; record the result next to them before treating them as settled.  
+**Status:** v1 shipped as **1.0.0** (app implements the plan). Statements marked **(spike)** are follow-up OS checks; access on 15.6 / 26.6 / 27.0 is recorded in §3.1 — **27.2+** still open until Apple releases it.  
 **SSOT:** §3–§6 = normative contracts; §7 = architecture + memory budgets; §8 = UI; §10 = phase done-when; §11 = test matrix by reference (do not restate contracts)  
 **Product:** Memopila — native macOS clipboard manager that replaces [Pasta](https://getpasta.com/): the same UI model (§8) plus what Pasta lacks, starting with record editing (§3.6).
 
@@ -79,6 +79,21 @@ Facts from Apple's documentation:
 3. With enforcement off, does `accessBehavior` stay `.default` after a successful content read?
 4. Does a gated read block until the user answers? What does a denied read return?
 5. Does KVO on `accessBehavior` fire? Exact System Settings pane name and whether a deep link exists.
+
+**Access spike results** (Diagnostics → probes + capture log; Apple Development identity):
+
+| OS | Build | `accessBehavior` | Capture | Notes |
+|----|-------|------------------|---------|-------|
+| 15.6.1 | 24G90 | `alwaysAllow` → `allowed` | OK (empty skip → restore → UTF-8 text) | VM (UTM). Probes `changeCount` / `types` / content read stay `alwaysAllow`. Report: `docs/spikes/access-15.6.1-24G90.txt` (2026-10-25) |
+| 26.6.2 | 25G83 | `alwaysAllow` → `allowed` | OK (Finder file → restore → UTF-8 text) | VM (UTM). Probes stay `alwaysAllow`. Report: `docs/spikes/access-26.6.2-25G83.txt` (2026-10-25) |
+| 27.0.1 | 26A434 | `alwaysAllow` → `allowed` | OK (screenshot PNG → save from `com.apple.screenshot.launcher`) | Host. Probes stay `alwaysAllow`. Report: `docs/spikes/access-27.0.1-26A434.txt` (2026-10-25) |
+| 27.2+ | — | — | — | **Open** — not released yet (latest signed VirtualMac is still 27.0.1); expect enforced alert per §2 |
+
+Partial answers to questions 1–5 from the runs above (Always Allow path only; clean `.default` / `.ask` / deny not re-probed on these builds):
+
+1. Not measured from a clean install here; once set to Always Allow, no unexpected alert during probes or capture on 15.6.1 / 26.6.2 / 27.0.1 (consistent with “off by default” on ≤27.1).
+2. Under `alwaysAllow`, none of `changeCount` / `types` / content read changed behavior. Which call first raises the alert on an enforcing build → still open (27.2+).
+3–5. Open.
 
 **Capture policy:**
 

@@ -1,0 +1,9 @@
+macOS Version 27.0.1 (Build 26A434) (26A434)
+accessBehavior: alwaysAllow, capture: allowed
+14:40:26  changeCount: 1002  [alwaysAllow → alwaysAllow]
+14:40:25  content read: 24743 bytes of public.png  [alwaysAllow → alwaysAllow]
+14:40:24  types: 1 item(s); item 1: public.png  [alwaysAllow → alwaysAllow]
+14:40:12  Settings window closed
+14:40:03  Settings window shown
+14:39:37  change 1002 saved: image, 24743 bytes, from com.apple.screenshot.launcher
+14:39:37  access → allowed (behavior alwaysAllow)

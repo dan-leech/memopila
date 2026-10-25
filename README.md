@@ -22,7 +22,7 @@
 Memopila lives in the menu bar and keeps a history of what you copy: text, rich text, links, images, PDFs, colours and files. Press **⌥⌘V**, find what you need, and press ↩. The record goes back on the clipboard and you are returned to the app you were in.
 
 > [!NOTE]
-> Memopila is young (0.x). Every v1 feature in the [plan](docs/PLAN.md) is implemented, but the per-macOS-version checks in PLAN §10 are still open, so expect rough edges.
+> **1.0.0** — v1 features from the [plan](docs/PLAN.md) are implemented. Pasteboard access is checked on macOS 15.6, 26.6 and 27.0; remaining PLAN §10 spikes (including 27.2+ when Apple ships it) are follow-ups, not missing product.
 
 ## Features
 
