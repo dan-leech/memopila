@@ -601,6 +601,16 @@
         }
       }
     },
+    "A password is on the clipboard. Memopila never reads, saves or shows it.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В буфере обмена пароль. Memopila никогда его не читает, не сохраняет и не показывает."
+          }
+        }
+      }
+    },
     "A record can’t be empty: type some text, or Revert": {
       "localizations": {
         "ru": {
@@ -1343,6 +1353,26 @@
         }
       }
     },
+    "Clear Clipboard": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очистить буфер"
+          }
+        }
+      }
+    },
+    "Clear Clipboard: remove the password from the clipboard": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очистить буфер: убрать пароль из буфера обмена"
+          }
+        }
+      }
+    },
     "Clear Everything…": {
       "localizations": {
         "ru": {
@@ -1583,12 +1613,12 @@
         }
       }
     },
-    "Copies that apps mark as concealed, such as passwords from a password manager, are always skipped.": {
+    "Copies that apps mark as concealed, such as passwords from a password manager, are never saved or shown. The panel only says that one is on the clipboard, and can clear it.": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Копирования, которые приложения помечают как скрытые (например, пароли из менеджера паролей), всегда пропускаются."
+            "value": "Копирования, которые приложения помечают как скрытые (например, пароли из менеджера паролей), никогда не сохраняются и не показываются. Панель лишь сообщает, что такое копирование в буфере, и может очистить буфер."
           }
         }
       }
@@ -3615,6 +3645,16 @@
         }
       }
     },
+    "Not saved and not shown": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не сохранён и не показывается"
+          }
+        }
+      }
+    },
     "Not saved: %@": {
       "localizations": {
         "ru": {
@@ -3891,6 +3931,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "PDF"
+          }
+        }
+      }
+    },
+    "Password": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пароль"
+          }
+        }
+      }
+    },
+    "Password on the clipboard, not saved": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В буфере пароль, не сохранён"
           }
         }
       }

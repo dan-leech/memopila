@@ -227,6 +227,17 @@ final class ClipboardMonitor {
             record("unstable read discarded")
         case .skipped(let changeCount, let reason):
             record("change \(changeCount) skipped: \(reason)")
+            // A password from a password manager: the panel shows that one is on the clipboard,
+            // from which app and since when — never what (it is never read) — and can clear it
+            // (owner feedback: the panel looked as if the clipboard were empty).
+            if case .privacyMarker(let type) = reason, PrivacyMarker.kind(of: type) == .confidential {
+                let source = attribution?.changeCount == changeCount ? attribution?.source : nil
+                current = CurrentClipboard(
+                    changeCount: changeCount,
+                    status: .concealed,
+                    change: UnsavedChange(identity: AppIdentity(bundleID: source, source: source == nil ? .unknown : .frontmost), declaredTypes: [], knownBytes: 0)
+                )
+            }
         case .notSaved(let changeCount, let reason, let change):
             current = CurrentClipboard(changeCount: changeCount, status: .notSaved(reason), change: change)
             record("change \(changeCount) not saved: \(reason)")
@@ -290,6 +301,17 @@ final class ClipboardMonitor {
     }
 
     func dismissCurrent() { current = nil }
+
+    /// *Clear Clipboard* on the password card: empties the clipboard while it still holds that
+    /// password. Nothing is read.
+    func clearConcealed() {
+        guard let current, current.status == .concealed else { return }
+        if NSPasteboard.general.changeCount == current.changeCount {
+            NSPasteboard.general.clearContents()
+            record("concealed copy \(current.changeCount) cleared from the clipboard")
+        }
+        self.current = nil
+    }
 
     /// The record no longer matches the clipboard (its text was edited).
     func recordChanged(_ id: UUID) {
@@ -411,11 +433,14 @@ struct CurrentClipboard: Equatable {
         case notSaved(NotSavedReason)
         case rejected(String)
         case saveFailed(String)
+        /// A password manager marked it concealed: never read, saved or shown.
+        case concealed
     }
 
     let changeCount: Int
     let status: Status
     let change: UnsavedChange
+    var observedAt = Date()
     /// Only from data already read within the budget; never persisted.
     var thumbnail: Data?
 
@@ -426,13 +451,14 @@ struct CurrentClipboard: Equatable {
         case .notSaved(.readFailed): String(localized: "Read failed")
         case .rejected(let reason): String(localized: "Not saved: \(reason)")
         case .saveFailed(let reason): String(localized: "Save failed: \(reason)")
+        case .concealed: String(localized: "Password")
         }
     }
 
     var allowsSaveAnyway: Bool {
         switch status {
         case .notSaved, .saveFailed: true
-        case .rejected: false
+        case .rejected, .concealed: false
         }
     }
 

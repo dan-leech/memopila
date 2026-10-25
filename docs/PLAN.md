@@ -162,7 +162,7 @@ All observation for one change — types, markers, app identity, per-app setting
 
 | Outcome | Mark `changeCount` handled? | Current card (§3.2.3) |
 |---------|------------------------------|-----------------------|
-| Marker skip / app set to *Don't save* / Strict-mode skip | Yes | None (content never shown) |
+| Marker skip / app set to *Don't save* / Strict-mode skip | Yes | None (content never shown) — except a **concealed** marker (password managers): the password card below |
 | Skip next copy armed (§3.7) | Yes, without any read | None |
 | Empty pasteboard | Yes | None |
 | Only unsupported / rule-skipped types | Yes | Red *No supported formats* (lists types; **Keep formats…**) |
@@ -282,7 +282,8 @@ The policy decides, **from the declared `types` only**, which representations ar
 - Status → UI:
   - `saved(recordID)` → normal card (first in History by recency). Skipped formats are listed in the preview metadata and under **<App> ▸ Keep Skipped Formats**; no card badge (apps such as Xcode always add private types, so a badge was noise).
   - `notSaved(reason)` → **red card** first in History: reason (*Larger than 32 MiB*, *No supported formats*, *Read failed*, *Save failed: …*, *Not saved: quota*), source app, type list, known size.
-  - `privacySkipped`, `appSkipped`, `paused`, `skipped` → no card (content is never shown; pause uses the banner).
+  - `concealed` (`org.nspasteboard.ConcealedType`, 1Password's type) → a **password card** first in History: the card shape with a red line where a saved card has the green one, *Password*, dots, *Not saved and not shown*, the app in front when it was copied and the time. Its content is never read, saved or shown. It cannot be selected, opened or dragged; its only action, on hover and in its menu, is **Clear Clipboard**, which empties the clipboard while it still holds that password (owner feedback: the panel looked as if the clipboard were empty). It goes when the clipboard changes, as when a password manager clears it.
+  - other `privacySkipped` (transient, auto-generated), `appSkipped`, `paused`, `skipped` → no card (content is never shown; pause uses the banner).
 - The red card is replaced as soon as the clipboard changes.
 - Its thumbnail comes only from data already read within the budget. It never triggers extra reads and is never persisted.
 - **Actions:**
