@@ -219,27 +219,31 @@ private struct FilterBar: View {
     private var history: HistoryModel { model.history }
 
     var body: some View {
-        HStack(spacing: 6) {
-            ForEach(visibleKinds, id: \.self) { kind in
-                let isOn = history.kindFilter == kind
-                Button {
-                    history.kindFilter = kind
-                } label: {
-                    Label(kind.title, systemImage: kind.systemImage)
-                        .labelStyle(.titleAndIcon)
-                        .font(.system(size: 12, weight: isOn ? .semibold : .regular))
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 3)
-                        .foregroundStyle(isOn ? Color.white : Color.primary)
-                        .background(isOn ? Color.accentColor : Color.primary.opacity(0.07), in: Capsule())
-                        .contentShape(Capsule())
+        HStack(alignment: .top, spacing: 6) {
+            FlowLayout(spacing: 6) {
+                ForEach(visibleKinds, id: \.self) { kind in
+                    let isOn = history.kindFilter == kind
+                    Button {
+                        history.kindFilter = kind
+                    } label: {
+                        Label(kind.title, systemImage: kind.systemImage)
+                            .labelStyle(.titleAndIcon)
+                            .font(.system(size: 12, weight: isOn ? .semibold : .regular))
+                            .lineLimit(1)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 3)
+                            .foregroundStyle(isOn ? Color.white : Color.primary)
+                            .background(isOn ? Color.accentColor : Color.primary.opacity(0.07), in: Capsule())
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .fixedSize()
+                    .floatingHelp(kind == .all ? String(localized: "Every kind of item") : String(localized: "Only \(kind.title.lowercased())"))
+                    .accessibilityLabel(Text(kind == .all ? String(localized: "Every kind of item") : String(localized: "Only \(kind.title.lowercased())")))
+                    .accessibilityAddTraits(isOn ? .isSelected : [])
                 }
-                .buttonStyle(.plain)
-                .floatingHelp(kind == .all ? String(localized: "Every kind of item") : String(localized: "Only \(kind.title.lowercased())"))
-                .accessibilityLabel(Text(kind == .all ? String(localized: "Every kind of item") : String(localized: "Only \(kind.title.lowercased())")))
-                .accessibilityAddTraits(isOn ? .isSelected : [])
             }
-            Spacer(minLength: 8)
+            .frame(maxWidth: .infinity, alignment: .leading)
             PanelStatus(model: model)
             Menu {
                 ForEach(PeriodFilter.allCases, id: \.self) { period in
@@ -276,6 +280,50 @@ private struct FilterBar: View {
     /// Colours only when there are any; the rest always, so the bar does not jump.
     private var visibleKinds: [KindFilter] {
         KindFilter.allCases.filter { $0 != .colors || history.types.contains(.color) || history.kindFilter == .colors }
+    }
+}
+
+/// Rows of chips that wrap instead of shrinking labels letter-by-letter.
+private struct FlowLayout: Layout {
+    var spacing: CGFloat = 6
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrange(proposal: proposal, subviews: subviews).size
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let frames = arrange(proposal: proposal, subviews: subviews).frames
+        for index in subviews.indices {
+            subviews[index].place(
+                at: CGPoint(x: bounds.minX + frames[index].minX, y: bounds.minY + frames[index].minY),
+                proposal: ProposedViewSize(frames[index].size)
+            )
+        }
+    }
+
+    private func arrange(proposal: ProposedViewSize, subviews: Subviews) -> (size: CGSize, frames: [CGRect]) {
+        let maxWidth = proposal.width ?? .infinity
+        var frames: [CGRect] = []
+        var x: CGFloat = 0
+        var y: CGFloat = 0
+        var rowHeight: CGFloat = 0
+        var widest: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            if x > 0, x + size.width > maxWidth {
+                x = 0
+                y += rowHeight + spacing
+                rowHeight = 0
+            }
+            frames.append(CGRect(origin: CGPoint(x: x, y: y), size: size))
+            rowHeight = max(rowHeight, size.height)
+            x += size.width + spacing
+            widest = max(widest, x - spacing)
+        }
+
+        let width = maxWidth.isFinite ? maxWidth : widest
+        return (CGSize(width: width, height: y + rowHeight), frames)
     }
 }
 
