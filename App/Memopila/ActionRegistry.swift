@@ -87,7 +87,8 @@ enum ActionRegistry {
         var open: [ActionItem] = []
         if let url = card.sourceURL.flatMap(URL.init(string:)) {
             open.append(ActionItem(id: "source", title: String(localized: "Open Source Page"), systemImage: "safari") {
-                NSWorkspace.shared.open(url)
+                // `SourcePage` already allowed http / https / file — announce so floating windows step down.
+                External.open(url)
             })
         }
         if !card.filePaths.isEmpty {

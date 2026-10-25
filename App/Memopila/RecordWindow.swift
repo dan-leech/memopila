@@ -115,8 +115,8 @@ enum RecordKeys {
             case "u" where state.isRich && responder === state.textView: state.toggleUnderline()
             case "\\" where state.isRich && responder === state.textView: state.removeFormatting()
             case "o" where state.card.displayType == .url:
-                guard let url = URL(string: state.linkText), url.scheme != nil else { return true }
-                External.open(url)
+                guard let url = URL(string: state.linkText) else { return true }
+                External.openLink(url)
             case "y": model.dismissRecord()
             case "e" where state.isEditable: state.focus()
             default: return false

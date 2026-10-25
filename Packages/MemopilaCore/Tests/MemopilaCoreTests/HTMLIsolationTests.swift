@@ -89,6 +89,21 @@ struct HTMLIsolationTests {
         #expect(!out.contains("evil.example"))
     }
 
+    @Test func should_blank_svg_xlink_href() {
+        let html = #"<svg><image xlink:href="https://evil.example/a.png"></image></svg>"#
+        let out = HTMLIsolation.strippingRemoteLoads(html)
+        #expect(out.contains(#"xlink:href="about:blank""#))
+        #expect(!out.contains("evil.example"))
+    }
+
+    @Test func should_neutralize_meta_http_equiv_refresh() {
+        let html = #"<meta http-equiv="refresh" content="0;url=https://evil.example/"><p>Hi</p>"#
+        let out = HTMLIsolation.strippingRemoteLoads(html)
+        #expect(out.contains(#"content="0""#))
+        #expect(!out.contains("evil.example"))
+        #expect(out.contains("<p>Hi</p>"))
+    }
+
     @Test func should_keep_data_urls() {
         let html = #"<img src="data:image/png;base64,aaa">"#
         #expect(HTMLIsolation.strippingRemoteLoads(html) == html)

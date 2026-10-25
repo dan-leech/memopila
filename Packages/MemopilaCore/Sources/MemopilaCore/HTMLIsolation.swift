@@ -37,8 +37,13 @@ public enum HTMLIsolation {
             guard let tag, resourceTags.contains(tag) else { return nil }
             return rewriteSubresource(value, srcset: false, keeping: keeping)
         }
+        // SVG legacy linking — always a subresource fetch if remote/relative.
+        result = neutralize(attribute: "xlink:href", in: result) { value, _ in
+            rewriteSubresource(value, srcset: false, keeping: keeping)
+        }
         result = neutralizeCSSURLs(in: result, keeping: keeping)
-        return neutralizeAtImports(in: result, keeping: keeping)
+        result = neutralizeAtImports(in: result, keeping: keeping)
+        return neutralizeMetaRefresh(in: result)
     }
 
     private static func rewriteSubresource(_ value: String, srcset: Bool, keeping: (String) -> Bool) -> String? {
@@ -203,6 +208,29 @@ public enum HTMLIsolation {
                 output += "url(" + rewritten
                 remainder = after[valueEnd...]
             }
+        }
+        output += remainder
+        return output
+    }
+
+    /// `<meta http-equiv=refresh content="0;url=https://…">` would navigate/fetch on load.
+    private static func neutralizeMetaRefresh(in html: String) -> String {
+        var output = ""
+        var remainder = html[...]
+        while let metaStart = remainder.range(of: "<meta", options: .caseInsensitive) {
+            output += remainder[..<metaStart.lowerBound]
+            guard let tagEnd = remainder[metaStart.lowerBound...].firstIndex(of: ">") else {
+                output += remainder[metaStart.lowerBound...]
+                return output
+            }
+            let tagRange = metaStart.lowerBound...tagEnd
+            var tag = String(remainder[tagRange])
+            let lower = tag.lowercased()
+            if lower.contains("http-equiv") && lower.contains("refresh") {
+                tag = neutralize(attribute: "content", in: tag) { _, _ in "0" }
+            }
+            output += tag
+            remainder = remainder[remainder.index(after: tagEnd)...]
         }
         output += remainder
         return output

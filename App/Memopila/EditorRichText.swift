@@ -3,8 +3,8 @@ import MemopilaCore
 import WebKit
 
 /// Loads the richest readable format for the record window (§3.6, §8.2): RTFD → RTF → HTML →
-/// web archive. HTML and archives go through Isolation (and restore) so opening history starts no
-/// background network (§9).
+/// web archive. HTML and archives go through Isolation (and restore) so opening history does not
+/// fetch remote subresources (§9); archive-local bytes stay.
 enum EditorRichText {
     static let maxBytes = 4 * 1_048_576
     static let maxArchiveBytes = 1_048_576

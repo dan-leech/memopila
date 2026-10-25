@@ -273,6 +273,13 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
 enum External {
     static let willOpen = Notification.Name("MemopilaWillOpenExternally")
 
+    /// Schemes the user may open from clipboard/history links (§9 I6). Not for System Settings /
+    /// Accessibility deep links (`open`), which use fixed Apple URLs.
+    static func isOpenableLink(_ url: URL) -> Bool {
+        guard let scheme = url.scheme?.lowercased() else { return false }
+        return scheme == "http" || scheme == "https" || scheme == "mailto"
+    }
+
     static func announce() {
         NotificationCenter.default.post(name: willOpen, object: nil)
     }
@@ -280,6 +287,12 @@ enum External {
     static func open(_ url: URL) {
         announce()
         NSWorkspace.shared.open(url)
+    }
+
+    /// User-initiated link from a record (editor, URL card, ⌘O): only `http` / `https` / `mailto`.
+    static func openLink(_ url: URL) {
+        guard isOpenableLink(url) else { return }
+        open(url)
     }
 
     static func reveal(_ urls: [URL]) {

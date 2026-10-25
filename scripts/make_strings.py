@@ -275,6 +275,7 @@ T = {
 "Show this file above": "Показать этот файл выше",
 "Show Formatting": "Показывать оформление",
 "Open the link in your browser (⌘O)": "Открыть ссылку в браузере (⌘O)",
+"Open the link in your Mac’s default browser or mail app (⌘O)": "Открыть ссылку в браузере или почте по умолчанию на Mac (⌘O)",
 "Only the formatting changed.": "Изменилось только оформление.",
 "Off: edit as plain text; saving then keeps only the text": "Выключено: редактирование как простого текста; при сохранении останется только текст",
 "Find in the text recognized in the image (⌘F)": "Найти в тексте, распознанном на изображении (⌘F)",

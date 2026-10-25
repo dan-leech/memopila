@@ -4055,6 +4055,16 @@
         }
       }
     },
+    "Open the link in your Mac’s default browser or mail app (⌘O)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть ссылку в браузере или почте по умолчанию на Mac (⌘O)"
+          }
+        }
+      }
+    },
     "Open the link in your browser (⌘O)": {
       "localizations": {
         "ru": {

@@ -342,13 +342,13 @@ struct RecordView: View {
             }
             Spacer(minLength: 8)
             Button {
-                if let url { External.open(url) }
+                if let url { External.openLink(url) }
             } label: {
                 Label("Open", systemImage: "arrow.up.forward.app")
             }
             .controlSize(.large)
-            .disabled(url?.scheme == nil)
-            .floatingHelp(String(localized: "Open the link in your browser (⌘O)"))
+            .disabled(url.map(External.isOpenableLink) != true)
+            .floatingHelp(String(localized: "Open the link in your Mac’s default browser or mail app (⌘O)"))
         }
         .padding(16)
     }
@@ -1146,10 +1146,8 @@ struct TextPane: NSViewRepresentable {
         /// the browser came up behind it). Only `http` / `https` / `mailto` — relative paths like
         /// `/healthz` are styled as links but must not hit `NSWorkspace` (§9 I6).
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
-            guard let url = (link as? URL) ?? (link as? String).flatMap({ URL(string: $0) }),
-                  let scheme = url.scheme?.lowercased(),
-                  ["http", "https", "mailto"].contains(scheme) else { return true }
-            External.open(url)
+            guard let url = (link as? URL) ?? (link as? String).flatMap({ URL(string: $0) }) else { return true }
+            External.openLink(url)
             return true
         }
     }
