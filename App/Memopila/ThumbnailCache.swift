@@ -6,7 +6,9 @@ import QuickLookThumbnailing
 /// One bounded cache for card thumbnails and QuickLook file thumbnails (PLAN §3.3, §7.3).
 @MainActor
 final class ThumbnailCache {
-    static let costLimit = 24 * 1_024 * 1_024
+    /// Card / QuickLook images. Halved from 24 MB after Release idle stayed ~70 MB (§7.3): the
+    /// floor is frameworks, so the cache only needs to cover the visible grid, not a long scroll.
+    static let costLimit = 12 * 1_024 * 1_024
 
     private let cache: NSCache<NSString, NSImage> = {
         let cache = NSCache<NSString, NSImage>()
@@ -14,9 +16,9 @@ final class ThumbnailCache {
         return cache
     }()
     private var fileStatus: [UUID: FileStatus] = [:]
-    /// Formatted text for cards (§8.2): ~8 MB budget. Cost is UTF-16 length × 64 (AttributedString
-    /// is far heavier than one byte per character); keyed by content so an edit shows at once.
-    static let richCostLimit = 8 * 1_024 * 1_024
+    /// Formatted text for cards (§8.2). Cost is UTF-16 length × 64 (AttributedString is far
+    /// heavier than one byte per character); keyed by content so an edit shows at once.
+    static let richCostLimit = 4 * 1_024 * 1_024
     private static let richCostPerUnit = 64
 
     private let richPreviews: NSCache<NSString, RichPreview> = {

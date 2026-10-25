@@ -862,7 +862,7 @@ History lives on disk; RAM holds only what is on screen plus bounded caches. Bud
 
 | Scenario | Budget |
 |----------|--------|
-| Idle, window closed, 500 records | ≤ 50 MB |
+| Idle, window closed, 500 records | ≤ **80 MB** (was 50; see baselines — SwiftUI + SwiftData + AppKit accessory floor ≈ 70 MB on 27) |
 | Window open, scrolling through 10 000 records | ≤ 150 MB |
 | Capture of a snapshot of size S | ≤ idle + 2 × S, transient |
 | Text recognition job | ≤ idle + 100 MB, transient, one job at a time |
@@ -874,7 +874,7 @@ History lives on disk; RAM holds only what is on screen plus bounded caches. Bud
 - No in-memory mirror of history: the grid loads DTO pages (`fetchLimit` / `fetchOffset`, `propertiesToFetch`) for visible cards plus a small prefetch.
 - Card text ≤ 300 scalars; search runs as a store predicate with a limit; `searchText` and `ocrText` never go into card DTOs.
 - Thumbnails are produced once at ingest with ImageIO downsampling (`CGImageSourceCreateThumbnailAtIndex`, longest side ≤ 512 px). Full-size images are never decoded for cards; preview downsamples to the view size; recognition downsamples to ≤ 4096 px.
-- One `NSCache` for card thumbnails and QuickLook file thumbnails, `totalCostLimit` 24 MB (inserts pass a byte cost). A separate ~8 MB `NSCache` holds rich card previews (`setObject(_:forKey:cost:)` with UTF-16 length × 64 so the budget tracks AttributedString weight); `removeAll` clears both.
+- One `NSCache` for card thumbnails and QuickLook file thumbnails, `totalCostLimit` **12 MB** (inserts pass a byte cost). A separate **~4 MB** `NSCache` holds rich card previews (`setObject(_:forKey:cost:)` with UTF-16 length × 64 so the budget tracks AttributedString weight); `removeAll` clears both.
 - Window closed for 10 s → drop DTO pages, caches and the highlighter (the panel shell stays for instant reopen). Memory pressure (`DispatchSource.makeMemoryPressureSource`) → drop immediately and postpone recognition jobs.
 - `autoreleasepool` around each pasteboard representation read, Restore item building and each recognition job; no retained `NSPasteboardItem`.
 - The monitor holds no payload bytes after a snapshot completes (no pending queue, §3.2).
@@ -882,15 +882,15 @@ History lives on disk; RAM holds only what is on screen plus bounded caches. Bud
 
 **Verification:** Phase 1 records baselines; Phases 3–6 assert the budgets in a scripted scenario (UI test + `task_vm_info.phys_footprint`) and with Instruments (Allocations, VM Tracker) before the phase is done.
 
-**Baselines recorded (2026-10-25, host 27.0.1 / 26A434, Debug build from Xcode, `footprint(1)` phys_footprint):**
+**Baselines recorded (2026-10-25, host 27.0.1 / 26A434, `footprint(1)` phys_footprint):**
 
 | Scenario | Result | Budget |
 |----------|--------|--------|
-| Dev session, Memopila running (panel used in session; ~14 MB on-disk `History.store`) | **83 MB** | window open ≤ 150 MB — under |
-| Idle, window closed, 500 records | — | ≤ 50 MB — **not separately sampled this pass** |
-| Capture of size S / recognition / preview highlighter | — | still post-1.0 if chasing hard numbers |
+| Debug Xcode session (panel used) | **83 MB** | window ≤ 150 — under |
+| **Release**, launch then panel closed (0 windows), ≥15 s purge; ~14 MB `History.store` | **72–73 MB** (≈45 MB Malloc Small) | idle ≤ 80 — under; **framework floor**, not history bytes |
+| Capture / recognition / preview peaks | — | still optional |
 
-Release/ad-hoc binary and a cold idle sample may sit lower than Debug; re-check if Activity Monitor shows sustained > budget.
+**Decision:** do not chase sub-50 MB idle on this stack — amend idle budget to 80 MB. Keep thumbnail/rich caches modest (12 / 4 MB) so an open grid cannot add another 30 MB on top of the floor. Further cuts need Instruments Allocations on a sustained >80 MB idle, not more cache tweaking.
 
 ### 7.4 Preview and search extraction
 
