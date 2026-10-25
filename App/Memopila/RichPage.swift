@@ -1,4 +1,5 @@
 import AppKit
+import MemopilaCore
 import SwiftUI
 
 /// What formatted text is shown on (§8.5), in the record window and on its card alike:
@@ -84,6 +85,54 @@ enum RichPage: Equatable {
             if luminance(color) > 0.6 { light += run.length } else { dark += run.length }
         }
         return light > dark
+    }
+
+    /// AppKit's HTML importer paints unstyled (and some wrapped) links `#0000EE` / `#0000FF`
+    /// instead of leaving them uncoloured or keeping a parent `font`/`span` colour.
+    static func isImporterDefaultLinkBlue(_ color: NSColor) -> Bool {
+        guard let rgb = color.usingColorSpace(.sRGB) else { return false }
+        let red = Int((rgb.redComponent * 255).rounded())
+        let green = Int((rgb.greenComponent * 255).rounded())
+        let blue = Int((rgb.blueComponent * 255).rounded())
+        return red == 0 && green == 0 && (blue == 238 || blue == 255)
+    }
+
+    /// Colours the card already shows via `HTMLPreview`, applied onto WebKit/AppKit's reading of
+    /// the same HTML: a parent `<font color>` around a link becomes default blue there, while the
+    /// card keeps the green. Walks preview runs in order and paints matching substrings.
+    static func restoreMarkupColors(html: String, into text: NSMutableAttributedString) {
+        let preview = HTMLPreview.preview(of: html, maxCharacters: max(text.length, 1))
+        let haystack = text.string as NSString
+        var searchStart = 0
+        for run in preview.runs {
+            guard !run.text.isEmpty else { continue }
+            let scope = NSRange(location: searchStart, length: max(0, haystack.length - searchStart))
+            guard scope.length > 0 else { break }
+            let found = haystack.range(of: run.text, options: [], range: scope)
+            guard found.location != NSNotFound else { continue }
+            searchStart = NSMaxRange(found)
+            guard let color = run.style.color else { continue }
+            let nsColor = NSColor(srgbRed: color.red, green: color.green, blue: color.blue, alpha: color.alpha)
+            text.enumerateAttributes(in: found, options: []) { attributes, range, _ in
+                let current = attributes[.foregroundColor] as? NSColor
+                let needsPaint = run.style.link
+                    || current == nil
+                    || current.map(isImporterDefaultLinkBlue) == true
+                guard needsPaint else { return }
+                text.addAttribute(.foregroundColor, value: nsColor, range: range)
+            }
+        }
+    }
+
+    /// Links with no colour of their own (or only the importer's default blue) get the system
+    /// link colour, as the card does when `foregroundColor` is missing.
+    static func paintUncoloredLinks(in text: NSMutableAttributedString) {
+        text.enumerateAttributes(in: NSRange(location: 0, length: text.length), options: []) { attributes, range, _ in
+            guard attributes[.link] != nil else { return }
+            let current = attributes[.foregroundColor] as? NSColor
+            if let current, !isImporterDefaultLinkBlue(current) { return }
+            text.addAttribute(.foregroundColor, value: NSColor.linkColor, range: range)
+        }
     }
 }
 

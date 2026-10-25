@@ -13,6 +13,14 @@ struct HTMLPreviewTests {
         #expect(preview.runs.first { $0.text == "link" }?.style.link == true)
     }
 
+    @Test func linkKeepsParentFontColor() {
+        // AppKit's HTML importer paints this default blue; the card preview must keep green.
+        let preview = HTMLPreview.preview(of: ##"<font color="#22c55e"><a href="https://example.com/healthz">/healthz</a></font>"##)
+        let link = preview.runs.first { $0.text == "/healthz" }
+        #expect(link?.style.link == true)
+        #expect(link?.style.color == HTMLPreview.Color(red: 0x22 / 255, green: 0xC5 / 255, blue: 0x5E / 255))
+    }
+
     @Test func whitespaceCollapsesAndBlocksBreakLines() {
         let preview = HTMLPreview.preview(of: "<p>  One\n   two  </p><p>Three</p><ul><li>a</li><li>b</li></ul>line<br>next")
         #expect(preview.text == "One two\nThree\n• a\n• b\nline\nnext")

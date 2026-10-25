@@ -348,8 +348,16 @@ final class ItemState {
         textView.enclosingScrollView?.drawsBackground = true
         textView.enclosingScrollView?.backgroundColor = page.color ?? .textBackgroundColor
         textView.textContainerInset = NSSize(width: 22, height: 18)
+        // Default linkTextAttributes paint every link system-blue, covering colours from
+        // the HTML (a green path on the card, blue in the editor). Keep underline and the
+        // hand cursor; the run's own foreground stays, as on the card (`RichPage.cardText`).
+        textView.linkTextAttributes = [
+            .underlineStyle: NSUnderlineStyle.single.rawValue,
+            .cursor: NSCursor.pointingHand,
+        ]
         richScale = Self.readableScale(for: richSource)
         storage.setAttributedString(richSource)
+        RichPage.paintUncoloredLinks(in: storage)
         textView.undoManager?.removeAllActions()
         // As the text view holds it: loading may have fixed fonts or attributes.
         initialRich = storage.copy() as? NSAttributedString

@@ -1104,12 +1104,19 @@ final class AppModel {
     private static func attributedString(_ data: Data, type: NSAttributedString.DocumentType) async -> (text: NSAttributedString, background: NSColor?)? {
         switch type {
         case .html:
+            let html = String(decoding: data, as: UTF8.self)
             let result = await withCheckedContinuation { (continuation: CheckedContinuation<Transfer<(NSAttributedString, NSColor?)?>, Never>) in
                 NSAttributedString.loadFromHTML(data: data, options: [.characterEncoding: String.Encoding.utf8.rawValue, .timeout: 5]) { text, attributes, _ in
                     continuation.resume(returning: Transfer(value: text.map { ($0, attributes?[.backgroundColor] as? NSColor) }))
                 }
             }
-            return result.value.map { (text: $0.0, background: $0.1) }
+            guard let loaded = result.value else { return nil }
+            // WebKit/AppKit drops some markup colours on links (e.g. `<font color>` around
+            // `<a>`); the card keeps them via `HTMLPreview`. Repaint before the editor shows it.
+            let text = NSMutableAttributedString(attributedString: loaded.0)
+            RichPage.restoreMarkupColors(html: html, into: text)
+            RichPage.paintUncoloredLinks(in: text)
+            return (text, loaded.1)
         case .webArchive:
             guard data.count <= 1_048_576 else { return nil }
             var attributes: NSDictionary?
