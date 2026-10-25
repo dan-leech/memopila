@@ -500,7 +500,7 @@ private struct PrivacySettings: View {
             Section {
                 Label("History stays on this Mac and is never sent anywhere.", systemImage: "laptopcomputer")
                 Label("It is not encrypted on disk.", systemImage: "lock.open")
-                Label("Copies that apps mark as concealed, such as passwords from a password manager, are always skipped.", systemImage: "key")
+                Label("Copies that apps mark as concealed, such as passwords from a password manager, are never saved or shown. The panel only says that one is on the clipboard, and can clear it.", systemImage: "key")
                 Label("For anything else, use Pause, Skip Next Copy, or set the app to Don't Save.", systemImage: "hand.raised")
             } header: {
                 Text("Your Data")

@@ -564,8 +564,13 @@ private struct HistoryGrid: View {
                         spacing: Self.spacing
                     ) {
                         if let current = model.monitor.current, model.history.search.isEmpty, model.history.scope == .all {
-                            CurrentCardView(current: current, model: model)
-                                .frame(height: cardHeight)
+                            if current.status == .concealed {
+                                ConcealedCardView(current: current, model: model)
+                                    .frame(height: cardHeight)
+                            } else {
+                                CurrentCardView(current: current, model: model)
+                                    .frame(height: cardHeight)
+                            }
                         }
                         ForEach(Array(model.history.cards.enumerated()), id: \.element.id) { index, card in
                             CardView(

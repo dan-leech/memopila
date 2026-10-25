@@ -515,6 +515,81 @@ struct CurrentCardView: View {
     }
 }
 
+/// A password on the clipboard (§3.2.3): a card with a red line where a saved card has the green
+/// one, never its content (it is never read). It cannot be selected or opened; the only action
+/// clears the clipboard (owner feedback: the panel looked as if the clipboard were empty).
+struct ConcealedCardView: View {
+    let current: CurrentClipboard
+    let model: AppModel
+    @State private var isHovered = false
+
+    private static let radius: CGFloat = 9
+
+    private var appName: String? {
+        current.change.identity.bundleID.map { AppInfo.displayName(for: $0) }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 6) {
+                Label(current.title, systemImage: "key.fill")
+                    .font(.system(size: 11.5, weight: .semibold))
+                    .foregroundStyle(.red)
+                Text(verbatim: "••••••••••")
+                    .font(.system(size: 13, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Text("Not saved and not shown")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .padding(.horizontal, 10)
+            .padding(.top, 9)
+            HStack(spacing: 5) {
+                if let icon = AppInfo.icon(for: current.change.identity.bundleID) {
+                    Image(nsImage: icon).resizable().frame(width: 14, height: 14)
+                } else {
+                    Image(systemName: "key").frame(width: 14, height: 14)
+                }
+                if let appName { Text(appName).lineLimit(1) }
+                Spacer(minLength: 2)
+                if isHovered {
+                    Button { model.monitor.clearConcealed() } label: {
+                        Image(systemName: "trash")
+                    }
+                    .buttonStyle(.borderless)
+                    .help(String(localized: "Clear Clipboard: remove the password from the clipboard"))
+                    .accessibilityLabel(Text("Clear Clipboard"))
+                } else {
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        Text(RelativeTime.short(current.observedAt, now: context.date))
+                    }
+                }
+            }
+            .font(.system(size: 10.5))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 7)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(RoundedRectangle(cornerRadius: Self.radius, style: .continuous).fill(Color(nsColor: .textBackgroundColor)))
+        .overlay {
+            RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
+                .strokeBorder(Color.red, lineWidth: 1.5)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
+        .onHover { hovering in
+            withAnimation(.easeOut(duration: 0.12)) { isHovered = hovering }
+        }
+        .contextMenu {
+            Button("Clear Clipboard") { model.monitor.clearConcealed() }
+        }
+        .help(String(localized: "A password is on the clipboard. Memopila never reads, saves or shows it."))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(Text("Password on the clipboard, not saved"))
+    }
+}
+
 struct Checkerboard: View {
     var body: some View {
         Canvas { context, size in
