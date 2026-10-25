@@ -42,7 +42,7 @@
 
 | Policy | Decision |
 |--------|----------|
-| **Data** | Local only under Application Support; no account, sync, or cloud. No background network (no link previews, analytics, or remote loads when opening HTML/web archives from history). User-initiated `http` / `https` / `mailto` opens from the editor are allowed |
+| **Data** | Local only under Application Support; no account, sync, or cloud. No link previews or analytics. Opening HTML/web archives from history strips fetchable subresources (archive-local bytes kept). User-initiated `http` / `https` / `mailto` clicks open outside Memopila in the Mac’s default browser or mail app |
 | **Distribution (v1)** | Build and run from source (Xcode). Sign with a stable **Apple Development** identity (a free personal team is enough), not ad-hoc "Sign to Run Locally": the per-app pasteboard access choice in System Settings is tied to the app's code identity, and an identity that changes on every build is expected to reset it **(spike)**. Downloadable binary is a later deliverable |
 | **Sandbox** | **Not sandboxed** in v1. Store file **URLs/paths** for restore; no security-scoped bookmarks |
 | **Stack** | SwiftUI + AppKit, Swift 6 language mode. Build with the current Xcode (27.x) and macOS 27 SDK |
@@ -50,7 +50,7 @@
 | **OS test matrix** | Latest 15.x and 26.x (VMs are enough), 27.0.x / 27.1, 27.2+. 27.2 is listed separately: its release notes remove the `EnablePasteboardPrivacyDeveloperPreview` default (186955507), so the pasteboard access alert is expected to be enforced from 27.2 **(spike)** |
 | **Payload persistence** | One SwiftData `PayloadRepresentation` row per stored representation with `@Attribute(.externalStorage) bytes` (§3.5). No single package blob, no custom BlobStore |
 | **Memory** | History lives on disk. No in-memory mirror of history. RAM budgets (§7.3) are phase acceptance criteria |
-| **App presentation** | Menu-bar-first (`NSApplication.ActivationPolicy.accessory` / `LSUIElement`); Dock via activation-policy toggle — Phase 1 spike on each OS of the matrix |
+| **App presentation** | Menu-bar only (`NSApplication.ActivationPolicy.accessory` / `LSUIElement`). No Dock icon and no Dock toggle in v1 (§8.7) |
 | **Window** | Non-activating `NSPanel` **(spike)**; fallback: activating window + remembered previous app (§8.1) |
 | **Hotkey** | Default **⌥⌘V** (same as Pasta), rebindable in Settings. Carbon `RegisterEventHotKey` (no global key monitor / Accessibility). While registered it overrides Finder's ⌥⌘V *Move Item Here* — accepted. Only one app can hold a combination: if registration fails (`eventHotKeyExistsErr`, e.g. Pasta is still running), keep the previous binding and show a Settings error that names the likely cause. Rebind order: (1) if new equals current, no-op; (2) register **new** while **old remains active**; (3) on success unregister old; (4) on failure keep old active and show the error. If an API path requires unregistering old first, **re-register old** on new-register failure. Optional hotkeys for Pause and Skip next copy (§3.7) follow the same rules, unset by default |
 
@@ -859,7 +859,7 @@ History lives on disk; RAM holds only what is on screen plus bounded caches. Bud
 - No in-memory mirror of history: the grid loads DTO pages (`fetchLimit` / `fetchOffset`, `propertiesToFetch`) for visible cards plus a small prefetch.
 - Card text ≤ 300 scalars; search runs as a store predicate with a limit; `searchText` and `ocrText` never go into card DTOs.
 - Thumbnails are produced once at ingest with ImageIO downsampling (`CGImageSourceCreateThumbnailAtIndex`, longest side ≤ 512 px). Full-size images are never decoded for cards; preview downsamples to the view size; recognition downsamples to ≤ 4096 px.
-- One `NSCache` for card thumbnails and QuickLook file thumbnails, `totalCostLimit` 24 MB (inserts pass a byte cost). A separate ~8 MB `NSCache` holds rich card previews (`setObject(_:forKey:cost:)` by attributed length); `removeAll` clears both.
+- One `NSCache` for card thumbnails and QuickLook file thumbnails, `totalCostLimit` 24 MB (inserts pass a byte cost). A separate ~8 MB `NSCache` holds rich card previews (`setObject(_:forKey:cost:)` with UTF-16 length × 64 so the budget tracks AttributedString weight); `removeAll` clears both.
 - Window closed for 10 s → drop DTO pages, caches and the highlighter (the panel shell stays for instant reopen). Memory pressure (`DispatchSource.makeMemoryPressureSource`) → drop immediately and postpone recognition jobs.
 - `autoreleasepool` around each pasteboard representation read, Restore item building and each recognition job; no retained `NSPasteboardItem`.
 - The monitor holds no payload bytes after a snapshot completes (no pending queue, §3.2).
@@ -1023,7 +1023,7 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 | Self-writes | Suppress only a confirmed `ownedCount` once (§3.4) |
 | Accessibility | Only for **auto-paste** (§3.4, off by default; asked for when it is turned on); when granted, also used for source window titles (§5.2) |
 | Text recognition | On device; no network (§3.8) |
-| HTML / web archive in the record window | Isolation of remote subresources (and archive plist sanitization) before WebKit; cards use `HTMLPreview` only — no background network. User link clicks: `http` / `https` / `mailto` only (§3.6, §8.2) |
+| HTML / web archive in the record window | Isolation blanks fetchable subresources before WebKit; archive sanitize keeps only URLs already in the plist. Cards use `HTMLPreview` only. User link clicks (`http` / `https` / `mailto`) open via `NSWorkspace` in the default browser or mail app — not an in-app browser (§3.6, §8.2) |
 | Files | Paths only; display-only QuickLook thumbnails; Unavailable when missing (§3.3) |
 | At-rest encryption | None in v1 |
 | Logs | No clipboard content (§6) |
@@ -1077,7 +1077,7 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 |-------|-------------------------|----------|
 | Unit | §3.1 markers; §3.2 size budget; §3.2.2 format policy; §3.3 paths/coalesce; §3.9 text actions; §4 MCS1/file list; §5 identity / per-app settings; §5.2 source page parsing; §6 retention / expiry / preflight; §3.6 edit/merge; §7.4 decode | TDD on the owning section |
 | Integration | §3.2 coordination (Clear/Delete/Edit races, save failures); §3.4 Writer + token; §3.5 SwiftData rows, integrity, rollback; §3.7 pause / skip; §3.8 recognition queue | Contract test first; seams for store failures and the frontmost app |
-| System / manual | §3.1 access alerts on each OS of the matrix; §2 hotkeys/Dock; §8.1 panel focus; login; auto-paste | Automate stable cases; OS dialogs on concrete versions |
+| System / manual | §3.1 access alerts on each OS of the matrix; §2 hotkeys; §8.1 panel focus; login; auto-paste | Automate stable cases; OS dialogs on concrete versions |
 | Performance | §7.3 memory budgets; §8.6 search budget | Scripted scenarios + `phys_footprint`; Instruments before each phase is done |
 
 **Rules:**

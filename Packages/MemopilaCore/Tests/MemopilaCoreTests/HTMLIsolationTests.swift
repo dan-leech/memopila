@@ -23,11 +23,20 @@ struct HTMLIsolationTests {
         #expect(HTMLIsolation.strippingRemoteLoads(html) == html)
     }
 
-    @Test func should_blank_base_href() {
+    @Test func should_blank_base_href_and_relative_img() {
         let html = #"<base href="https://tracker.example/"><img src="/pixel.png">"#
         let out = HTMLIsolation.strippingRemoteLoads(html)
         #expect(out.contains(#"href="about:blank""#))
+        #expect(out.contains(#"src="about:blank""#))
         #expect(!out.contains("tracker.example"))
+        #expect(!out.contains("/pixel.png"))
+    }
+
+    @Test func should_blank_path_relative_subresource() {
+        let html = #"<img src="/healthz.png"><link rel="stylesheet" href="../a.css">"#
+        let out = HTMLIsolation.strippingRemoteLoads(html)
+        #expect(out.contains(#"src="about:blank""#))
+        #expect(out.contains(#"href="about:blank""#))
     }
 
     @Test func should_blank_link_stylesheet_href() {
@@ -65,8 +74,31 @@ struct HTMLIsolationTests {
         #expect(!out.contains("evil.example"))
     }
 
+    @Test func should_blank_body_background_and_object_data() {
+        let html = #"<body background="https://evil.example/bg.gif"><object data="https://evil.example/x.swf"></object>"#
+        let out = HTMLIsolation.strippingRemoteLoads(html)
+        #expect(out.contains(#"background="about:blank""#))
+        #expect(out.contains(#"data="about:blank""#))
+        #expect(!out.contains("evil.example"))
+    }
+
+    @Test func should_blank_svg_image_and_use_href() {
+        let html = #"<svg><image href="https://evil.example/a.png"></image><use href="https://evil.example/icon.svg#i"></use></svg>"#
+        let out = HTMLIsolation.strippingRemoteLoads(html)
+        #expect(out.contains(#"href="about:blank""#))
+        #expect(!out.contains("evil.example"))
+    }
+
     @Test func should_keep_data_urls() {
         let html = #"<img src="data:image/png;base64,aaa">"#
         #expect(HTMLIsolation.strippingRemoteLoads(html) == html)
+    }
+
+    @Test func should_keep_url_when_keeping_allows() {
+        let html = #"<img src="https://example.com/local.png"><img src="https://evil.example/x.png">"#
+        let out = HTMLIsolation.strippingRemoteLoads(html, keeping: { $0 == "https://example.com/local.png" })
+        #expect(out.contains(#"src="https://example.com/local.png""#))
+        #expect(out.contains(#"src="about:blank""#))
+        #expect(!out.contains("evil.example"))
     }
 }

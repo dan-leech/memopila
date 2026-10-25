@@ -138,7 +138,7 @@ The full keyboard map is in [PLAN §8.3](docs/PLAN.md#83-keyboard).
 
 ## Privacy
 
-- **Local only.** History is stored in `~/Library/Application Support/Memopila/History.store` and settings in `UserDefaults`. There is no account, sync or cloud. Memopila does not fetch link previews or send analytics. Opening HTML or web archives from history strips remote images, stylesheets and similar subresources first, so viewing history starts no background network; clicking an `http(s)` or `mailto` link in the editor is intentional and opens in your browser. Text in images is recognized on device.
+- **Local only.** History is stored in `~/Library/Application Support/Memopila/History.store` and settings in `UserDefaults`. There is no account, sync or cloud. Memopila does not fetch link previews or send analytics. Opening HTML or a web archive from history strips remote images, stylesheets and similar loads first (bytes already stored in the archive stay local); clicking an `http(s)` or `mailto` link in the editor is intentional and opens outside Memopila in your Mac’s default browser or mail app. Text in images is recognized on device.
 - **Not encrypted at rest.** Local-only does not mean encrypted; use FileVault to protect the disk.
 - **Password managers:** copies marked as concealed, transient or auto-generated (the `org.nspasteboard` markers password managers set) are never saved.
 - **Secrets in plain copies:** tokens, private keys, JWTs and card numbers are recognized on your Mac. By default they are saved masked on the card and deleted after 8 hours. Settings → Privacy can switch to *Don't save* or *Save as usual*, change the time, or turn off single kinds. ⌘D keeps a secret for good. Detection is pattern-based and cannot catch every secret.

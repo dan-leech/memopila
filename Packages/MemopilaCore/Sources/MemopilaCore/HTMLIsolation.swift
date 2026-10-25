@@ -7,35 +7,68 @@ import Foundation
 /// Only **subresource** URLs are blanked (`src`, stylesheets, CSS `url()`, `@import`, `<base>`, …).
 /// Anchor `href`s are kept — they do not cause fetches during `loadFromHTML`. Colours and relative
 /// links AppKit drops are restored afterwards via `HTMLPreview`.
+///
+/// Path-relative subresource URLs (`/x.png`, `../a.css`) are blanked by default: with a document
+/// base (or a web archive’s main URL) they would otherwise hit the network. Archives pass `keeping`
+/// so URLs that resolve to payloads already in the plist stay.
 public enum HTMLIsolation {
     private static let resourceTags: Set<String> = [
-        "link", "script", "iframe", "source", "embed", "object", "base",
+        "link", "script", "iframe", "source", "embed", "object", "base", "image", "use",
     ]
 
-    /// Neutralizes remote subresource URLs so `NSAttributedString.loadFromHTML` / WebKit stay offline.
-    public static func strippingRemoteLoads(_ html: String) -> String {
+    /// Neutralizes fetchable subresource URLs so `NSAttributedString.loadFromHTML` / WebKit stay offline.
+    /// - Parameter keeping: URLs for which this returns `true` are left unchanged (web archives use
+    ///   this for local `WebSubresources`; the default keeps nothing extra).
+    public static func strippingRemoteLoads(
+        _ html: String,
+        keeping: @escaping (String) -> Bool = { _ in false }
+    ) -> String {
         var result = html
-        for attribute in ["src", "srcset", "poster", "data-src"] {
+        for attribute in ["src", "srcset", "poster", "data-src", "background"] {
             result = neutralize(attribute: attribute, in: result) { value, _ in
-                let remote = attribute == "srcset" ? isRemoteSrcset(value) : isRemoteURL(value)
-                return remote ? "about:blank" : nil
+                rewriteSubresource(value, srcset: attribute == "srcset", keeping: keeping)
             }
+        }
+        result = neutralize(attribute: "data", in: result) { value, tag in
+            guard tag == "object" else { return nil }
+            return rewriteSubresource(value, srcset: false, keeping: keeping)
         }
         result = neutralize(attribute: "href", in: result) { value, tag in
             guard let tag, resourceTags.contains(tag) else { return nil }
-            return isRemoteURL(value) ? "about:blank" : nil
+            return rewriteSubresource(value, srcset: false, keeping: keeping)
         }
-        result = neutralizeCSSURLs(in: result)
-        return neutralizeAtImports(in: result)
+        result = neutralizeCSSURLs(in: result, keeping: keeping)
+        return neutralizeAtImports(in: result, keeping: keeping)
     }
 
-    private static func isRemoteSrcset(_ raw: String) -> Bool {
+    private static func rewriteSubresource(_ value: String, srcset: Bool, keeping: (String) -> Bool) -> String? {
+        if srcset {
+            return isFetchableSrcset(value, keeping: keeping) ? "about:blank" : nil
+        }
+        guard isFetchableSubresource(value) else { return nil }
+        if keeping(value) { return nil }
+        return "about:blank"
+    }
+
+    private static func isFetchableSrcset(_ raw: String, keeping: (String) -> Bool) -> Bool {
         raw.split(separator: ",").contains { candidate in
             let url = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
                 .split(whereSeparator: { $0.isWhitespace }).first
                 .map(String.init) ?? ""
-            return isRemoteURL(url)
+            guard isFetchableSubresource(url) else { return false }
+            if keeping(url) { return false }
+            return true
         }
+    }
+
+    /// Anything WebKit may fetch as a subresource once a document base exists — absolute remote,
+    /// scheme-relative, or path-relative. `data:` / `about:` / `#fragment` stay.
+    static func isFetchableSubresource(_ raw: String) -> Bool {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if value.isEmpty { return false }
+        let lower = value.lowercased()
+        if lower.hasPrefix("data:") || lower.hasPrefix("about:") || lower.hasPrefix("#") { return false }
+        return true
     }
 
     static func isRemoteURL(_ raw: String) -> Bool {
@@ -123,7 +156,7 @@ public enum HTMLIsolation {
         return ParsedValue(value: String(afterAttr[afterAttr.startIndex..<end]), next: end, quote: nil)
     }
 
-    private static func neutralizeCSSURLs(in html: String) -> String {
+    private static func neutralizeCSSURLs(in html: String, keeping: (String) -> Bool) -> String {
         var output = ""
         var remainder = html[...]
         while let urlStart = remainder.range(of: "url(", options: .caseInsensitive) {
@@ -162,7 +195,7 @@ public enum HTMLIsolation {
                 valueEnd = end
             }
             let value = String(after[valueStart..<valueEnd])
-            let rewritten = isRemoteURL(value) ? "about:blank" : value
+            let rewritten = rewriteSubresource(value, srcset: false, keeping: keeping) ?? value
             if let quote {
                 output += "url(" + String(quote) + rewritten + String(quote)
                 remainder = after[after.index(after: valueEnd)...]
@@ -176,7 +209,7 @@ public enum HTMLIsolation {
     }
 
     /// `@import "https://…"` / `@import '…'` without `url()` (`url(...)` is handled above).
-    private static func neutralizeAtImports(in html: String) -> String {
+    private static func neutralizeAtImports(in html: String, keeping: (String) -> Bool) -> String {
         var output = ""
         var remainder = html[...]
         while let importStart = remainder.range(of: "@import", options: .caseInsensitive) {
@@ -194,7 +227,7 @@ public enum HTMLIsolation {
                 return output
             }
             let value = String(remainder[valueStart..<valueEnd])
-            let rewritten = isRemoteURL(value) ? "about:blank" : value
+            let rewritten = rewriteSubresource(value, srcset: false, keeping: keeping) ?? value
             output += String(first) + rewritten + String(first)
             remainder = remainder[remainder.index(after: valueEnd)...]
         }

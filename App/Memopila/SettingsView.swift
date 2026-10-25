@@ -502,7 +502,7 @@ private struct PrivacySettings: View {
 
             Section {
                 Label("History stays on this Mac: no account, sync or analytics.", systemImage: "laptopcomputer")
-                Label("Opening HTML or web archives from history starts no background network. Clicking an http(s) or mailto link in the editor opens it in your browser.", systemImage: "network.slash")
+                Label("Opening HTML or a web archive from history strips remote images, stylesheets and similar loads (bytes already in the archive stay local). Clicking an http(s) or mailto link in the editor opens it outside Memopila — in your Mac’s default browser or mail app.", systemImage: "network.slash")
                 Label("It is not encrypted on disk.", systemImage: "lock.open")
                 Label("Copies that apps mark as concealed, such as passwords from a password manager, are never saved or shown. The panel only says that one is on the clipboard, and can clear it.", systemImage: "key")
                 Label("For anything else, use Pause, Skip Next Copy, or set the app to Don't Save.", systemImage: "hand.raised")

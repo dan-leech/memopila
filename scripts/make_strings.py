@@ -585,7 +585,7 @@ T = {
 "Formatting could not be loaded; showing plain text.": "Форматирование не удалось загрузить; показан обычный текст.",
 "Lists which clipboard formats would be saved; only type names are read, not content.": "Показывает, какие форматы буфера были бы сохранены; читаются только имена типов, не содержимое.",
 "History stays on this Mac: no account, sync or analytics.": "История остаётся на этом Mac: без аккаунта, синхронизации и аналитики.",
-"Opening HTML or web archives from history starts no background network. Clicking an http(s) or mailto link in the editor opens it in your browser.": "Открытие HTML или веб-архивов из истории не запускает фоновую сеть. Щелчок по ссылке http(s) или mailto в редакторе открывает её в браузере.",
+"Opening HTML or a web archive from history strips remote images, stylesheets and similar loads (bytes already in the archive stay local). Clicking an http(s) or mailto link in the editor opens it outside Memopila — in your Mac’s default browser or mail app.": "При открытии HTML или веб-архива из истории убираются удалённые картинки, таблицы стилей и похожие загрузки (байты уже в архиве остаются локальными). Щелчок по ссылке http(s) или mailto в редакторе открывает её вне Memopila — в браузере или почте по умолчанию на Mac.",
 "History stays on this Mac and is never sent anywhere.": "История остаётся на этом Mac и никуда не отправляется.",
 "Source App": "Исходное приложение",
 "Identify the source app": "Определять исходное приложение",

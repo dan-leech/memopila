@@ -14,8 +14,10 @@ final class ThumbnailCache {
         return cache
     }()
     private var fileStatus: [UUID: FileStatus] = [:]
-    /// Formatted text for cards (§8.2): ~8 MB by character cost, keyed by content so an edit shows at once.
+    /// Formatted text for cards (§8.2): ~8 MB budget. Cost is UTF-16 length × 64 (AttributedString
+    /// is far heavier than one byte per character); keyed by content so an edit shows at once.
     static let richCostLimit = 8 * 1_024 * 1_024
+    private static let richCostPerUnit = 64
 
     private let richPreviews: NSCache<NSString, RichPreview> = {
         let cache = NSCache<NSString, RichPreview>()
@@ -97,7 +99,7 @@ final class ThumbnailCache {
         }.value
         guard let made else { return nil }
         let preview = RichPreview(start: made.value.start, page: made.value.page)
-        richPreviews.setObject(preview, forKey: key, cost: max(1, preview.text.length))
+        richPreviews.setObject(preview, forKey: key, cost: max(1, preview.text.length * Self.richCostPerUnit))
         return preview
     }
 
