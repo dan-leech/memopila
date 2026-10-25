@@ -130,7 +130,7 @@ CI (`.github/workflows/ci.yml`) runs the core tests on Linux and macOS and the s
 | **⌘D** | Add to or remove from Favorites |
 | **⌘⌫** | Delete (with Undo) |
 | **⌘P** | Pin the panel |
-| **⌘.** | Pause or resume capture |
+| **⌘.** | Pause or resume capture (in the panel; optional global hotkey in Settings) |
 | **Esc** | Clear the search, then close |
 | **⌘/** | Show all shortcuts |
 
@@ -138,7 +138,7 @@ The full keyboard map is in [PLAN §8.3](docs/PLAN.md#83-keyboard).
 
 ## Privacy
 
-- **Local only.** History is stored in `~/Library/Application Support/Memopila/History.store` and settings in `UserDefaults`. There is no account, sync or cloud, and Memopila makes no network requests: no link previews, no analytics. Opening HTML from history strips remote images and stylesheets before WebKit reads it. Text in images is recognized on device.
+- **Local only.** History is stored in `~/Library/Application Support/Memopila/History.store` and settings in `UserDefaults`. There is no account, sync or cloud. Memopila does not fetch link previews or send analytics. Opening HTML or web archives from history strips remote images, stylesheets and similar subresources first, so viewing history starts no background network; clicking an `http(s)` or `mailto` link in the editor is intentional and opens in your browser. Text in images is recognized on device.
 - **Not encrypted at rest.** Local-only does not mean encrypted; use FileVault to protect the disk.
 - **Password managers:** copies marked as concealed, transient or auto-generated (the `org.nspasteboard` markers password managers set) are never saved.
 - **Secrets in plain copies:** tokens, private keys, JWTs and card numbers are recognized on your Mac. By default they are saved masked on the card and deleted after 8 hours. Settings → Privacy can switch to *Don't save* or *Save as usual*, change the time, or turn off single kinds. ⌘D keeps a secret for good. Detection is pattern-based and cannot catch every secret.

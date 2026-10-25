@@ -357,7 +357,7 @@ final class ItemState {
         ]
         richScale = Self.readableScale(for: richSource)
         storage.setAttributedString(richSource)
-        RichPage.paintUncoloredLinks(in: storage)
+        MarkupColorRestore.paintUncoloredLinks(in: storage)
         textView.undoManager?.removeAllActions()
         // As the text view holds it: loading may have fixed fonts or attributes.
         initialRich = storage.copy() as? NSAttributedString

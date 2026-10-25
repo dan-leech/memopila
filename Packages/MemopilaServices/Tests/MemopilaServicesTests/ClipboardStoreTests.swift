@@ -140,6 +140,37 @@ struct ClipboardStoreTests {
         #expect(try await store.count(HistoryQuery()) == 1)
     }
 
+    @Test func should_skip_oversized_rtfd_and_use_html() async throws {
+        let store = try ClipboardStore(url: nil)
+        let fat = Data(repeating: 0x41, count: 600 * 1_024)
+        let html = Data("<p>hi</p>".utf8)
+        let items = [CanonicalItem([.bytes(.flatRTFD, fat), .bytes(.html, html), .bytes(.utf8PlainText, Data("hi".utf8))])]
+        guard case .committed(let id) = await ingest(store, snapshot("hi", items: items)) else { Issue.record("not committed"); return }
+        let source = try #require(try await store.richPreviewSource(for: id, maxBytes: 512 * 1_024))
+        #expect(source.type == .html)
+        #expect(String(decoding: source.data, as: UTF8.self) == "<p>hi</p>")
+    }
+
+    @Test func should_return_archive_when_only_web_archive() async throws {
+        let store = try ClipboardStore(url: nil)
+        let archive = try PropertyListSerialization.data(
+            fromPropertyList: [
+                "WebMainResource": [
+                    "WebResourceData": Data("<p>archived</p>".utf8),
+                    "WebResourceMIMEType": "text/html",
+                    "WebResourceURL": "https://example.com/",
+                ] as [String: Any],
+            ] as [String: Any],
+            format: .binary,
+            options: 0
+        )
+        let items = [CanonicalItem([.bytes(.webArchive, archive)])]
+        guard case .committed(let id) = await ingest(store, snapshot("", items: items)) else { Issue.record("not committed"); return }
+        let source = try #require(try await store.richPreviewSource(for: id))
+        #expect(source.type == .webArchive)
+        #expect(source.data == archive)
+    }
+
     @Test func payloadRoundTripsThroughIntegrityChecks() async throws {
         let items = [
             CanonicalItem([.bytes(.utf8PlainText, Data("a b".utf8)), .bytes(.html, Data("<b>a b</b>".utf8))]),

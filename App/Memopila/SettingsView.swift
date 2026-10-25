@@ -59,12 +59,15 @@ private struct GeneralSettings: View {
         return Form {
             Section {
                 LabeledContent("Open Memopila") { ShortcutRecorder(model: model, role: .window) }
+                    .floatingHelp(String(localized: "Global hotkey to open or close the history panel (default ⌥⌘V)."))
                 LabeledContent("Pause or resume capture") { ShortcutRecorder(model: model, role: .pause) }
+                    .floatingHelp(String(localized: "Optional global hotkey. In the panel, ⌘. always pauses or resumes — no shortcut needed here."))
                 LabeledContent("Skip next copy") { ShortcutRecorder(model: model, role: .skip) }
+                    .floatingHelp(String(localized: "Optional global hotkey to skip the next copy without reading it."))
             } header: {
                 Text("Shortcuts")
             } footer: {
-                Text("A shortcut needs ⌘ or ⌃. Only one app can hold ⌥⌘V: quit Pasta or choose another shortcut.")
+                Text("A shortcut needs ⌘ or ⌃. Only one app can hold ⌥⌘V: quit Pasta or choose another shortcut. Pause and Skip are optional globals; ⌘. in the panel always pauses or resumes.")
             }
 
             Section {
@@ -498,7 +501,8 @@ private struct PrivacySettings: View {
             }
 
             Section {
-                Label("History stays on this Mac and is never sent anywhere.", systemImage: "laptopcomputer")
+                Label("History stays on this Mac: no account, sync or analytics.", systemImage: "laptopcomputer")
+                Label("Opening HTML or web archives from history starts no background network. Clicking an http(s) or mailto link in the editor opens it in your browser.", systemImage: "network.slash")
                 Label("It is not encrypted on disk.", systemImage: "lock.open")
                 Label("Copies that apps mark as concealed, such as passwords from a password manager, are never saved or shown. The panel only says that one is on the clipboard, and can clear it.", systemImage: "key")
                 Label("For anything else, use Pause, Skip Next Copy, or set the app to Don't Save.", systemImage: "hand.raised")

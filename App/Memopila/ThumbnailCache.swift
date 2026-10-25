@@ -14,10 +14,13 @@ final class ThumbnailCache {
         return cache
     }()
     private var fileStatus: [UUID: FileStatus] = [:]
-    /// Formatted text for cards (§8.2): small, and keyed by content so an edit shows at once.
+    /// Formatted text for cards (§8.2): ~8 MB by character cost, keyed by content so an edit shows at once.
+    static let richCostLimit = 8 * 1_024 * 1_024
+
     private let richPreviews: NSCache<NSString, RichPreview> = {
         let cache = NSCache<NSString, RichPreview>()
         cache.countLimit = 200
+        cache.totalCostLimit = ThumbnailCache.richCostLimit
         return cache
     }()
     private let store: ClipboardStore
@@ -83,8 +86,8 @@ final class ThumbnailCache {
         richPreviews.object(forKey: Self.richKey(for: card) as NSString)
     }
 
-    /// RTF off the main thread; HTML through `HTMLPreview`, never WebKit: a card starts no web
-    /// process and loads nothing from the network (the record window reads the HTML with WebKit).
+    /// RTF off the main thread; HTML / web archive through `HTMLPreview`, never WebKit: a card
+    /// starts no web process and no network. The record window isolates then loads with WebKit.
     func richPreview(for card: HistoryCard) async -> RichPreview? {
         let key = Self.richKey(for: card) as NSString
         if let cached = richPreviews.object(forKey: key) { return cached }
@@ -94,20 +97,31 @@ final class ThumbnailCache {
         }.value
         guard let made else { return nil }
         let preview = RichPreview(start: made.value.start, page: made.value.page)
-        richPreviews.setObject(preview, forKey: key)
+        richPreviews.setObject(preview, forKey: key, cost: max(1, preview.text.length))
         return preview
     }
 
     nonisolated private static func parse(_ data: Data, type: PasteboardType) -> (text: NSAttributedString, background: NSColor?)? {
-        if type == .html {
-            let preview = HTMLPreview.preview(of: String(decoding: data, as: UTF8.self), maxCharacters: RichPreview.characters)
-            return (attributed(preview), preview.pageBackground.map(nsColor))
+        switch type {
+        case .html:
+            return htmlPreview(String(decoding: data, as: UTF8.self))
+        case .webArchive, .legacyWebArchive:
+            guard let html = WebArchiveHTML.mainHTML(from: data) else { return nil }
+            return htmlPreview(html)
+        case .flatRTFD, .rtf:
+            var attributes: NSDictionary?
+            let documentType: NSAttributedString.DocumentType = type == .flatRTFD ? .rtfd : .rtf
+            guard let text = try? NSAttributedString(data: data, options: [.documentType: documentType], documentAttributes: &attributes) else { return nil }
+            let background = (attributes as? [NSAttributedString.DocumentAttributeKey: Any])?[.backgroundColor] as? NSColor
+            return (text, background)
+        default:
+            return nil
         }
-        var attributes: NSDictionary?
-        let documentType: NSAttributedString.DocumentType = type == .flatRTFD ? .rtfd : .rtf
-        guard let text = try? NSAttributedString(data: data, options: [.documentType: documentType], documentAttributes: &attributes) else { return nil }
-        let background = (attributes as? [NSAttributedString.DocumentAttributeKey: Any])?[.backgroundColor] as? NSColor
-        return (text, background)
+    }
+
+    nonisolated private static func htmlPreview(_ html: String) -> (text: NSAttributedString, background: NSColor?) {
+        let preview = HTMLPreview.preview(of: html, maxCharacters: RichPreview.characters)
+        return (attributed(preview), preview.pageBackground.map(nsColor))
     }
 
     nonisolated private static func attributed(_ preview: HTMLPreview.Preview) -> NSAttributedString {

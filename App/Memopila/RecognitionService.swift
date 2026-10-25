@@ -88,7 +88,7 @@ final class RecognitionService {
                 }.value
                 state = text == nil ? .noText : .done
             } catch {
-                logger.error("recognition failed: \(error.localizedDescription, privacy: .public)")
+                logger.error("recognition failed: \(error.localizedDescription, privacy: .private)")
                 state = .failed
                 failures += 1
             }

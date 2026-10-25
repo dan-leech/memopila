@@ -330,6 +330,7 @@ struct ClipboardInspectorSection: View {
                     }
                 }
                 Button("Inspect") { inspect() }
+                    .floatingHelp(String(localized: "Lists which clipboard formats would be saved; only type names are read, not content."))
             }
             if let inspectedLimit {
                 Text(String(localized: "Size limit: \(ByteCount.string(inspectedLimit))")).font(.caption)

@@ -21,10 +21,7 @@ public enum SourcePage {
 
     /// Main resource URL of a web archive (`WebMainResource` → `WebResourceURL`).
     public static func url(fromWebArchive data: Data) -> String? {
-        guard let archive = try? PropertyListSerialization.propertyList(from: data, format: nil) as? [String: Any],
-              let mainResource = archive["WebMainResource"] as? [String: Any],
-              let url = mainResource["WebResourceURL"] as? String else { return nil }
-        return validatedURL(url)
+        WebArchiveHTML.mainResourceURL(from: data).flatMap(validatedURL)
     }
 
     /// Host for display (`example.com`); `nil` for file URLs.

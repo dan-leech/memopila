@@ -2,19 +2,45 @@ import Foundation
 
 /// Keeps HTML reading local (§9): WebKit's HTML loader would otherwise fetch remote images,
 /// stylesheets and `@import`s when a record opens. Cards already use `HTMLPreview` with no network;
-/// the record window sanitizes first, then loads. Link destinations are restored from the
-/// original markup via `HTMLPreview` so relative `href`s AppKit drops still work.
+/// the record window sanitizes first, then loads.
+///
+/// Only **subresource** URLs are blanked (`src`, stylesheets, CSS `url()`, `@import`, `<base>`, …).
+/// Anchor `href`s are kept — they do not cause fetches during `loadFromHTML`. Colours and relative
+/// links AppKit drops are restored afterwards via `HTMLPreview`.
 public enum HTMLIsolation {
+    private static let resourceTags: Set<String> = [
+        "link", "script", "iframe", "source", "embed", "object", "base",
+    ]
+
     /// Neutralizes remote subresource URLs so `NSAttributedString.loadFromHTML` / WebKit stay offline.
-    /// Text, colours and structure are kept; remote `href`s are blanked (re-applied later).
     public static func strippingRemoteLoads(_ html: String) -> String {
-        var result = neutralize(attribute: "src", in: html) { isRemoteURL($0) ? "about:blank" : nil }
-        result = neutralize(attribute: "href", in: result) { isRemoteURL($0) ? "about:blank" : nil }
-        return neutralizeCSSURLs(in: result)
+        var result = html
+        for attribute in ["src", "srcset", "poster", "data-src"] {
+            result = neutralize(attribute: attribute, in: result) { value, _ in
+                let remote = attribute == "srcset" ? isRemoteSrcset(value) : isRemoteURL(value)
+                return remote ? "about:blank" : nil
+            }
+        }
+        result = neutralize(attribute: "href", in: result) { value, tag in
+            guard let tag, resourceTags.contains(tag) else { return nil }
+            return isRemoteURL(value) ? "about:blank" : nil
+        }
+        result = neutralizeCSSURLs(in: result)
+        return neutralizeAtImports(in: result)
     }
 
-    private static func isRemoteURL(_ raw: String) -> Bool {
+    private static func isRemoteSrcset(_ raw: String) -> Bool {
+        raw.split(separator: ",").contains { candidate in
+            let url = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+                .split(whereSeparator: { $0.isWhitespace }).first
+                .map(String.init) ?? ""
+            return isRemoteURL(url)
+        }
+    }
+
+    static func isRemoteURL(_ raw: String) -> Bool {
         let value = raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if value.isEmpty { return false }
         if value.hasPrefix("data:") || value.hasPrefix("about:") || value.hasPrefix("#") { return false }
         if value.hasPrefix("//") { return true }
         if value.hasPrefix("http://") || value.hasPrefix("https://") || value.hasPrefix("file://") { return true }
@@ -25,31 +51,76 @@ public enum HTMLIsolation {
         return false
     }
 
-    private static func neutralize(attribute: String, in html: String, replace: (String) -> String?) -> String {
+    /// Rewrites `attr="…"`, `attr='…'`, and unquoted `attr=value` (until whitespace or `>`).
+    /// `replace` receives the attribute value and the enclosing tag name when known (`link`, `a`, …).
+    private static func neutralize(
+        attribute: String,
+        in html: String,
+        replace: (String, String?) -> String?
+    ) -> String {
         var output = ""
         var remainder = html[...]
         let pattern = attribute + "="
         while let attrStart = remainder.range(of: pattern, options: .caseInsensitive) {
+            let tag = enclosingTagName(before: attrStart.lowerBound, in: remainder)
             output += remainder[..<attrStart.lowerBound]
             let afterAttr = remainder[attrStart.upperBound...]
-            guard let quote = afterAttr.first, quote == "\"" || quote == "'" else {
+            guard let parsed = parseAttributeValue(afterAttr) else {
                 output += remainder[attrStart]
                 remainder = remainder[attrStart.upperBound...]
                 continue
             }
-            let valueStart = afterAttr.index(after: afterAttr.startIndex)
-            guard let valueEnd = afterAttr[valueStart...].firstIndex(of: quote) else {
-                output += remainder[attrStart]
-                remainder = remainder[attrStart.upperBound...]
-                continue
+            let rewritten = replace(parsed.value, tag) ?? parsed.value
+            if let quote = parsed.quote {
+                output += attribute + "=" + String(quote) + rewritten + String(quote)
+            } else {
+                output += attribute + "=" + rewritten
             }
-            let value = String(afterAttr[valueStart..<valueEnd])
-            let rewritten = replace(value) ?? value
-            output += attribute + "=" + String(quote) + rewritten + String(quote)
-            remainder = afterAttr[afterAttr.index(after: valueEnd)...]
+            remainder = afterAttr[parsed.next...]
         }
         output += remainder
         return output
+    }
+
+    private static func enclosingTagName(before index: String.Index, in slice: Substring) -> String? {
+        guard let open = slice[..<index].lastIndex(of: "<") else { return nil }
+        var nameStart = slice.index(after: open)
+        if nameStart < index, slice[nameStart] == "/" { nameStart = slice.index(after: nameStart) }
+        var nameEnd = nameStart
+        while nameEnd < index {
+            let c = slice[nameEnd]
+            if c.isWhitespace || c == ">" || c == "/" { break }
+            nameEnd = slice.index(after: nameEnd)
+        }
+        guard nameEnd > nameStart else { return nil }
+        return String(slice[nameStart..<nameEnd]).lowercased()
+    }
+
+    private struct ParsedValue {
+        var value: String
+        var next: String.Index
+        var quote: Character?
+    }
+
+    private static func parseAttributeValue(_ afterAttr: Substring) -> ParsedValue? {
+        guard let first = afterAttr.first else { return nil }
+        if first == "\"" || first == "'" {
+            let valueStart = afterAttr.index(after: afterAttr.startIndex)
+            guard let valueEnd = afterAttr[valueStart...].firstIndex(of: first) else { return nil }
+            return ParsedValue(
+                value: String(afterAttr[valueStart..<valueEnd]),
+                next: afterAttr.index(after: valueEnd),
+                quote: first
+            )
+        }
+        var end = afterAttr.startIndex
+        while end < afterAttr.endIndex {
+            let c = afterAttr[end]
+            if c.isWhitespace || c == ">" { break }
+            end = afterAttr.index(after: end)
+        }
+        guard end > afterAttr.startIndex else { return nil }
+        return ParsedValue(value: String(afterAttr[afterAttr.startIndex..<end]), next: end, quote: nil)
     }
 
     private static func neutralizeCSSURLs(in html: String) -> String {
@@ -99,6 +170,33 @@ public enum HTMLIsolation {
                 output += "url(" + rewritten
                 remainder = after[valueEnd...]
             }
+        }
+        output += remainder
+        return output
+    }
+
+    /// `@import "https://…"` / `@import '…'` without `url()` (`url(...)` is handled above).
+    private static func neutralizeAtImports(in html: String) -> String {
+        var output = ""
+        var remainder = html[...]
+        while let importStart = remainder.range(of: "@import", options: .caseInsensitive) {
+            output += remainder[..<importStart.upperBound]
+            var index = importStart.upperBound
+            while index < remainder.endIndex, remainder[index].isWhitespace {
+                output.append(remainder[index])
+                index = remainder.index(after: index)
+            }
+            remainder = remainder[index...]
+            guard let first = remainder.first, first == "\"" || first == "'" else { continue }
+            let valueStart = remainder.index(after: remainder.startIndex)
+            guard let valueEnd = remainder[valueStart...].firstIndex(of: first) else {
+                output += remainder
+                return output
+            }
+            let value = String(remainder[valueStart..<valueEnd])
+            let rewritten = isRemoteURL(value) ? "about:blank" : value
+            output += String(first) + rewritten + String(first)
+            remainder = remainder[remainder.index(after: valueEnd)...]
         }
         output += remainder
         return output

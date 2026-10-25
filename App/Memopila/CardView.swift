@@ -93,6 +93,12 @@ struct CardView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(accessibilityText))
         .accessibilityAddTraits(hasCursor ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction(named: Text(card.isFavorite ? String(localized: "Remove from Favorites") : String(localized: "Favorite"))) {
+            model.toggleFavorite(card.id)
+        }
+        .accessibilityAction(named: Text(String(localized: "Delete"))) {
+            model.delete([card.id])
+        }
     }
 
     private func titleStrip(_ title: String) -> some View {

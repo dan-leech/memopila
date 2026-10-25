@@ -863,7 +863,7 @@ private struct ShortcutsOverlay: View {
             Row(keys: "⌘P", action: String(localized: "Pin the window")),
             Row(keys: "⌥⌘S", action: String(localized: "Show or hide the sidebar")),
             Row(keys: "⌘+ / ⌘−", action: String(localized: "Bigger or smaller cards")),
-            Row(keys: "⌘.", action: String(localized: "Pause or resume capture")),
+            Row(keys: "⌘.", action: String(localized: "Pause or resume capture (in the panel)")),
             Row(keys: "⌘,", action: String(localized: "Settings")),
         ]),
     ]

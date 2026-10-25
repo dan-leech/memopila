@@ -95,8 +95,8 @@ public enum TextStats {
     }
 }
 
-/// Plain text for previews and search, including RTF/RTFD (§7.4). HTML is reduced by stripping tags,
-/// because HTML import through `NSAttributedString` needs the main thread.
+/// Plain text for previews and search, including RTF/RTFD (§7.4). HTML uses `HTMLPreview` first
+/// (same path as cards); tag stripping is a last resort when preview yields nothing.
 public enum RichText {
     public static func plainText(of items: [CanonicalItem]) -> String? {
         if let text = TextDecoding.plainText(of: items) { return text }
@@ -109,7 +109,17 @@ public enum RichText {
             case .flatRTFD:
                 if let text = attributed(data, .rtfd) { return text }
             case .html:
-                if let html = String(data: data, encoding: .utf8) { return stripTags(html) }
+                if let html = String(data: data, encoding: .utf8) {
+                    let preview = HTMLPreview.preview(of: html, maxCharacters: IngestEnrichment.searchScalars).text
+                    if !preview.isEmpty { return preview }
+                    return stripTags(html)
+                }
+            case .webArchive, .legacyWebArchive:
+                if let html = WebArchiveHTML.mainHTML(from: data) {
+                    let preview = HTMLPreview.preview(of: html, maxCharacters: IngestEnrichment.searchScalars).text
+                    if !preview.isEmpty { return preview }
+                    return stripTags(html)
+                }
             default:
                 continue
             }

@@ -1143,9 +1143,12 @@ struct TextPane: NSViewRepresentable {
         }
 
         /// A link in formatted text opens in front of the record window, which floats (otherwise
-        /// the browser came up behind it).
+        /// the browser came up behind it). Only `http` / `https` / `mailto` — relative paths like
+        /// `/healthz` are styled as links but must not hit `NSWorkspace` (§9 I6).
         func textView(_ textView: NSTextView, clickedOnLink link: Any, at charIndex: Int) -> Bool {
-            guard let url = (link as? URL) ?? (link as? String).flatMap({ URL(string: $0) }) else { return false }
+            guard let url = (link as? URL) ?? (link as? String).flatMap({ URL(string: $0) }),
+                  let scheme = url.scheme?.lowercased(),
+                  ["http", "https", "mailto"].contains(scheme) else { return true }
             External.open(url)
             return true
         }

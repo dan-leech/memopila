@@ -59,6 +59,11 @@ extension PasteboardType {
     /// Raster formats in redundant-image preference order (§3.2.2).
     public static let rasterImagePreference: [PasteboardType] = [.gif, .png, .heic, .jpeg, .tiff]
 
+    /// Richest → plainest for card preview and the record window (§8.2, §3.6). Caps differ by caller.
+    public static let richDisplayPriority: [PasteboardType] = [
+        .flatRTFD, .rtf, .html, .webArchive, .legacyWebArchive,
+    ]
+
     public static let plainTextTypes: Set<PasteboardType> = [.utf8PlainText, .plainText, .utf16PlainText]
     public static let richTextTypes: Set<PasteboardType> = [.rtf, .flatRTFD, .html, .webArchive, .legacyWebArchive]
 

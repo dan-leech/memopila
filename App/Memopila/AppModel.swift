@@ -3,7 +3,6 @@ import MemopilaCore
 import MemopilaServices
 import Observation
 import SwiftUI
-import WebKit
 
 /// Panel overlays (§8.4). Shown inside the panel; a record opens in its own window (§8.5).
 enum PanelOverlay: Equatable {
@@ -244,12 +243,16 @@ final class AppModel {
             guard !Task.isCancelled, itemState === state else { return }
             state.makeReadOnly()
         }
-        if state.card.displayType == .richText, let rich = await editorRichText(state.id) {
+        let expectRich = state.card.displayType == .richText
+        if expectRich, let rich = await editorRichText(state.id) {
             guard !Task.isCancelled, itemState === state else { return }
             state.load(rich: rich.text, background: rich.background)
         } else if let text = await editorText(state.id) {
             guard !Task.isCancelled, itemState === state else { return }
             state.load(text)
+            if expectRich {
+                toasts.show(String(localized: "Formatting could not be loaded; showing plain text."))
+            }
         } else if itemState === state {
             state.error = String(localized: "The text could not be loaded.")
         }
@@ -1081,60 +1084,15 @@ final class AppModel {
         return payload.text
     }
 
-    /// The richest readable formatted text of a record: RTFD, RTF, HTML, then a web archive.
-    /// Above 4 MB it opens as plain text, to stay light. HTML is read on the main thread, as
-    /// AppKit requires.
+    /// The richest readable formatted text of a record (§3.6): RTFD → RTF → HTML → web archive.
+    /// Above 4 MB it opens as plain text. HTML/archives are isolated before WebKit (§9).
     func editorRichText(_ id: UUID) async -> (text: NSAttributedString, background: NSColor?)? {
         guard let payload = try? await store.payload(for: id) else { return nil }
-        let representations = payload.items.flatMap(\.representations)
-        let readable: [(PasteboardType, NSAttributedString.DocumentType)] = [
-            (.flatRTFD, .rtfd), (.rtf, .rtf), (.html, .html), (.webArchive, .webArchive), (.legacyWebArchive, .webArchive),
-        ]
-        for (type, documentType) in readable {
-            guard let data = representations.first(where: { $0.type == type })?.bytes, data.count <= 4 * 1_048_576 else { continue }
-            if let read = await Self.attributedString(data, type: documentType), read.text.length > 0 { return read }
+        let pairs: [(PasteboardType, Data)] = payload.items.flatMap(\.representations).compactMap { rep in
+            guard let data = rep.bytes else { return nil }
+            return (rep.type, data)
         }
-        return nil
-    }
-
-    /// RTF off the main thread; HTML through WebKit's asynchronous loader, which waits for
-    /// remote images and styles without blocking the app (review finding: a copy from a browser
-    /// froze the app while it opened). Web archives stay small and wait two seconds at most. The
-    /// document's background comes along: it decides the page (`RichPage`).
-    private static func attributedString(_ data: Data, type: NSAttributedString.DocumentType) async -> (text: NSAttributedString, background: NSColor?)? {
-        switch type {
-        case .html:
-            let html = String(decoding: data, as: UTF8.self)
-            // Strip remote `src` / stylesheet `href` / CSS `url(...)` first (§9): WebKit would
-            // otherwise fetch them. Colours and links are restored from the original markup.
-            let loadData = Data(HTMLIsolation.strippingRemoteLoads(html).utf8)
-            let result = await withCheckedContinuation { (continuation: CheckedContinuation<Transfer<(NSAttributedString, NSColor?)?>, Never>) in
-                NSAttributedString.loadFromHTML(data: loadData, options: [.characterEncoding: String.Encoding.utf8.rawValue, .timeout: 5]) { text, attributes, _ in
-                    continuation.resume(returning: Transfer(value: text.map { ($0, attributes?[.backgroundColor] as? NSColor) }))
-                }
-            }
-            guard let loaded = result.value else { return nil }
-            // WebKit/AppKit drops some markup colours on links (e.g. `<font color>` around
-            // `<a>`) and relative `href`s; the card keeps them via `HTMLPreview`. Restore first.
-            let text = NSMutableAttributedString(attributedString: loaded.0)
-            RichPage.restoreMarkupColors(html: html, into: text)
-            RichPage.paintUncoloredLinks(in: text)
-            return (text, loaded.1)
-        case .webArchive:
-            guard data.count <= 1_048_576 else { return nil }
-            var attributes: NSDictionary?
-            guard let text = try? NSAttributedString(data: data, options: [.documentType: type, .timeout: 2], documentAttributes: &attributes) else { return nil }
-            return (text, (attributes as? [NSAttributedString.DocumentAttributeKey: Any])?[.backgroundColor] as? NSColor)
-        default:
-            let raw = type.rawValue
-            return await Task.detached(priority: .userInitiated) { () -> Transfer<(text: NSAttributedString, background: NSColor?)>? in
-                let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [.documentType: NSAttributedString.DocumentType(rawValue: raw)]
-                var attributes: NSDictionary?
-                guard let text = try? NSAttributedString(data: data, options: options, documentAttributes: &attributes) else { return nil }
-                let background = (attributes as? [NSAttributedString.DocumentAttributeKey: Any])?[.backgroundColor] as? NSColor
-                return Transfer(value: (text, background))
-            }.value?.value
-        }
+        return await EditorRichText.load(from: pairs)
     }
 
     func clear(_ scope: ClearScope) {

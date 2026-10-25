@@ -243,15 +243,15 @@ public actor ClipboardStore {
     }
 
     /// The formatted text of a record's first item for its card (§8.2): same priority as the
-    /// record window (RTFD → RTF → HTML), so the card and editor do not disagree on colours.
-    /// Only when small enough for a preview; only that row is read.
+    /// record window (`PasteboardType.richDisplayPriority`), so the card and editor do not disagree.
+    /// Oversized or unreadable rows are skipped (`continue`); only that row is read.
     public func richPreviewSource(for id: UUID, maxBytes: Int = 512 * 1_024) throws -> (type: PasteboardType, data: Data)? {
         let context = makeContext()
         guard let record = try fetchRecord(id, in: context) else { return nil }
         let rows = record.representations.filter { $0.itemIndex == 0 }
-        for type in [PasteboardType.flatRTFD, .rtf, .html] {
+        for type in PasteboardType.richDisplayPriority {
             guard let row = rows.first(where: { $0.uti == type.rawValue }) else { continue }
-            guard row.byteCount <= maxBytes, let data = row.bytes else { return nil }
+            guard row.byteCount <= maxBytes, let data = row.bytes else { continue }
             return (type, data)
         }
         return nil
