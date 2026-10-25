@@ -236,6 +236,8 @@ private struct FilterBar: View {
                 }
                 .buttonStyle(.plain)
                 .floatingHelp(kind == .all ? String(localized: "Every kind of item") : String(localized: "Only \(kind.title.lowercased())"))
+                .accessibilityLabel(Text(kind == .all ? String(localized: "Every kind of item") : String(localized: "Only \(kind.title.lowercased())")))
+                .accessibilityAddTraits(isOn ? .isSelected : [])
             }
             Spacer(minLength: 8)
             PanelStatus(model: model)
@@ -264,6 +266,8 @@ private struct FilterBar: View {
             .buttonStyle(ToolbarIconStyle(recolorsLabel: false))
             .fixedSize()
             .floatingHelp(String(localized: "Only items copied in this period"))
+            .accessibilityLabel(Text("Only items copied in this period"))
+            .accessibilityValue(Text(history.periodFilter.title))
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 4)

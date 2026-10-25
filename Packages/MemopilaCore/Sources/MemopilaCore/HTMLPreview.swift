@@ -26,6 +26,9 @@ public enum HTMLPreview {
         public var strikethrough = false
         public var monospace = false
         public var link = false
+        /// `href` when `link` is set — kept so the record window can restore clickable links
+        /// AppKit drops (relative paths such as `/healthz`).
+        public var href: String? = nil
         /// `<pre>` or CSS `white-space: pre…`: spaces and line breaks are kept (code from editors).
         public var preservesWhitespace = false
         /// In CSS pixels; 16 is a browser's normal text.
@@ -341,7 +344,9 @@ public enum HTMLPreview {
             case "s", "strike", "del": style.strikethrough = true
             case "pre", "textarea": style.monospace = true; style.preservesWhitespace = true
             case "code", "kbd", "samp", "tt": style.monospace = true
-            case "a" where attributes["href"] != nil: style.link = true
+            case "a" where attributes["href"] != nil:
+                style.link = true
+                style.href = attributes["href"]
             case "h1": style.size *= 2; style.bold = true
             case "h2": style.size *= 1.5; style.bold = true
             case "h3": style.size *= 1.17; style.bold = true

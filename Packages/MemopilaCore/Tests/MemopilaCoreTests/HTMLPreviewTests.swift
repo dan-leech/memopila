@@ -18,7 +18,20 @@ struct HTMLPreviewTests {
         let preview = HTMLPreview.preview(of: ##"<font color="#22c55e"><a href="https://example.com/healthz">/healthz</a></font>"##)
         let link = preview.runs.first { $0.text == "/healthz" }
         #expect(link?.style.link == true)
+        #expect(link?.style.href == "https://example.com/healthz")
         #expect(link?.style.color == HTMLPreview.Color(red: 0x22 / 255, green: 0xC5 / 255, blue: 0x5E / 255))
+    }
+
+    @Test func relativeHrefIsKept() {
+        let preview = HTMLPreview.preview(of: #"<a href="/healthz">/healthz</a>"#)
+        let link = preview.runs.first { $0.text == "/healthz" }
+        #expect(link?.style.link == true)
+        #expect(link?.style.href == "/healthz")
+    }
+
+    @Test func spanBackgroundIsKept() {
+        let preview = HTMLPreview.preview(of: ##"<span style="background-color: #ffff00">mark</span>"##)
+        #expect(preview.runs.first?.style.background == HTMLPreview.Color(red: 1, green: 1, blue: 0))
     }
 
     @Test func whitespaceCollapsesAndBlocksBreakLines() {

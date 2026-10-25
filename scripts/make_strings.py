@@ -597,6 +597,23 @@ T = {
 "This can't be undone.": "Это действие нельзя отменить.",
 "Version": "Версия",
 "Privacy": "Конфиденциальность",
+# Remaining UI / diagnostics (keep in sync with Localizable.xcstrings)
+"": "",
+"—": "—",
+"%@  %@": "%@  %@",
+"%lld": "%lld",
+"⌘%lld": "⌘%lld",
+"Capture log (newest first; no clipboard content)": "Журнал захвата (сначала новые; без содержимого буфера)",
+"changeCount": "changeCount",
+"Copy report": "Скопировать отчёт",
+"Create a collection for grouping records": "Создать коллекцию для группировки записей",
+"Hide this card": "Скрыть эту карточку",
+"Probes — each runs one pasteboard call and reports accessBehavior before and after": "Пробы — каждая делает один вызов pasteboard и показывает accessBehavior до и после",
+"Read content": "Читать содержимое",
+"Rules and settings for this app": "Правила и настройки для этого приложения",
+"Save this copy into history anyway": "Всё равно сохранить эту копию в историю",
+"The app that copied this is unknown": "Приложение, из которого скопировали, неизвестно",
+"types": "types",
 }
 # Count strings: (en one, en other, ru one, few, many, other)
 P = {

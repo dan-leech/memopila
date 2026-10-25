@@ -97,9 +97,10 @@ enum RichPage: Equatable {
         return red == 0 && green == 0 && (blue == 238 || blue == 255)
     }
 
-    /// Colours the card already shows via `HTMLPreview`, applied onto WebKit/AppKit's reading of
-    /// the same HTML: a parent `<font color>` around a link becomes default blue there, while the
-    /// card keeps the green. Walks preview runs in order and paints matching substrings.
+    /// Colours, span backgrounds and link destinations the card already shows via `HTMLPreview`,
+    /// applied onto WebKit/AppKit's reading of the same HTML: a parent `<font color>` around a
+    /// link becomes default blue there, relative `href`s are dropped, and remote loads were
+    /// blanked for privacy. Walks preview runs in order and paints matching substrings.
     static func restoreMarkupColors(html: String, into text: NSMutableAttributedString) {
         let preview = HTMLPreview.preview(of: html, maxCharacters: max(text.length, 1))
         let haystack = text.string as NSString
@@ -111,17 +112,40 @@ enum RichPage: Equatable {
             let found = haystack.range(of: run.text, options: [], range: scope)
             guard found.location != NSNotFound else { continue }
             searchStart = NSMaxRange(found)
-            guard let color = run.style.color else { continue }
-            let nsColor = NSColor(srgbRed: color.red, green: color.green, blue: color.blue, alpha: color.alpha)
+            let color = run.style.color.map {
+                NSColor(srgbRed: $0.red, green: $0.green, blue: $0.blue, alpha: $0.alpha)
+            }
+            let background = run.style.background.map {
+                NSColor(srgbRed: $0.red, green: $0.green, blue: $0.blue, alpha: $0.alpha)
+            }
+            let href = run.style.link ? run.style.href : nil
             text.enumerateAttributes(in: found, options: []) { attributes, range, _ in
-                let current = attributes[.foregroundColor] as? NSColor
-                let needsPaint = run.style.link
-                    || current == nil
-                    || current.map(isImporterDefaultLinkBlue) == true
-                guard needsPaint else { return }
-                text.addAttribute(.foregroundColor, value: nsColor, range: range)
+                if let color {
+                    let current = attributes[.foregroundColor] as? NSColor
+                    let needsPaint = run.style.link
+                        || current == nil
+                        || current.map(isImporterDefaultLinkBlue) == true
+                    if needsPaint {
+                        text.addAttribute(.foregroundColor, value: color, range: range)
+                    }
+                }
+                if let background, attributes[.backgroundColor] == nil {
+                    text.addAttribute(.backgroundColor, value: background, range: range)
+                }
+                if let href, !href.isEmpty {
+                    text.addAttribute(.link, value: linkValue(href), range: range)
+                }
             }
         }
+    }
+
+    /// Absolute `http(s)` URLs as `URL`; relative paths (e.g. `/healthz`) as `String` so AppKit
+    /// still marks the run as a link after the importer dropped them.
+    private static func linkValue(_ href: String) -> Any {
+        if let url = URL(string: href), let scheme = url.scheme, !scheme.isEmpty {
+            return url
+        }
+        return href
     }
 
     /// Links with no colour of their own (or only the importer's default blue) get the system
@@ -194,6 +218,9 @@ final class RichPreview {
                 run.foregroundColor = Color(nsColor: .linkColor)
             } else if let defaultColor {
                 run.foregroundColor = Color(nsColor: defaultColor)
+            }
+            if let background = attributes[.backgroundColor] as? NSColor {
+                run.backgroundColor = Color(nsColor: mapsColors ? RichPage.inverted(background) : background)
             }
             if (attributes[.underlineStyle] as? Int ?? 0) != 0 || isLink { run.underlineStyle = .single }
             if (attributes[.strikethroughStyle] as? Int ?? 0) != 0 { run.strikethroughStyle = .single }

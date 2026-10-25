@@ -121,7 +121,7 @@ final class ThumbnailCache {
             var attributes: [NSAttributedString.Key: Any] = [.font: font]
             if let color = style.color { attributes[.foregroundColor] = nsColor(color) }
             if let background = style.background { attributes[.backgroundColor] = nsColor(background) }
-            if style.link { attributes[.link] = "preview" }
+            if style.link { attributes[.link] = style.href ?? "preview" }
             if style.underline { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
             if style.strikethrough { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
             result.append(NSAttributedString(string: run.text, attributes: attributes))

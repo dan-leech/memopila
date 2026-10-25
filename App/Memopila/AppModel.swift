@@ -1105,14 +1105,17 @@ final class AppModel {
         switch type {
         case .html:
             let html = String(decoding: data, as: UTF8.self)
+            // Strip remote `src` / stylesheet `href` / CSS `url(...)` first (§9): WebKit would
+            // otherwise fetch them. Colours and links are restored from the original markup.
+            let loadData = Data(HTMLIsolation.strippingRemoteLoads(html).utf8)
             let result = await withCheckedContinuation { (continuation: CheckedContinuation<Transfer<(NSAttributedString, NSColor?)?>, Never>) in
-                NSAttributedString.loadFromHTML(data: data, options: [.characterEncoding: String.Encoding.utf8.rawValue, .timeout: 5]) { text, attributes, _ in
+                NSAttributedString.loadFromHTML(data: loadData, options: [.characterEncoding: String.Encoding.utf8.rawValue, .timeout: 5]) { text, attributes, _ in
                     continuation.resume(returning: Transfer(value: text.map { ($0, attributes?[.backgroundColor] as? NSColor) }))
                 }
             }
             guard let loaded = result.value else { return nil }
             // WebKit/AppKit drops some markup colours on links (e.g. `<font color>` around
-            // `<a>`); the card keeps them via `HTMLPreview`. Repaint before the editor shows it.
+            // `<a>`) and relative `href`s; the card keeps them via `HTMLPreview`. Restore first.
             let text = NSMutableAttributedString(attributedString: loaded.0)
             RichPage.restoreMarkupColors(html: html, into: text)
             RichPage.paintUncoloredLinks(in: text)
