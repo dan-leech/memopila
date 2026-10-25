@@ -24,7 +24,11 @@ let package = Package(
         ),
         .testTarget(
             name: "MemopilaServicesTests",
-            dependencies: ["MemopilaServices"]
+            dependencies: ["MemopilaServices"],
+            linkerSettings: [
+                .linkedFramework("AppKit"),
+                .linkedFramework("WebKit"),
+            ]
         ),
     ]
 )
