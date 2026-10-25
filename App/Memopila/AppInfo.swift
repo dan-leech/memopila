@@ -1,4 +1,5 @@
 import AppKit
+import MemopilaCore
 
 /// App names and icons for source bundle IDs, cached for the process lifetime.
 @MainActor
@@ -22,10 +23,19 @@ enum AppInfo {
     static func icon(for bundleID: String?) -> NSImage? {
         guard let bundleID else { return nil }
         if let cached = icons[bundleID] { return cached }
-        let icon = url(for: bundleID).map { url in
-            let icon = NSWorkspace.shared.icon(forFile: url.path)
-            icon.size = NSSize(width: 32, height: 32)
-            return icon
+        // Screenshot.app's icon reads poorly next to real app icons; use a capture symbol instead.
+        let icon: NSImage?
+        if bundleID == AppIdentity.screenshotApp {
+            let symbol = NSImage(systemSymbolName: "camera.viewfinder", accessibilityDescription: nil)
+            symbol?.size = NSSize(width: 32, height: 32)
+            symbol?.isTemplate = true
+            icon = symbol
+        } else {
+            icon = url(for: bundleID).map { url in
+                let icon = NSWorkspace.shared.icon(forFile: url.path)
+                icon.size = NSSize(width: 32, height: 32)
+                return icon
+            }
         }
         icons[bundleID] = icon
         return icon
