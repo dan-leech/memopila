@@ -73,7 +73,7 @@ struct CardView: View {
             withAnimation(.easeOut(duration: 0.12)) { isHovered = hovering }
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: model.chooseBadgeCardID)
-        .help(card.sourceURL.map { String(localized: "Copied from \($0)") } ?? "")
+        .floatingHelp(card.sourceURL.map { String(localized: "Copied from \($0)") } ?? "")
         // Formatted text shows formatted, as in the record window (owner feedback).
         .task(id: card.displayType == .richText && secretKind == nil ? ThumbnailCache.richKey(for: card) : "") {
             guard card.displayType == .richText, secretKind == nil else { return richPreview = nil }
@@ -124,27 +124,34 @@ struct CardView: View {
     /// Favorite, Edit Record and the menu, in the footer while the pointer is over the card.
     private var hoverActions: some View {
         HStack(spacing: 0) {
-            CardIconButton(
+            HoverIconButton(
                 systemImage: card.isFavorite ? "heart.fill" : "heart",
-                tint: card.isFavorite ? .pink : .secondary,
-                help: card.isFavorite ? String(localized: "Remove from Favorites (⌘D)") : String(localized: "Add to Favorites (⌘D)")
+                help: card.isFavorite ? String(localized: "Remove from Favorites (⌘D)") : String(localized: "Add to Favorites (⌘D)"),
+                recolorsLabel: false,
+                width: 22,
+                height: 20,
+                font: .system(size: 11, weight: .semibold),
+                tint: card.isFavorite ? .pink : .secondary
             ) { model.toggleFavorite(card.id) }
             .symbolEffect(.bounce, value: card.isFavorite)
-            CardIconButton(systemImage: "pencil", help: String(localized: "Edit Record (Space or ⌘E)")) {
-                model.openRecord(card.id)
-            }
-            Menu {
+            HoverIconButton(
+                systemImage: "pencil",
+                help: String(localized: "Edit Record (Space or ⌘E)"),
+                recolorsLabel: false,
+                width: 22,
+                height: 20,
+                font: .system(size: 11, weight: .semibold),
+                tint: .secondary
+            ) { model.openRecord(card.id) }
+            HoverIconMenu(
+                systemImage: "ellipsis",
+                help: String(localized: "More"),
+                width: 22,
+                height: 20,
+                font: .system(size: 11, weight: .semibold)
+            ) {
                 CardContextMenu(card: card, model: model)
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 11, weight: .semibold))
-                    .frame(width: 22, height: 16)
             }
-            .menuStyle(.button)
-            .menuIndicator(.hidden)
-            .buttonStyle(.borderless)
-            .fixedSize()
-            .help(String(localized: "More"))
         }
         .transition(.opacity)
     }
@@ -354,7 +361,7 @@ struct CardView: View {
             }
             .frame(maxWidth: 90, alignment: .leading)
             .fixedSize()
-            .help(String(localized: "In collections: \(names.joined(separator: ", "))"))
+            .floatingHelp(String(localized: "In collections: \(names.joined(separator: ", "))"))
         }
     }
 
@@ -362,16 +369,16 @@ struct CardView: View {
     private func badges(namingCollections: Bool) -> some View {
         collectionsBadge(naming: namingCollections)
         if card.isFavorite {
-            Image(systemName: "heart.fill").foregroundStyle(.pink).help(String(localized: "Favorite"))
+            Image(systemName: "heart.fill").foregroundStyle(.pink).floatingHelp(String(localized: "Favorite"))
         }
         if card.isEdited {
-            Image(systemName: "pencil").help(String(localized: "Edited"))
+            Image(systemName: "pencil").floatingHelp(String(localized: "Edited"))
         }
         if card.hasRecognizedText {
-            Image(systemName: "text.viewfinder").help(String(localized: "Text found in this image"))
+            Image(systemName: "text.viewfinder").floatingHelp(String(localized: "Text found in this image"))
         }
         if let expires = card.expiresAt, expires.timeIntervalSinceNow < 3_600 {
-            Image(systemName: "clock").help(String(localized: "Deleted \(expires.formatted(.relative(presentation: .named)))"))
+            Image(systemName: "clock").floatingHelp(String(localized: "Deleted \(expires.formatted(.relative(presentation: .named)))"))
         }
     }
 
@@ -417,26 +424,6 @@ struct CardView: View {
     }
 }
 
-
-private struct CardIconButton: View {
-    let systemImage: String
-    var tint: Color = .secondary
-    let help: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 22, height: 20)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-        .help(help)
-        .accessibilityLabel(Text(help))
-    }
-}
 
 /// Shown on a card for a moment after Choose for Clipboard while the window is pinned.
 private struct ChooseBadge: View {
@@ -489,8 +476,12 @@ struct CurrentCardView: View {
             Spacer(minLength: 0)
             HStack(spacing: 6) {
                 if current.allowsSaveAnyway {
+                    let saveBusy = model.monitor.isSavingAnyway || model.monitor.isBusy
                     Button("Save Anyway") { model.monitor.saveCurrentAnyway() }
-                        .disabled(model.monitor.isSavingAnyway || model.monitor.isBusy)
+                        .disabled(saveBusy)
+                        .floatingHelp(saveBusy
+                            ? String(localized: "Saving…")
+                            : String(localized: "Save this copy into history anyway"))
                 }
                 Menu {
                     ActionMenuItems(items: ActionRegistry.currentCardActions(current, model: model))
@@ -501,8 +492,12 @@ struct CurrentCardView: View {
                 .buttonStyle(.borderless)
                 .fixedSize()
                 .disabled(current.change.identity.bundleID == nil)
+                .floatingHelp(current.change.identity.bundleID == nil
+                    ? String(localized: "The app that copied this is unknown")
+                    : String(localized: "Rules and settings for this app"))
                 Spacer()
                 Button("Dismiss") { model.monitor.dismissCurrent() }
+                    .floatingHelp(String(localized: "Hide this card"))
             }
             .controlSize(.small)
         }
@@ -554,12 +549,14 @@ struct ConcealedCardView: View {
                 if let appName { Text(appName).lineLimit(1) }
                 Spacer(minLength: 2)
                 if isHovered {
-                    Button { model.monitor.clearConcealed() } label: {
-                        Image(systemName: "trash")
-                    }
-                    .buttonStyle(.borderless)
-                    .help(String(localized: "Clear Clipboard: remove the password from the clipboard"))
-                    .accessibilityLabel(Text("Clear Clipboard"))
+                    HoverIconButton(
+                        systemImage: "trash",
+                        help: String(localized: "Clear Clipboard: remove the password from the clipboard"),
+                        recolorsLabel: false,
+                        width: 22,
+                        height: 20,
+                        tint: .secondary
+                    ) { model.monitor.clearConcealed() }
                 } else {
                     TimelineView(.periodic(from: .now, by: 60)) { context in
                         Text(RelativeTime.short(current.observedAt, now: context.date))
@@ -584,7 +581,7 @@ struct ConcealedCardView: View {
         .contextMenu {
             Button("Clear Clipboard") { model.monitor.clearConcealed() }
         }
-        .help(String(localized: "A password is on the clipboard. Memopila never reads, saves or shows it."))
+        .floatingHelp(String(localized: "A password is on the clipboard. Memopila never reads, saves or shows it."))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(Text("Password on the clipboard, not saved"))
     }

@@ -134,13 +134,14 @@ struct RecordView: View {
             }
             if isImage, details?.recognizedText != nil {
                 Button { state.findInRecognizedText() } label: { Label("Find", systemImage: "magnifyingglass") }
-                    .help(String(localized: "Find in the text recognized in the image (⌘F)"))
+                    .floatingHelp(String(localized: "Find in the text recognized in the image (⌘F)"))
             }
             if state.hasText {
+                let findHelp = state.isEditable
+                    ? String(localized: "Find in the text (⌘F); Find and Replace (⌥⌘F)")
+                    : String(localized: "Find in the text (⌘F)")
                 Button { state.showFind() } label: { Label("Find", systemImage: "magnifyingglass") }
-                    .help(state.isEditable
-                        ? String(localized: "Find in the text (⌘F); Find and Replace (⌥⌘F)")
-                        : String(localized: "Find in the text (⌘F)"))
+                    .floatingHelp(findHelp)
             }
             if isImage { imageControls }
             Spacer(minLength: 8)
@@ -148,8 +149,11 @@ struct RecordView: View {
                 toggleInspector()
             } label: {
                 Image(systemName: "sidebar.right")
+                    .frame(width: 26, height: 22)
+                    .contentShape(Rectangle())
             }
-            .help(inspectorVisible
+            .buttonStyle(ToolbarIconStyle(emphasized: inspectorVisible))
+            .floatingHelp(inspectorVisible
                 ? String(localized: "Hide the title, source and details (⌥⌘I)")
                 : String(localized: "Show the title, source and details (⌥⌘I)"))
             .accessibilityLabel(Text("Inspector"))
@@ -162,7 +166,7 @@ struct RecordView: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(state.isDirty && cannotSaveReason != nil)
-            .help(state.isDirty
+            .floatingHelp(state.isDirty
                 ? cannotSaveReason ?? String(localized: "Save and Choose: save, put on the clipboard and go back to the app you were in (⌘↩)")
                 : String(localized: "Choose for Clipboard: put on the clipboard and go back to the app you were in (↩)"))
         }
@@ -184,12 +188,12 @@ struct RecordView: View {
             .monospacedDigit()
             .foregroundStyle(.secondary)
             .frame(minWidth: 44)
-            .help(String(localized: "Zoom level: at 100, one image pixel is one screen pixel"))
+            .floatingHelp(String(localized: "Zoom level: at 100, one image pixel is one screen pixel"))
         ToolbarIcon(systemImage: "plus.magnifyingglass", help: String(localized: "Zoom In (⌘+)")) { zoom.zoom(by: 1.25) }
         Button("Fit") { zoom.fit() }
-            .help(String(localized: "Fit the image in the window (⌘0)"))
+            .floatingHelp(String(localized: "Fit the image in the window (⌘0)"))
         Button("Actual Size") { zoom.actualSize() }
-            .help(String(localized: "One image pixel per screen pixel"))
+            .floatingHelp(String(localized: "One image pixel per screen pixel"))
         // Preview's own icon right next to the words: one button, not an icon and a label apart.
         Button { model.openInPreview(state.id) } label: {
             HStack(spacing: 4) {
@@ -201,7 +205,7 @@ struct RecordView: View {
                 Text("Open in Preview")
             }
         }
-        .help(String(localized: "Open the image in Preview to mark it up, crop or export it"))
+        .floatingHelp(String(localized: "Open the image in Preview to mark it up, crop or export it"))
     }
 
     /// ‹ › and *3 of 120*: the records of the panel's current list. With unsaved text they ask to
@@ -243,7 +247,7 @@ struct RecordView: View {
                         let isAvailable = state.availableActions.contains(action)
                         Button(action.title) { state.apply(action) }
                             .disabled(!isAvailable)
-                            .help(isAvailable ? String(localized: "Applies to \(scope)") : action.unavailableReason)
+                            .floatingHelp(isAvailable ? String(localized: "Applies to \(scope)") : action.unavailableReason)
                     }
                 }
             }
@@ -253,7 +257,7 @@ struct RecordView: View {
         .menuStyle(.button)
         .fixedSize()
         .disabled(!anyAvailable)
-        .help(String(localized: "Change case, lines, JSON or encoding; applies to \(scope); ⌘Z undoes it"))
+        .floatingHelp(String(localized: "Change case, lines, JSON or encoding; applies to \(scope); ⌘Z undoes it"))
     }
 
     // MARK: Content
@@ -344,7 +348,7 @@ struct RecordView: View {
             }
             .controlSize(.large)
             .disabled(url?.scheme == nil)
-            .help(String(localized: "Open the link in your browser (⌘O)"))
+            .floatingHelp(String(localized: "Open the link in your browser (⌘O)"))
         }
         .padding(16)
     }
@@ -374,9 +378,13 @@ struct RecordView: View {
         GridRow(alignment: .firstTextBaseline) {
             Text(verbatim: name).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             Text(verbatim: value).font(.title3.monospaced()).textSelection(.enabled)
-            Button { model.copyNewText(value, from: state.id) } label: { Image(systemName: "doc.on.doc") }
-                .buttonStyle(.borderless)
-                .help(String(localized: "Copy \(name): it goes to the clipboard and into history"))
+            Button { model.copyNewText(value, from: state.id) } label: {
+                Image(systemName: "doc.on.doc")
+                    .frame(width: 22, height: 20)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(ToolbarIconStyle(recolorsLabel: false))
+            .floatingHelp(String(localized: "Copy \(name): it goes to the clipboard and into history"))
         }
     }
 
@@ -399,7 +407,7 @@ struct RecordView: View {
                             state.focus()
                             return .handled
                         }
-                        .help(String(localized: "Shown on the card and found by search; saved when you leave the field"))
+                        .floatingHelp(String(localized: "Shown on the card and found by search; saved when you leave the field"))
                 }
                 Divider()
                 inspectorSection(String(localized: "Source")) { source }
@@ -412,7 +420,7 @@ struct RecordView: View {
                     } label: {
                         Text("Details").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                     }
-                    .help(String(localized: "When it was copied, how often, its size and formats"))
+                    .floatingHelp(String(localized: "When it was copied, how often, its size and formats"))
                 }
             }
             .padding(12)
@@ -448,7 +456,7 @@ struct RecordView: View {
                     Label(link.host() ?? url, systemImage: "arrow.up.right.square").lineLimit(1)
                 }
                 .buttonStyle(.link)
-                .help(String(localized: "Click to open, Option-click to copy the link"))
+                .floatingHelp(String(localized: "Click to open, Option-click to copy the link"))
             }
             if let title = details?.sourceWindowTitle {
                 Text(String(localized: "Window: “\(title)”")).foregroundStyle(.secondary).lineLimit(2)
@@ -475,10 +483,13 @@ struct RecordView: View {
                     Button {
                         model.setMembership(recordID, collection: collectionID, isMember: false)
                     } label: {
-                        Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.tertiary)
+                            .frame(width: 22, height: 20)
+                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(.borderless)
-                    .help(String(localized: "Remove from “\(collection.name)”"))
+                    .buttonStyle(ToolbarIconStyle(recolorsLabel: false))
+                    .floatingHelp(String(localized: "Remove from “\(collection.name)”"))
                 }
             }
             if isNamingCollection {
@@ -495,7 +506,7 @@ struct RecordView: View {
                     .onChange(of: collectionNameFocused) { _, focused in
                         if !focused { isNamingCollection = false }
                     }
-                    .help(String(localized: "Press Return: the collection is created with this record in it; Esc cancels"))
+                    .floatingHelp(String(localized: "Press Return: the collection is created with this record in it; Esc cancels"))
             } else {
                 Menu {
                     ForEach(history.collections) { collection in
@@ -513,7 +524,7 @@ struct RecordView: View {
                 .menuStyle(.button)
                 .buttonStyle(.borderless)
                 .fixedSize()
-                .help(String(localized: "Put this record into a collection, or into a new one"))
+                .floatingHelp(String(localized: "Put this record into a collection, or into a new one"))
             }
         }
         .font(.callout)
@@ -539,7 +550,7 @@ struct RecordView: View {
         .menuStyle(.button)
         .buttonStyle(.borderless)
         .fixedSize()
-        .help(String(localized: "Language for syntax highlighting; Automatic detects code"))
+        .floatingHelp(String(localized: "Language for syntax highlighting; Automatic detects code"))
     }
 
     // MARK: Text in Image
@@ -559,11 +570,12 @@ struct RecordView: View {
                 } label: {
                     Image(systemName: "chevron.right")
                         .rotationEffect(.degrees(isOpen ? 90 : 0))
-                        .frame(width: 14)
+                        .frame(width: 22, height: 20)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(ToolbarIconStyle(recolorsLabel: false))
                 .disabled(text == nil)
-                .help(isOpen ? String(localized: "Hide the text") : String(localized: "Show the text"))
+                .floatingHelp(isOpen ? String(localized: "Hide the text") : String(localized: "Show the text"))
                 Label("Text in Image", systemImage: "text.viewfinder")
                     .font(.callout.weight(.semibold))
                 Text(recognitionSummary)
@@ -616,13 +628,13 @@ struct RecordView: View {
             Button(state.recognizedText.hasSelection ? String(localized: "Copy Selected Text") : String(localized: "Copy All Text")) {
                 model.copyNewText(state.recognizedText.selectedOrAll ?? text, from: state.id)
             }
-            .help(String(localized: "The text goes to the clipboard and appears in history as a new item"))
+            .floatingHelp(String(localized: "The text goes to the clipboard and appears in history as a new item"))
         } else if details?.recognitionState == .pending {
             ProgressView().controlSize(.mini)
         } else if details?.recognitionState == .off, let bundleID = card.sourceAppBundleID {
             let name = card.sourceAppName ?? bundleID
             Button("Recognize Text") { model.setRecognition(true, for: bundleID, name: name) }
-                .help(String(localized: "Recognize text in images from \(name), on this Mac"))
+                .floatingHelp(String(localized: "Recognize text in images from \(name), on this Mac"))
         }
     }
 
@@ -662,20 +674,19 @@ struct RecordView: View {
     private var formattingToggle: some View {
         let on = state.isRich
         let canTurnOn = !state.plainTextEdited
-        return Button { state.setShowsFormatting(!on) } label: {
-            Image(systemName: "textformat")
-                .foregroundStyle(on ? Color.accentColor : Color.secondary)
-                .frame(width: 26, height: 22)
-                .background(on ? Color.accentColor.opacity(0.15) : Color.clear, in: RoundedRectangle(cornerRadius: 5))
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.borderless)
-        .disabled(!on && !canTurnOn)
-        .help(on
+        let help = on
             ? String(localized: "Formatting is on. Click to make plain text: Save then keeps only the text (⇧⌘T)")
             : canTurnOn
                 ? String(localized: "Plain text. Click to bring the formatting back (⇧⌘T)")
-                : String(localized: "The plain text was edited: Revert brings back the formatted text"))
+                : String(localized: "The plain text was edited: Revert brings back the formatted text")
+        return Button { state.setShowsFormatting(!on) } label: {
+            Image(systemName: "textformat")
+                .frame(width: 26, height: 22)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(ToolbarIconStyle(emphasized: on))
+        .disabled(!on && !canTurnOn)
+        .floatingHelp(help)
         .accessibilityLabel(Text("Formatting"))
         .accessibilityValue(Text(on ? String(localized: "On") : String(localized: "Off")))
     }
@@ -694,7 +705,7 @@ struct RecordView: View {
                 Label("Formatting will be removed", systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.orange)
-                    .help(String(localized: "This item has rich text; saving keeps the plain text only."))
+                    .floatingHelp(String(localized: "This item has rich text; saving keeps the plain text only."))
             }
             if let error = state.error {
                 Text(error).font(.caption).foregroundStyle(.red).lineLimit(1)
@@ -705,7 +716,7 @@ struct RecordView: View {
                     Text(String(localized: "\(ByteCount.string(bytes)) of \(ByteCount.string(state.maxBytes))"))
                         .font(.caption.monospacedDigit())
                         .foregroundStyle(state.isOverSizeLimit ? Color.red : Color.orange)
-                        .help(String(localized: "Size of the text against the “Largest item” limit (Settings → Apps → All Apps)"))
+                        .floatingHelp(String(localized: "Size of the text against the “Largest item” limit (Settings → Apps → All Apps)"))
                 }
                 Text(stats).font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
                 if card.displayType != .url, !state.isRich { languageMenu }
@@ -718,13 +729,13 @@ struct RecordView: View {
             }
             if state.isDirty {
                 Button("Changes…") { state.showsChanges = true }
-                    .help(String(localized: "Compare the edited text with the saved text, line by line"))
+                    .floatingHelp(String(localized: "Compare the edited text with the saved text, line by line"))
                 Button("Revert") { state.revert() }
-                    .help(String(localized: "Go back to the saved text (⌘Z undoes this)"))
+                    .floatingHelp(String(localized: "Go back to the saved text (⌘Z undoes this)"))
                 Button { model.saveItem() } label: { ShortcutLabel(title: String(localized: "Save"), shortcut: "⌘S") }
                     .buttonStyle(.borderedProminent)
                     .disabled(cannotSaveReason != nil)
-                    .help(cannotSaveReason ?? String(localized: "Save the changes; the window stays open (⌘S)"))
+                    .floatingHelp(cannotSaveReason ?? String(localized: "Save the changes; the window stays open (⌘S)"))
             }
         }
         .controlSize(.small)
@@ -758,7 +769,7 @@ struct RecordView: View {
             if state.hasRichSource {
                 Toggle("Show Formatting", isOn: Binding.main(get: { state.isRich }, set: { [state] on in state.setShowsFormatting(on) }))
                     .disabled(!state.isRich && state.plainTextEdited)
-                    .help(!state.isRich && state.plainTextEdited
+                    .floatingHelp(!state.isRich && state.plainTextEdited
                         ? String(localized: "The plain text was edited: Revert brings back the formatted text")
                         : String(localized: "Off: edit as plain text; saving then keeps only the text"))
             }
@@ -775,7 +786,7 @@ struct RecordView: View {
         .menuStyle(.button)
         .buttonStyle(.borderless)
         .fixedSize()
-        .help(String(localized: "Wrap lines, line numbers, invisible characters (spaces, tabs, line breaks), font and text size"))
+        .floatingHelp(String(localized: "Wrap lines, line numbers, invisible characters (spaces, tabs, line breaks), font and text size"))
     }
 
     /// What the keys do right now.
@@ -864,7 +875,7 @@ private struct FilePreview: View {
                                 External.open(url)
                             }
                         }
-                        .help(String(localized: "Privacy & Security → Files and Folders: let Memopila read this folder, then open the record again"))
+                        .floatingHelp(String(localized: "Privacy & Security → Files and Folders: let Memopila read this folder, then open the record again"))
                     }
                 case .missing:
                     unavailable {
@@ -901,7 +912,7 @@ private struct FilePreview: View {
                     Button(card.filePaths.count > 1 ? String(localized: "Copy Paths") : String(localized: "Copy Path")) {
                         copyPath(card.filePaths.joined(separator: "\n"))
                     }
-                    .help(card.filePaths.count > 1
+                    .floatingHelp(card.filePaths.count > 1
                         ? String(localized: "Copy the full paths, one per line, to the clipboard")
                         : String(localized: "Copy the full path to the clipboard"))
                 }
@@ -952,9 +963,11 @@ private struct FilePreview: View {
                     if card.filePaths.count > 1 {
                         Button { shownPath = path } label: {
                             Image(systemName: path == previewPath ? "eye.fill" : "eye")
+                                .frame(width: 22, height: 20)
+                                .contentShape(Rectangle())
                         }
-                        .buttonStyle(.borderless)
-                        .help(String(localized: "Show this file above"))
+                        .buttonStyle(ToolbarIconStyle(emphasized: path == previewPath, recolorsLabel: false))
+                        .floatingHelp(String(localized: "Show this file above"))
                     }
                     Text(verbatim: path)
                         .font(.caption.monospaced())
@@ -963,9 +976,13 @@ private struct FilePreview: View {
                         .truncationMode(.middle)
                     if card.filePaths.count > 1 {
                         Spacer(minLength: 4)
-                        Button { copyPath(path) } label: { Image(systemName: "doc.on.clipboard") }
-                            .buttonStyle(.borderless)
-                            .help(String(localized: "Copy this path"))
+                        Button { copyPath(path) } label: {
+                            Image(systemName: "doc.on.clipboard")
+                                .frame(width: 22, height: 20)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(ToolbarIconStyle(recolorsLabel: false))
+                        .floatingHelp(String(localized: "Copy this path"))
                     }
                 }
             }
@@ -1012,12 +1029,163 @@ private struct ToolbarIcon: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage).frame(width: 26, height: 22).contentShape(Rectangle())
+        HoverIconButton(systemImage: systemImage, help: help, action: action)
+    }
+}
+
+/// Soft rounded hover, as toolbar icons in Finder and Preview — `.borderless` has none.
+/// Also used for card action icons and the ⋯ menu (`recolorsLabel: false` keeps a custom tint).
+struct ToolbarIconStyle: ButtonStyle {
+    var emphasized = false
+    /// When false, the label keeps its own `foregroundStyle` (favorites heart, card icons).
+    var recolorsLabel = true
+
+    func makeBody(configuration: Configuration) -> some View {
+        ToolbarIconStyleBody(configuration: configuration, emphasized: emphasized, recolorsLabel: recolorsLabel)
+    }
+}
+
+private struct ToolbarIconStyleBody: View {
+    let configuration: ButtonStyle.Configuration
+    var emphasized = false
+    var recolorsLabel = true
+    @Environment(\.isEnabled) private var isEnabled
+    @State private var hovering = false
+
+    var body: some View {
+        Group {
+            if recolorsLabel {
+                configuration.label.foregroundStyle(emphasized ? Color.accentColor : Color.primary)
+            } else {
+                configuration.label
+            }
         }
-        .buttonStyle(.borderless)
-        .help(help)
+        .background {
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(fill)
+        }
+        .opacity(isEnabled ? 1 : 0.35)
+        .onHover { hovering = $0 }
+    }
+
+    private var fill: Color {
+        // Disabled controls must not look interactive (nav chevrons at the ends, etc.).
+        guard isEnabled else {
+            return emphasized ? Color.accentColor.opacity(0.15) : .clear
+        }
+        if emphasized { return Color.accentColor.opacity(configuration.isPressed ? 0.22 : 0.15) }
+        if configuration.isPressed { return Color.primary.opacity(0.14) }
+        if hovering { return Color.primary.opacity(0.08) }
+        return .clear
+    }
+}
+
+/// Icon-only button for floating windows: hover chrome + AppKit tooltip. Prefer this over a raw
+/// `.borderless` `Button` with `.help` — SwiftUI help often never appears while floating.
+struct HoverIconButton: View {
+    var systemImage: String
+    var help: String
+    var emphasized = false
+    var recolorsLabel = true
+    var width: CGFloat = 26
+    var height: CGFloat = 22
+    var font: Font? = nil
+    var tint: Color? = nil
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            image
+                .frame(width: width, height: height)
+                .contentShape(Rectangle())
+        }
+        // Own tint → do not let the style repaint the symbol (favorites heart, etc.).
+        .buttonStyle(ToolbarIconStyle(emphasized: emphasized, recolorsLabel: tint == nil && recolorsLabel))
+        .floatingHelp(help)
         .accessibilityLabel(Text(help))
+    }
+
+    @ViewBuilder
+    private var image: some View {
+        if let tint {
+            Image(systemName: systemImage).font(font).foregroundStyle(tint)
+        } else {
+            Image(systemName: systemImage).font(font)
+        }
+    }
+}
+
+/// Icon-only menu trigger with the same chrome as `HoverIconButton`.
+struct HoverIconMenu<Content: View>: View {
+    var systemImage: String
+    var help: String
+    var emphasized = false
+    var width: CGFloat = 26
+    var height: CGFloat = 22
+    var font: Font? = nil
+    var tint: Color = .secondary
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        Menu(content: content) {
+            Image(systemName: systemImage)
+                .font(font)
+                .foregroundStyle(tint)
+                .frame(width: width, height: height)
+                .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .buttonStyle(ToolbarIconStyle(emphasized: emphasized, recolorsLabel: false))
+        .fixedSize()
+        .floatingHelp(help)
+        .accessibilityLabel(Text(help))
+    }
+}
+
+/// SwiftUI `.help` often never appears in floating windows; AppKit `toolTip` does, with
+/// `allowsToolTipsWhenApplicationIsInactive` on the panel and record window.
+struct AppKitToolTip: NSViewRepresentable {
+    var text: String
+
+    func makeNSView(context: Context) -> NSView {
+        let view = Anchor()
+        view.text = text
+        return view
+    }
+
+    func updateNSView(_ view: NSView, context: Context) {
+        (view as? Anchor)?.text = text
+    }
+
+    private final class Anchor: NSView {
+        var text = "" {
+            didSet { apply() }
+        }
+
+        override func viewDidMoveToSuperview() {
+            super.viewDidMoveToSuperview()
+            apply()
+        }
+
+        private func apply() {
+            let value = text.isEmpty ? nil : text
+            toolTip = value
+            // The SwiftUI host that wraps the control: tooltips follow that frame.
+            superview?.toolTip = value
+        }
+    }
+}
+
+extension View {
+    func appKitToolTip(_ text: String) -> some View {
+        background(AppKitToolTip(text: text))
+    }
+
+    /// Use instead of bare `.help` on controls in the panel, record window or Settings: SwiftUI
+    /// help often never appears while those windows float above other apps.
+    func floatingHelp(_ text: String) -> some View {
+        help(text).appKitToolTip(text)
     }
 }
 
@@ -1085,6 +1253,12 @@ struct TextPane: NSViewRepresentable {
         textView.isAutomaticDashSubstitutionEnabled = false
         textView.isAutomaticTextReplacementEnabled = false
         textView.isAutomaticSpellingCorrectionEnabled = false
+        // Clipboard text is often code, paths or markup: system “fixing” and link detection
+        // would paint false errors and recolour styled runs (same class of bug as linkTextAttributes).
+        textView.isAutomaticLinkDetectionEnabled = false
+        textView.isAutomaticDataDetectionEnabled = false
+        textView.isContinuousSpellCheckingEnabled = false
+        textView.isGrammarCheckingEnabled = false
         textView.textContainerInset = NSSize(width: 10, height: 10)
         let paragraph = NSMutableParagraphStyle()
         paragraph.lineSpacing = 2

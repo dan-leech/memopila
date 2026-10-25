@@ -23,7 +23,7 @@ struct ChangesSheet: View {
                         Text(verbatim: "−\(diff.removed)").foregroundStyle(.red)
                     }
                     .font(.callout.monospacedDigit())
-                    .help(String(localized: "Lines added and removed"))
+                    .floatingHelp(String(localized: "Lines added and removed"))
                 }
                 Spacer()
             }
@@ -55,7 +55,7 @@ struct ChangesSheet: View {
                     onSave()
                 }
                 .keyboardShortcut(.defaultAction)
-                .help(String(localized: "Save the changes; the window stays open"))
+                .floatingHelp(String(localized: "Save the changes; the window stays open"))
             }
             .padding(12)
         }

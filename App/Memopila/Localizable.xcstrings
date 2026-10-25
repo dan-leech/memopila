@@ -1608,6 +1608,7 @@
       }
     },
     "Clear the search" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ru" : {
           "stringUnit" : {
@@ -1959,6 +1960,9 @@
           }
         }
       }
+    },
+    "Create a collection for grouping records" : {
+
     },
     "Current — not saved" : {
       "localizations" : {
@@ -2972,6 +2976,9 @@
         }
       }
     },
+    "Hide this card" : {
+
+    },
     "Highlighting" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -3577,6 +3584,7 @@
       }
     },
     "Menu" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ru" : {
           "stringUnit" : {
@@ -4317,6 +4325,7 @@
       }
     },
     "Pin window" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ru" : {
           "stringUnit" : {
@@ -4893,6 +4902,9 @@
         }
       }
     },
+    "Rules and settings for this app" : {
+
+    },
     "Rules for %@" : {
       "localizations" : {
         "ru" : {
@@ -5034,6 +5046,9 @@
           }
         }
       }
+    },
+    "Save this copy into history anyway" : {
+
     },
     "Save, delete after %@" : {
       "localizations" : {
@@ -5336,6 +5351,7 @@
       }
     },
     "Sidebar" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ru" : {
           "stringUnit" : {
@@ -5645,6 +5661,9 @@
           }
         }
       }
+    },
+    "The app that copied this is unknown" : {
+
     },
     "The clipboard is empty. Copy something, then choose Enable Capture again." : {
       "localizations" : {
@@ -6071,6 +6090,7 @@
       }
     },
     "Unpin window" : {
+      "extractionState" : "stale",
       "localizations" : {
         "ru" : {
           "stringUnit" : {

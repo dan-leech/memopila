@@ -54,48 +54,43 @@ struct HistoryView: View {
                 .focused($searchFocused)
                 .accessibilityLabel(Text("Search history"))
             if !history.search.isEmpty {
-                Button {
+                HoverIconButton(
+                    systemImage: "xmark.circle.fill",
+                    help: String(localized: "Clear the search (Esc)"),
+                    recolorsLabel: false,
+                    tint: Color(nsColor: .tertiaryLabelColor)
+                ) {
                     history.search = ""
                     model.focusSearch()
-                } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundStyle(.tertiary)
                 }
-                .help(String(localized: "Clear the search (Esc)"))
-                .accessibilityLabel(Text("Clear the search"))
             }
 
-
-            Button {
+            HoverIconButton(
+                systemImage: "sidebar.left",
+                help: String(localized: "Show or hide the sidebar (⌥⌘S)"),
+                recolorsLabel: false,
+                tint: .secondary
+            ) {
                 model.settings.showSidebar.toggle()
-            } label: {
-                Image(systemName: "sidebar.left").foregroundStyle(.secondary)
             }
-            .help(String(localized: "Show or hide the sidebar (⌥⌘S)"))
-            .accessibilityLabel(Text("Sidebar"))
 
-            Button {
+            HoverIconButton(
+                systemImage: model.isPinned ? "pin.fill" : "pin",
+                help: model.isPinned
+                    ? String(localized: "Unpin (⌘P): the window closes after Choose for Clipboard or when you switch apps")
+                    : String(localized: "Pin (⌘P): keep the window open after Choose for Clipboard and when you switch apps"),
+                emphasized: model.isPinned
+            ) {
                 model.isPinned.toggle()
-            } label: {
-                Image(systemName: model.isPinned ? "pin.fill" : "pin")
-                    .foregroundStyle(model.isPinned ? Color.accentColor : Color.secondary)
             }
-            .help(model.isPinned
-                ? String(localized: "Unpin (⌘P): the window closes after Choose for Clipboard or when you switch apps")
-                : String(localized: "Pin (⌘P): keep the window open after Choose for Clipboard and when you switch apps"))
-            .accessibilityLabel(model.isPinned ? Text("Unpin window") : Text("Pin window"))
 
-            Menu {
+            HoverIconMenu(
+                systemImage: "gearshape",
+                help: String(localized: "Pause, Clear History, Settings and more")
+            ) {
                 PanelMenu(model: model)
-            } label: {
-                Image(systemName: "gearshape").foregroundStyle(.secondary)
             }
-            .menuStyle(.button)
-            .menuIndicator(.hidden)
-            .fixedSize()
-            .help(String(localized: "Pause, Clear History, Settings and more"))
-            .accessibilityLabel(Text("Menu"))
         }
-        .buttonStyle(.borderless)
         .font(.system(size: 15))
         .padding(.leading, 16)
         .padding(.trailing, 14)
@@ -179,9 +174,11 @@ private struct ScopeChip: View {
                 history.scope = .all
             } label: {
                 Image(systemName: "xmark")
+                    .frame(width: 18, height: 16)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.borderless)
-            .help(String(localized: "Show all of History"))
+            .buttonStyle(ToolbarIconStyle(recolorsLabel: false))
+            .floatingHelp(String(localized: "Show all of History"))
             .accessibilityLabel(Text("Show all of History"))
         }
         .font(.system(size: 12, weight: .medium))
@@ -238,7 +235,7 @@ private struct FilterBar: View {
                         .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .help(kind == .all ? String(localized: "Every kind of item") : String(localized: "Only \(kind.title.lowercased())"))
+                .floatingHelp(kind == .all ? String(localized: "Every kind of item") : String(localized: "Only \(kind.title.lowercased())"))
             }
             Spacer(minLength: 8)
             PanelStatus(model: model)
@@ -258,12 +255,15 @@ private struct FilterBar: View {
                 Label(history.periodFilter.title, systemImage: "calendar")
                     .font(.system(size: 12, weight: history.periodFilter == .anyTime ? .regular : .semibold))
                     .foregroundStyle(history.periodFilter == .anyTime ? Color.secondary : Color.accentColor)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .contentShape(Rectangle())
             }
             .menuStyle(.button)
             .menuIndicator(.hidden)
-            .buttonStyle(.borderless)
+            .buttonStyle(ToolbarIconStyle(recolorsLabel: false))
             .fixedSize()
-            .help(String(localized: "Only items copied in this period"))
+            .floatingHelp(String(localized: "Only items copied in this period"))
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 4)
@@ -289,7 +289,7 @@ private struct PanelStatus: View {
             label(status, nil)
         }
         .font(.system(size: 11).monospacedDigit())
-        .help(status.help + " · " + countText)
+        .floatingHelp(status.help + " · " + countText)
         .accessibilityElement(children: .combine)
         .contextMenu {
             if model.history.totalCount > 0 {
@@ -353,7 +353,7 @@ private struct CollectionRow: View {
         .padding(.vertical, 1)
         .background(isTargeted ? Color.accentColor.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 5))
         .onDrop(of: [.item], isTargeted: $isTargeted) { _ in model.dropDraggedCard(on: collection.id) }
-        .help(String(localized: "Drop a card here to add it"))
+        .floatingHelp(String(localized: "Drop a card here to add it"))
         .contextMenu {
             Button("Rename…") { model.present(.renameCollection(collection.id)) }
             Button("Delete All Items in It…") {
@@ -402,6 +402,7 @@ private struct SidebarView: View {
             }
             .buttonStyle(.borderless)
             .foregroundStyle(.secondary)
+            .floatingHelp(String(localized: "Create a collection for grouping records"))
             .padding(.horizontal, 18)
             .padding(.vertical, 12)
         }

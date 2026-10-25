@@ -400,7 +400,8 @@ struct ActionMenuItems: View {
                     label(for: item)
                 }
                 .disabled(!item.isEnabled)
-                .help(item.disabledReason ?? "")
+                // Context menus open from the floating panel: bare `.help` often never appears.
+                .floatingHelp(item.disabledReason ?? "")
             }
         }
     }

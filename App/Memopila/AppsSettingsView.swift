@@ -39,15 +39,15 @@ struct AppsSettings: View {
                 }
                 Divider()
                 HStack {
-                    Button {
-                        addApp()
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .help(String(localized: "Add an app"))
+                    HoverIconButton(
+                        systemImage: "plus",
+                        help: String(localized: "Add an app"),
+                        recolorsLabel: false,
+                        width: 22,
+                        height: 20
+                    ) { addApp() }
                     Spacer()
                 }
-                .buttonStyle(.borderless)
                 .padding(6)
             }
             .frame(width: 230)
@@ -282,14 +282,15 @@ struct FormatRulesEditor: View {
                     set: { value in if settings.formatRules.indices.contains(index) { settings.formatRules[index].isPrefix = value } }
                 ))
                 .toggleStyle(.checkbox)
-                Button {
+                HoverIconButton(
+                    systemImage: "minus.circle",
+                    help: String(localized: "Remove rule"),
+                    recolorsLabel: false,
+                    width: 22,
+                    height: 20
+                ) {
                     if settings.formatRules.indices.contains(index) { settings.formatRules.remove(at: index) }
-                } label: {
-                    Image(systemName: "minus.circle")
                 }
-                .buttonStyle(.borderless)
-                .help(String(localized: "Remove rule"))
-                .accessibilityLabel(Text("Remove rule"))
             }
         }
         HStack {
