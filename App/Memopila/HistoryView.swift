@@ -630,12 +630,13 @@ private struct HistoryGrid: View {
                                 card: card,
                                 index: index,
                                 hasCursor: model.history.isSelected(card.id),
-                                model: model
+                                model: model,
+                                onDoubleClick: {
+                                    model.restore(card.id, paste: NSEvent.modifierFlags.contains(.option) ? true : nil)
+                                }
                             )
                             .frame(height: cardHeight)
                             .id(card.id)
-                            // ⌥-double-click also pastes, once.
-                            .onTapGesture(count: 2) { model.restore(card.id, paste: NSEvent.modifierFlags.contains(.option) ? true : nil) }
                             .simultaneousGesture(TapGesture().onEnded {
                                 model.history.click(card.id, modifiers: NSEvent.modifierFlags)
                                 model.focusGrid()

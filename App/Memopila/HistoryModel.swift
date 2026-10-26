@@ -383,6 +383,12 @@ final class HistoryModel {
         if let index = cards.firstIndex(where: { $0.id == card.id }) { cards[index] = card }
     }
 
+    /// Optimistic favorite flip on a loaded card (heart reacts before store round-trip).
+    func setFavoriteLocally(record id: UUID, isFavorite: Bool) {
+        guard let card = cards.first(where: { $0.id == id }) else { return }
+        replaceLocally(card.withFavorite(isFavorite))
+    }
+
     // MARK: Selection (§8.3)
 
     func moveSelection(by offset: Int, keepingMarks: Bool = false) {

@@ -342,6 +342,24 @@ struct ClipboardStoreTests {
         #expect(try await store.card(old) == nil)
     }
 
+    @Test func withFavoriteClearsExpiresAtOnDTO() async throws {
+        let store = try ClipboardStore(url: nil)
+        let settings = ResolvedAppSettings(captureMode: .deleteAfter(minutes: 60))
+        guard case .committed(let id) = await ingest(store, snapshot("secret-ish", settings: settings)) else {
+            Issue.record("not committed")
+            return
+        }
+        let card = try #require(try await store.card(id))
+        #expect(card.expiresAt != nil)
+        #expect(card.isFavorite == false)
+        let favored = card.withFavorite(true)
+        #expect(favored.isFavorite)
+        #expect(favored.expiresAt == nil, "favor-on clears expiry like ClipboardStore.setFavorite")
+        let unfavored = favored.withFavorite(false)
+        #expect(!unfavored.isFavorite)
+        #expect(unfavored.expiresAt == nil, "unfavorite does not restore expiresAt (§6)")
+    }
+
     @Test func unfavoriteEnforcesTheCountCapAndKeepsTheRecord() async throws {
         let store = try ClipboardStore(url: nil)
         let limits = RetentionLimits(maxCount: 1)

@@ -12,6 +12,8 @@ struct CardView: View {
     /// The selection (↑ ↓ ← →, a click): where ↩ and the shortcuts act; the usual accent border.
     let hasCursor: Bool
     let model: AppModel
+    /// Double-click on title/content only — not the footer buttons (avoids stealing heart clicks).
+    var onDoubleClick: () -> Void = {}
     @State private var image: NSImage?
     @State private var richPreview: RichPreview?
     @Environment(\.colorScheme) private var colorScheme
@@ -30,12 +32,18 @@ struct CardView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let title = card.customTitle { titleStrip(title) }
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .clipped()
-                .padding(.horizontal, isMedia ? 6 : 10)
-                .padding(.top, isMedia ? 6 : 9)
+            // Double-tap only here — footer hover buttons must not sit under count:2 (delays/steals clicks).
+            VStack(alignment: .leading, spacing: 0) {
+                if let title = card.customTitle { titleStrip(title) }
+                content
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .clipped()
+                    .padding(.horizontal, isMedia ? 6 : 10)
+                    .padding(.top, isMedia ? 6 : 9)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2, perform: onDoubleClick)
             footer
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
@@ -69,9 +77,7 @@ struct CardView: View {
         }
         .opacity(isUnavailable ? 0.55 : 1)
         .contentShape(RoundedRectangle(cornerRadius: Self.radius))
-        .onHover { hovering in
-            withAnimation(.easeOut(duration: 0.12)) { isHovered = hovering }
-        }
+        .onHover { isHovered = $0 }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: model.chooseBadgeCardID)
         .floatingHelp(card.sourceURL.map { String(localized: "Copied from \($0)") } ?? "")
         // Formatted text shows formatted, as in the record window (owner feedback).
@@ -159,7 +165,6 @@ struct CardView: View {
                 CardContextMenu(card: card, model: model)
             }
         }
-        .transition(.opacity)
     }
 
     /// A credential (§3.10): the card shows its kind and first characters only.

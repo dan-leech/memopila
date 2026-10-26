@@ -42,6 +42,38 @@ public struct HistoryCard: Sendable, Identifiable, Equatable {
 
     /// Plain text can be produced for Copy as plain text and text actions.
     public var hasText: Bool { textLength != nil }
+
+    /// Optimistic grid patch. Favor-on clears `expiresAt` (store does the same, §6).
+    public func withFavorite(_ isFavorite: Bool) -> HistoryCard {
+        HistoryCard(
+            id: id,
+            displayType: displayType,
+            preview: preview,
+            customTitle: customTitle,
+            textLength: textLength,
+            lineCount: lineCount,
+            sensitiveKind: sensitiveKind,
+            pixelWidth: pixelWidth,
+            pixelHeight: pixelHeight,
+            filePaths: filePaths,
+            colorHex: colorHex,
+            payloadSizeBytes: payloadSizeBytes,
+            firstCopiedAt: firstCopiedAt,
+            lastCopiedAt: lastCopiedAt,
+            copyCount: copyCount,
+            isFavorite: isFavorite,
+            sourceAppBundleID: sourceAppBundleID,
+            sourceAppName: sourceAppName,
+            sourceURL: sourceURL,
+            isEdited: isEdited,
+            expiresAt: isFavorite ? nil : expiresAt,
+            hasRecognizedText: hasRecognizedText,
+            storedTypes: storedTypes,
+            skippedTypes: skippedTypes,
+            hasThumbnail: hasThumbnail,
+            codeLanguage: codeLanguage
+        )
+    }
 }
 
 /// Details loaded on demand for the preview (§8.5).

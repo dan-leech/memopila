@@ -844,6 +844,8 @@ final class AppModel {
     }
 
     @ObservationIgnored private var pendingDeletion: (ids: Set<UUID>, task: Task<Void, Never>)?
+    /// Favorite Tasks: only the newest op may reconcile (rapid invert allowed; stale reloads skipped).
+    @ObservationIgnored private var favoriteOpGeneration = 0
 
     func undoDeletion() {
         guard let pending = pendingDeletion else { return }
@@ -930,26 +932,65 @@ final class AppModel {
     /// ⌘D on several cards: all become favorites, or all stop being favorites when they all are.
     /// Out of Favorites, cards older than History keeps are deleted (§6), so that is asked first
     /// (review finding: an old favorite vanished at the next copy, with no warning).
+    /// Heart flips in the projection immediately; store + retention run in a Task.
     func toggleFavorites(_ ids: [UUID], confirmed: Bool = false) {
         let cards = history.cards.filter { ids.contains($0.id) }
         guard !cards.isEmpty else { return }
         let makeFavorite = !cards.allSatisfy(\.isFavorite)
         let limits = settings.retentionLimits
+        let cutoff = Date().addingTimeInterval(-limits.maxAge)
         if !makeFavorite, !confirmed {
-            let cutoff = Date().addingTimeInterval(-limits.maxAge)
             let old = cards.filter { $0.lastCopiedAt < cutoff }.count
             if old > 0 { return present(.confirmUnfavorite(cards.map(\.id), old: old)) }
         }
         if case .confirmUnfavorite? = overlay { present(nil) }
-        Task {
+
+        let changing = cards.filter { $0.isFavorite != makeFavorite }
+        guard !changing.isEmpty else { return }
+        let previous = Dictionary(uniqueKeysWithValues: changing.map { ($0.id, $0) })
+        let changingIDs = Set(changing.map(\.id))
+        let ageVictims = makeFavorite
+            ? Set<UUID>()
+            : Set(changing.filter { $0.lastCopiedAt < cutoff }.map(\.id))
+        let hideIDs: Set<UUID> = {
+            if !makeFavorite, case .favorites = history.scope { return changingIDs }
+            return ageVictims
+        }()
+
+        for card in changing {
+            history.setFavoriteLocally(record: card.id, isFavorite: makeFavorite)
+        }
+        if !hideIDs.isEmpty { history.hide(hideIDs) }
+
+        favoriteOpGeneration += 1
+        let gen = favoriteOpGeneration
+        let target = makeFavorite
+        Task { [weak self] in
+            guard let self else { return }
             do {
-                for card in cards where card.isFavorite != makeFavorite {
-                    try await store.setFavorite(card.id, makeFavorite, limits: limits, now: Date())
+                for id in changingIDs {
+                    guard gen == self.favoriteOpGeneration else { return }
+                    try await self.store.setFavorite(id, target, limits: limits, now: Date())
                 }
             } catch {
-                toasts.error(error.localizedDescription)
+                guard gen == self.favoriteOpGeneration else { return }
+                self.toasts.error(error.localizedDescription)
+                for (id, card) in previous {
+                    self.history.setFavoriteLocally(record: id, isFavorite: card.isFavorite)
+                }
+                let pending = self.pendingDeletion?.ids ?? []
+                let restoreHide = hideIDs.subtracting(pending)
+                if !restoreHide.isEmpty {
+                    self.history.unhide(restoreHide)
+                } else {
+                    self.history.storeDidChange()
+                }
+                return
             }
-            history.storeDidChange()
+            guard gen == self.favoriteOpGeneration else { return }
+            let pending = self.pendingDeletion?.ids ?? []
+            self.history.forgetHidden(hideIDs.subtracting(pending))
+            self.history.storeDidChange()
         }
     }
 
