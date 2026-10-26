@@ -65,13 +65,6 @@ final class ClipboardMonitor {
     var isBusy: Bool { coordinator.destructiveInProgress }
     var isCaptureBlocked: Bool { !access.allowsCapture || storageError != nil }
 
-    var statusSymbol: String {
-        if isCaptureBlocked { return "exclamationmark.triangle" }
-        if isPaused { return "pause.circle" }
-        if skipArmed { return "forward.end.circle" }
-        return "list.clipboard"
-    }
-
     func start() {
         launchChangeCount = NSPasteboard.general.changeCount
         refreshAccess()

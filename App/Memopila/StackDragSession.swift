@@ -1,14 +1,16 @@
 import AppKit
 import Foundation
+import Observation
 
-/// Single panel card-drag session (SSOT for stack/collection drops + positional reorder).
+/// Card-drag session SSOT (PLAN §3.11): membership drops + Stack Window positional reorder.
 ///
-/// Contract (PLAN §3.11):
-/// - In `scope.stack`, filters clear, n≥1: dragging a member is **positional** (insert-before / End).
-/// - Otherwise a record drag is **membership** (append to stack card / grid, or collection sidebar).
-/// - Reorder toolbar button is grips chrome only — not a gesture gate.
+/// Contract:
+/// - Positional reorder only while the **Stack Window** editor can reorder (search clear, not truncated).
+/// - Otherwise a record drag is **membership** (append onto a stack card / collection sidebar).
+/// - Reorder chrome (`reorderDragID` / `dropTargetID`) lives here — not on `HistoryModel`.
 /// - SwiftUI `onDrag` has no end callback → mouse-up ends the session after `performDrop`.
 @MainActor
+@Observable
 final class StackDragSession {
     enum Source: Equatable {
         case record(UUID)
@@ -17,10 +19,13 @@ final class StackDragSession {
 
     private(set) var source: Source?
     private(set) var startedAt: Date?
-    /// Captured at begin: member drag inside an unfiltered open playlist.
+    /// Captured at begin: member drag inside an editable Stack Window playlist.
     private(set) var isPositionalReorder = false
+    /// Dim / outline while reordering in the Stack Window.
+    private(set) var reorderDragID: UUID?
+    /// Insert-before target under the pointer.
+    private(set) var dropTargetID: UUID?
 
-    private weak var history: HistoryModel?
     private var mouseMonitors: [Any] = []
     private var endTask: Task<Void, Never>?
 
@@ -40,22 +45,20 @@ final class StackDragSession {
         return Date().timeIntervalSince(startedAt) < 60
     }
 
-    func beginRecord(_ id: UUID, positionalReorder: Bool, history: HistoryModel) {
+    func beginRecord(_ id: UUID, positionalReorder: Bool) {
         end(clearChrome: true)
-        self.history = history
         source = .record(id)
         startedAt = Date()
         isPositionalReorder = positionalReorder
         if positionalReorder {
-            history.stackReorderDragID = id
-            history.stackReorderDropTargetID = nil
+            reorderDragID = id
+            dropTargetID = nil
             installMouseUpMonitor()
         }
     }
 
-    func beginStack(_ id: UUID, history: HistoryModel) {
+    func beginStack(_ id: UUID) {
         end(clearChrome: true)
-        self.history = history
         source = .stack(id)
         startedAt = Date()
         isPositionalReorder = false
@@ -68,7 +71,7 @@ final class StackDragSession {
     }
 
     func setDropBefore(_ targetID: UUID?) {
-        history?.stackReorderDropTargetID = targetID
+        dropTargetID = targetID
     }
 
     func end(clearChrome: Bool = true) {
@@ -79,9 +82,9 @@ final class StackDragSession {
         startedAt = nil
         isPositionalReorder = false
         if clearChrome {
-            history?.clearReorderDrag()
+            reorderDragID = nil
+            dropTargetID = nil
         }
-        history = nil
     }
 
     private func installMouseUpMonitor() {

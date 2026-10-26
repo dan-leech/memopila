@@ -48,7 +48,13 @@ final class StatusItemController: NSObject {
     private func trackIcon() {
         let symbol = withObservationTracking {
             _ = model.stackStatusRevision
-            return model.monitor.statusSymbol
+            _ = model.monitor.isPaused
+            _ = model.monitor.skipArmed
+            _ = model.monitor.isCaptureBlocked
+            return CaptureChrome.menuBarSymbol(
+                monitor: model.monitor,
+                stackArmed: model.stackSession.isArmed
+            )
         } onChange: {
             // The controller lives as long as the app, so a strong capture is fine.
             Task { @MainActor in self.trackIcon() }
@@ -66,25 +72,38 @@ final class StatusItemController: NSObject {
     private func showMenu() {
         let monitor = model.monitor
         let menu = NSMenu()
-        menu.addItem(ClosureMenuItem(String(localized: "Open Memopila (\(model.settings.shortcut.displayString))")) { [model] in
+        menu.addItem(ClosureMenuItem(
+            String(localized: "Open Memopila (\(model.settings.shortcut.displayString))"),
+            systemImage: "list.clipboard"
+        ) { [model] in
             model.panel.show()
         })
         if monitor.access == .needsEnable {
-            menu.addItem(ClosureMenuItem(String(localized: "Enable Capture")) { monitor.enableCapture() })
+            menu.addItem(ClosureMenuItem(String(localized: "Enable Capture"), systemImage: "play.fill") {
+                monitor.enableCapture()
+            })
         }
         if monitor.storageError != nil {
-            menu.addItem(ClosureMenuItem(String(localized: "Resume After Storage Error")) { monitor.resumeAfterStorageError() })
+            menu.addItem(ClosureMenuItem(String(localized: "Resume After Storage Error"), systemImage: "exclamationmark.triangle") {
+                monitor.resumeAfterStorageError()
+            })
         }
         if model.stackSession.isArmed {
             let title = model.stackSession.progressLabel.map { String(localized: "Stop Stack (\($0))") }
                 ?? String(localized: "Stop Stack")
-            menu.addItem(ClosureMenuItem(title) { [model] in model.stopStackSession() })
+            menu.addItem(ClosureMenuItem(title, systemImage: "bolt.slash") { [model] in
+                model.stopStackSession()
+            })
         }
         menu.addItem(.separator())
         if monitor.isPaused {
-            menu.addItem(ClosureMenuItem(String(localized: "Resume Capture")) { monitor.resume() })
+            menu.addItem(ClosureMenuItem(String(localized: "Resume Capture"), systemImage: "play.fill") {
+                monitor.resume()
+            })
         } else {
             let pause = NSMenuItem(title: String(localized: "Pause"), action: nil, keyEquivalent: "")
+            pause.image = NSImage(systemSymbolName: "pause.fill", accessibilityDescription: nil)
+            pause.image?.isTemplate = true
             let submenu = NSMenu()
             submenu.addItem(ClosureMenuItem(String(localized: "5 Minutes")) { monitor.pause(minutes: 5) })
             submenu.addItem(ClosureMenuItem(String(localized: "15 Minutes")) { monitor.pause(minutes: 15) })
@@ -93,17 +112,26 @@ final class StatusItemController: NSObject {
             pause.submenu = submenu
             menu.addItem(pause)
         }
-        menu.addItem(ClosureMenuItem(monitor.skipArmed ? String(localized: "Cancel Skip") : String(localized: "Skip Next Copy")) {
+        menu.addItem(ClosureMenuItem(
+            monitor.skipArmed ? String(localized: "Cancel Skip") : String(localized: "Skip Next Copy"),
+            systemImage: monitor.skipArmed ? "forward.end.circle" : "forward.end"
+        ) {
             monitor.toggleSkip()
         })
         menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem(String(localized: "Settings…")) { [model] in model.openSettings() })
+        menu.addItem(ClosureMenuItem(String(localized: "Settings…"), systemImage: "gearshape") { [model] in
+            model.openSettings()
+        })
         // A tool for reporting problems: with ⌥ held, as in many Mac apps.
         if NSEvent.modifierFlags.contains(.option) {
-            menu.addItem(ClosureMenuItem(String(localized: "Diagnostics…")) { [model] in model.openDiagnostics() })
+            menu.addItem(ClosureMenuItem(String(localized: "Diagnostics…"), systemImage: "wrench.and.screwdriver") { [model] in
+                model.openDiagnostics()
+            })
         }
         menu.addItem(.separator())
-        menu.addItem(ClosureMenuItem(String(localized: "Quit Memopila")) { NSApp.terminate(nil) })
+        menu.addItem(ClosureMenuItem(String(localized: "Quit Memopila"), systemImage: "power") {
+            NSApp.terminate(nil)
+        })
         if let button = item.button {
             _ = menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.height + 4), in: button)
         }
@@ -114,10 +142,19 @@ final class StatusItemController: NSObject {
 final class ClosureMenuItem: NSMenuItem {
     private let handler: @MainActor () -> Void
 
-    init(_ title: String, key: String = "", handler: @escaping @MainActor () -> Void) {
+    init(
+        _ title: String,
+        key: String = "",
+        systemImage: String? = nil,
+        handler: @escaping @MainActor () -> Void
+    ) {
         self.handler = handler
         super.init(title: title, action: #selector(run), keyEquivalent: key)
         target = self
+        if let systemImage {
+            image = NSImage(systemSymbolName: systemImage, accessibilityDescription: nil)
+            image?.isTemplate = true
+        }
     }
 
     @available(*, unavailable)

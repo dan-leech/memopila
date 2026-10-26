@@ -13,19 +13,12 @@ final class HistoryModel {
     var scope: HistoryScope = .all {
         didSet {
             guard scope != oldValue else { return }
-            // Always drop in-flight reorder — member IDs are not valid across stacks / scopes.
-            clearReorderDrag()
-            if case .stack = oldValue, case .stack = scope { /* switching stacks */ }
-            else if case .stack = scope { /* entering */ }
-            else { isReorderingStack = false }
-            endReorderDragIfUnavailable()
             reload(selectFirst: true)
         }
     }
     var search = "" {
         didSet {
             guard search != oldValue else { return }
-            endReorderDragIfUnavailable()
             scheduleSearch()
         }
     }
@@ -33,14 +26,12 @@ final class HistoryModel {
     var kindFilter: KindFilter = .all {
         didSet {
             guard kindFilter != oldValue else { return }
-            endReorderDragIfUnavailable()
             reload(selectFirst: true)
         }
     }
     var periodFilter: PeriodFilter = .anyTime {
         didSet {
             guard periodFilter != oldValue else { return }
-            endReorderDragIfUnavailable()
             reload(selectFirst: true)
         }
     }
@@ -50,42 +41,12 @@ final class HistoryModel {
     private(set) var stacks: [StackCard] = []
     /// Unfiltered stacks for membership menus (Add/Remove), not the grid filter.
     private(set) var allStacks: [StackCard] = []
-    /// Full UI order while `scope` is `.stack` (for # badges / Move / reorder); empty otherwise.
-    private(set) var stackMemberOrder: [UUID] = []
     /// Merge-sorted view of records ∪ stacks (records-only, position order, inside a stack).
     private(set) var entries: [HistoryEntry] = []
     private(set) var recordTotal = 0
     /// Footer: records + stacks.
     var totalCount: Int { max(0, recordTotal - hiddenRecordAdjustment) + stacks.count }
     private var hiddenRecordAdjustment = 0
-    /// Grip badges only (PLAN §3.11). Does **not** gate DnD — that uses `canReorderStack`.
-    var isReorderingStack = false {
-        didSet {
-            if isReorderingStack, !canReorderStack { isReorderingStack = false }
-        }
-    }
-    /// Positional-drag chrome (written by `StackDragSession`; observed for dim / End / outline).
-    var stackReorderDragID: UUID?
-    /// Card under the pointer — blue selection outline means “insert before this card”.
-    var stackReorderDropTargetID: UUID?
-    /// Trailing “drop at end” slot while a positional member drag is live and not already last.
-    var stackReorderShowsEndSlot: Bool {
-        guard canReorderStack, let id = stackReorderDragID else { return false }
-        return stackMemberOrder.last != id
-    }
-
-    func clearReorderDrag() {
-        stackReorderDragID = nil
-        stackReorderDropTargetID = nil
-    }
-
-    /// Drop grips + drag chrome when filters / empty playlist make reorder illegal.
-    private func endReorderDragIfUnavailable() {
-        if !canReorderStack {
-            isReorderingStack = false
-            clearReorderDrag()
-        }
-    }
 
     /// Optimistic Deal / Loop on `allStacks` so toolbar chrome updates before reload.
     func setStackDealLocally(id: UUID, mode: StackDealMode, loops: Bool) {
@@ -150,34 +111,20 @@ final class HistoryModel {
 
     var isFiltered: Bool { scope != .all || kindFilter != .all || periodFilter != .anyTime }
 
-    /// Reorder is safe only on the full non-empty playlist (A1). Empty → append drops stay available.
-    var canReorderStack: Bool {
-        guard case .stack = scope else { return false }
-        return search.isEmpty
-            && kindFilter == .all
-            && periodFilter == .anyTime
-            && !stackMemberOrder.isEmpty
-    }
-
+    /// `HistoryScope.stack` is a store-query scope only (Stack Window loads members itself).
     var scopedStackID: UUID? {
         if case .stack(let id) = scope { return id }
         return nil
-    }
-
-    var scopedStack: StackCard? {
-        guard let id = scopedStackID else { return nil }
-        return allStacks.first { $0.id == id }
     }
 
     func clearFilters() {
         scope = .all
         kindFilter = .all
         periodFilter = .anyTime
-        isReorderingStack = false
     }
 
-    /// Sidebar has no stack rows — map drill-down to no selection (A3).
-    /// Ignore `nil` writes so a List sync cannot kick the user out of a stack.
+    /// Sidebar has no stack rows — map leftover `.stack` scope to no selection.
+    /// Ignore `nil` writes so a List sync cannot clear the sidebar.
     var sidebarSelection: HistoryScope? {
         get {
             if case .stack = scope { return nil }
@@ -187,23 +134,6 @@ final class HistoryModel {
             guard let newValue else { return }
             scope = newValue
         }
-    }
-
-    /// Open a stack playlist in the main grid (§3.11 drill-down).
-    func openStack(_ id: UUID) {
-        if kindFilter == .stacks { kindFilter = .all }
-        isReorderingStack = false
-        if case .stack(let current) = scope, current == id {
-            reload(selectFirst: true)
-        } else {
-            scope = .stack(id)
-        }
-    }
-
-    /// 1-based UI/deal position in the full stack, or `nil` if not a member.
-    func stackPosition(of recordID: UUID) -> Int? {
-        guard let index = stackMemberOrder.firstIndex(of: recordID) else { return nil }
-        return index + 1
     }
 
     /// Record cards only (compat for callers that still iterate records).
@@ -268,12 +198,10 @@ final class HistoryModel {
         records = []
         stacks = []
         allStacks = []
-        stackMemberOrder = []
         entries = []
         apps = []
         collections = []
         memberships = [:]
-        isReorderingStack = false
         isStale = true
     }
 
@@ -313,13 +241,12 @@ final class HistoryModel {
             do {
                 async let allStackPage = store.stacks(HistoryQuery(), limit: Self.maxStacks)
                 if let stackID = stackScopeID {
+                    // Leftover `.stack` scope (store query only) — panel never drills in; bounce home if gone.
                     async let page = store.page(query, offset: 0, limit: limit)
                     async let count = store.count(query)
-                    async let memberIDs = store.stackMemberIDs(stackID)
-                    let (loaded, total, loadedAllStacks, order) = try await (page, count, allStackPage, memberIDs)
+                    let (loaded, total, loadedAllStacks) = try await (page, count, allStackPage)
                     let memberships = try await store.memberships(of: loaded.map(\.id))
                     guard generation == self.generation else { return }
-                    // Stack deleted or pruned while drilled in (A9).
                     if !loadedAllStacks.contains(where: { $0.id == stackID }) {
                         self.scope = .all
                         return
@@ -330,11 +257,8 @@ final class HistoryModel {
                         records = visibleRecords
                         stacks = []
                         allStacks = loadedAllStacks
-                        stackMemberOrder = order
                         entries = visibleRecords.map { .record($0) }
                     }
-                    endReorderDragIfUnavailable()
-                    if let drag = stackReorderDragID, !order.contains(drag) { clearReorderDrag() }
                     self.memberships = memberships
                     recordTotal = total
                 } else if stacksOnly {
@@ -345,7 +269,6 @@ final class HistoryModel {
                         records = []
                         stacks = loadedStacks
                         allStacks = loadedAllStacks
-                        stackMemberOrder = []
                         entries = loadedStacks.map { .stack($0) }
                     }
                     memberships = [:]
@@ -364,7 +287,6 @@ final class HistoryModel {
                         records = visibleRecords
                         stacks = loadedStacks
                         allStacks = loadedAllStacks
-                        stackMemberOrder = []
                         entries = Self.mergeEntries(records: visibleRecords, stacks: loadedStacks)
                     }
                     self.memberships = memberships
@@ -574,20 +496,17 @@ final class HistoryModel {
     }
 
     func removeLocally(_ ids: Set<UUID>) {
-        if let drag = stackReorderDragID, ids.contains(drag) { clearReorderDrag() }
         let selected = selectedIndex
         let remaining = records.enumerated().filter { !ids.contains($0.element.id) }
         let removed = records.count - remaining.count
         withAnimation(.easeOut(duration: 0.2)) {
             records = remaining.map(\.element)
             if case .stack = scope {
-                stackMemberOrder.removeAll { ids.contains($0) }
                 entries = records.map { .record($0) }
             } else {
                 entries = Self.mergeEntries(records: records, stacks: stacks)
             }
         }
-        endReorderDragIfUnavailable()
         recordTotal = max(0, recordTotal - removed)
         if let selected, let id = selectedID, case .record(let rid) = id, ids.contains(rid) {
             let next = remaining.first { $0.offset > selected } ?? remaining.last
@@ -648,46 +567,6 @@ final class HistoryModel {
     /// Record is a paste-stack member → pinned for retention even after unfavorite (§6).
     func isStackPinned(_ recordID: UUID) -> Bool {
         allStacks.contains { $0.memberIDs.contains(recordID) }
-    }
-
-    /// Move a member in the full playlist order (Move Top/Up/Down/Bottom).
-    /// Allowed while filtered — operates on `stackMemberOrder`, not the visible page (PLAN).
-    func moveStackMember(_ recordID: UUID, by delta: Int) -> [UUID]? {
-        guard case .stack = scope else { return nil }
-        guard let from = stackMemberOrder.firstIndex(of: recordID) else { return nil }
-        let to = min(max(from + delta, 0), stackMemberOrder.count - 1)
-        guard from != to else { return stackMemberOrder }
-        var next = stackMemberOrder
-        next.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
-        stackMemberOrder = next
-        return next
-    }
-
-    func moveStackMemberToEnd(_ recordID: UUID, toStart: Bool) -> [UUID]? {
-        guard case .stack = scope else { return nil }
-        guard let from = stackMemberOrder.firstIndex(of: recordID) else { return nil }
-        var next = stackMemberOrder
-        next.remove(at: from)
-        if toStart { next.insert(recordID, at: 0) } else { next.append(recordID) }
-        stackMemberOrder = next
-        return next
-    }
-
-    func applyStackMemberOrder(_ order: [UUID]) {
-        stackMemberOrder = order
-        let byID = Dictionary(uniqueKeysWithValues: records.map { ($0.id, $0) })
-        records = order.compactMap { byID[$0] }
-        entries = records.map { .record($0) }
-        if case .stack(let stackID) = scope {
-            if let index = allStacks.firstIndex(where: { $0.id == stackID }) {
-                let first = records.first
-                allStacks[index] = allStacks[index].withMemberIDs(
-                    order,
-                    preview: first?.preview,
-                    sensitiveKind: first?.sensitiveKind
-                )
-            }
-        }
     }
 
     // MARK: Navigation

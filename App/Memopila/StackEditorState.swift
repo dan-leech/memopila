@@ -9,10 +9,12 @@ import Observation
 final class StackEditorState {
     private(set) var stackID: UUID
     private(set) var stack: StackCard
-    /// Full UI order (`StackMember.position`).
+    /// UI order for the loaded window (`StackMember.position`). May be a prefix when truncated.
     private(set) var order: [UUID] = []
     /// Loaded member cards aligned with `order` (missing ids omitted until reload).
     private(set) var members: [HistoryCard] = []
+    /// True store membership count — may exceed `order.count` when truncated for the window.
+    private(set) var totalMemberCount = 0
     /// Filter for the member grid — when non-empty, positional DnD is off.
     var search = ""
     private(set) var loadError: String?
@@ -33,8 +35,11 @@ final class StackEditorState {
         stack.title.isEmpty ? String(localized: "Stack") : stack.title
     }
 
+    /// Window loaded only a prefix — never persist `order` as the full playlist (data-loss).
+    var isTruncated: Bool { totalMemberCount > order.count }
+
     var canReorder: Bool {
-        search.isEmpty && !order.isEmpty
+        search.isEmpty && !order.isEmpty && !isTruncated
     }
 
     var selectedCard: HistoryCard? {
@@ -83,6 +88,7 @@ final class StackEditorState {
                 }
                 let byID = Dictionary(uniqueKeysWithValues: page.map { ($0.id, $0) })
                 self.stack = card
+                self.totalMemberCount = ids.count
                 self.order = limited
                 self.members = limited.compactMap { byID[$0] }
                 self.loadError = nil

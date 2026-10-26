@@ -7496,6 +7496,86 @@
           }
         }
       }
+    },
+    "This stack is armed — ⌘V pastes the next member": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стек вооружён — ⌘V вставляет следующего участника"
+          }
+        }
+      }
+    },
+    "Put the first member on the clipboard and arm the stack (↩)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Положить первого участника в буфер и вооружить стек (↩)"
+          }
+        }
+      }
+    },
+    "Drop here to move the card to the end of the stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перетащите сюда, чтобы переместить карточку в конец стека"
+          }
+        }
+      }
+    },
+    "Paste stack armed — ⌘V advances; Esc stops": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стек вооружён — ⌘V листает дальше; Esc останавливает"
+          }
+        }
+      }
+    },
+    "Paste stack armed (%@) — ⌘V advances; Esc stops": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стек вооружён (%@) — ⌘V листает дальше; Esc останавливает"
+          }
+        }
+      }
+    },
+    "This stack is too large to reorder here.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Этот стек слишком большой, чтобы менять порядок здесь."
+          }
+        }
+      }
+    },
+    "Showing the first %lld — reorder is off for this size.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показаны первые %lld — для такого размера порядок не меняется."
+          }
+        }
+      }
+    },
+    "%lld of %lld members · reorder off": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld из %lld участников · порядок недоступен"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

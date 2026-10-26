@@ -141,10 +141,14 @@ private struct StackEditorView: View {
 
             if let progress = model.stackSession.progressLabel,
                model.stackSession.armedStackID == state.stackID {
-                Text(String(localized: "Armed \(progress)"))
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .padding(.leading, 6)
+                Label(String(localized: "Armed \(progress)"), systemImage: "bolt.fill")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color.orange.opacity(0.12), in: Capsule())
+                    .padding(.leading, 4)
+                    .floatingHelp(String(localized: "This stack is armed — ⌘V pastes the next member"))
             }
 
             Spacer(minLength: 8)
@@ -175,10 +179,14 @@ private struct StackEditorView: View {
             .accessibilityLabel(Text("Inspector"))
 
             Button { model.chooseStackFromEditor(paste: false) } label: {
-                ShortcutLabel(title: String(localized: "Choose Stack"), shortcut: "↩")
+                HStack(spacing: 6) {
+                    Image(systemName: "rectangle.stack")
+                    ShortcutLabel(title: String(localized: "Choose Stack"), shortcut: "↩")
+                }
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
+            .floatingHelp(String(localized: "Put the first member on the clipboard and arm the stack (↩)"))
         }
         .buttonStyle(.borderless)
         .labelStyle(.titleAndIcon)
@@ -205,19 +213,19 @@ private struct StackEditorView: View {
                     VStack(alignment: .leading, spacing: 4) {
                         dealOption(
                             String(localized: "In order"),
-                            systemImage: "list.number",
+                            systemImage: ActionRegistry.dealSymbol(mode: .sequential),
                             mode: .sequential,
                             help: String(localized: "Paste members in the order shown here")
                         )
                         dealOption(
                             String(localized: "Shuffle"),
-                            systemImage: "shuffle",
+                            systemImage: ActionRegistry.dealSymbol(mode: .shuffleBag),
                             mode: .shuffleBag,
                             help: String(localized: "Shuffle once at Choose, then paste through that order")
                         )
                         dealOption(
                             String(localized: "Random"),
-                            systemImage: "dice",
+                            systemImage: ActionRegistry.dealSymbol(mode: .shuffleRandom),
                             mode: .shuffleRandom,
                             help: String(localized: "Pick a random member each paste; never runs out")
                         )
@@ -232,12 +240,21 @@ private struct StackEditorView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         favoriteButton
                         Label(
-                            String(localized: "\(state.order.count) members"),
+                            String(localized: "\(state.totalMemberCount) members"),
                             systemImage: "square.stack.3d.up"
                         )
                         .font(.callout)
                         .foregroundStyle(.secondary)
                         .floatingHelp(String(localized: "How many cards are in this stack"))
+                        if state.isTruncated {
+                            Label(
+                                String(localized: "Showing the first \(state.order.count) — reorder is off for this size."),
+                                systemImage: "exclamationmark.triangle"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                        }
                         Label(
                             String(localized: "Add members by dropping cards onto this stack in the panel."),
                             systemImage: "hand.draw"
@@ -410,10 +427,18 @@ private struct StackEditorView: View {
             .floatingHelp(String(localized: "Open this card in the Record window (Space)"))
 
             Menu {
-                Button(String(localized: "Move to Top")) { model.moveStackEditorMember(card.id, toStart: true) }
-                Button(String(localized: "Move Up")) { model.moveStackEditorMember(card.id, by: -1) }
-                Button(String(localized: "Move Down")) { model.moveStackEditorMember(card.id, by: 1) }
-                Button(String(localized: "Move to Bottom")) { model.moveStackEditorMember(card.id, toStart: false) }
+                Button { model.moveStackEditorMember(card.id, toStart: true) } label: {
+                    Label(String(localized: "Move to Top"), systemImage: "arrow.up.to.line")
+                }
+                Button { model.moveStackEditorMember(card.id, by: -1) } label: {
+                    Label(String(localized: "Move Up"), systemImage: "arrow.up")
+                }
+                Button { model.moveStackEditorMember(card.id, by: 1) } label: {
+                    Label(String(localized: "Move Down"), systemImage: "arrow.down")
+                }
+                Button { model.moveStackEditorMember(card.id, toStart: false) } label: {
+                    Label(String(localized: "Move to Bottom"), systemImage: "arrow.down.to.line")
+                }
             } label: {
                 Label(String(localized: "Move in Stack"), systemImage: "arrow.up.arrow.down")
             }
@@ -473,7 +498,7 @@ private struct StackEditorView: View {
                                 memberCard(card, index: index, cardHeight: cardHeight)
                             }
                             if state.canReorder,
-                               let dragID = model.history.stackReorderDragID,
+                               let dragID = model.stackDrag.reorderDragID,
                                state.order.last != dragID {
                                 endSlot
                                     .frame(height: cardHeight)
@@ -499,18 +524,19 @@ private struct StackEditorView: View {
                     .strokeBorder(Color.accentColor, lineWidth: 3)
             }
             .overlay {
-                Text(String(localized: "End"))
+                Label(String(localized: "End"), systemImage: "arrow.down.to.line")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(Color.accentColor)
             }
             .accessibilityLabel(Text(String(localized: "Move to end of stack")))
+            .floatingHelp(String(localized: "Drop here to move the card to the end of the stack"))
     }
 
     @ViewBuilder
     private func memberCard(_ card: HistoryCard, index: Int, cardHeight: CGFloat) -> some View {
         let selected = state.selectedID == card.id
-        let dropTarget = model.history.stackReorderDropTargetID == card.id
-        let dragging = model.history.stackReorderDragID == card.id
+        let dropTarget = model.stackDrag.dropTargetID == card.id
+        let dragging = model.stackDrag.reorderDragID == card.id
         CardView(
             card: card,
             index: index,
@@ -536,12 +562,24 @@ private struct StackEditorView: View {
             delegate: StackEditorMemberDropDelegate(targetID: card.id, model: model)
         )
         .contextMenu {
-            Button(String(localized: "Edit Record")) { model.openRecord(card.id) }
-            Menu(String(localized: "Move in Stack")) {
-                Button(String(localized: "Move to Top")) { model.moveStackEditorMember(card.id, toStart: true) }
-                Button(String(localized: "Move Up")) { model.moveStackEditorMember(card.id, by: -1) }
-                Button(String(localized: "Move Down")) { model.moveStackEditorMember(card.id, by: 1) }
-                Button(String(localized: "Move to Bottom")) { model.moveStackEditorMember(card.id, toStart: false) }
+            Button { model.openRecord(card.id) } label: {
+                Label(String(localized: "Edit Record"), systemImage: "doc.richtext")
+            }
+            Menu {
+                Button { model.moveStackEditorMember(card.id, toStart: true) } label: {
+                    Label(String(localized: "Move to Top"), systemImage: "arrow.up.to.line")
+                }
+                Button { model.moveStackEditorMember(card.id, by: -1) } label: {
+                    Label(String(localized: "Move Up"), systemImage: "arrow.up")
+                }
+                Button { model.moveStackEditorMember(card.id, by: 1) } label: {
+                    Label(String(localized: "Move Down"), systemImage: "arrow.down")
+                }
+                Button { model.moveStackEditorMember(card.id, toStart: false) } label: {
+                    Label(String(localized: "Move to Bottom"), systemImage: "arrow.down.to.line")
+                }
+            } label: {
+                Label(String(localized: "Move in Stack"), systemImage: "arrow.up.arrow.down")
             }
             Divider()
             Button(String(localized: "Remove from Stack"), role: .destructive) {
@@ -552,7 +590,7 @@ private struct StackEditorView: View {
 
     private var statusBar: some View {
         HStack(spacing: 8) {
-            Text(statusText)
+            Label(statusText, systemImage: "square.stack.3d.up")
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer(minLength: 0)
@@ -566,8 +604,11 @@ private struct StackEditorView: View {
     }
 
     private var statusText: String {
-        let n = state.order.count
+        let n = state.totalMemberCount
         let visible = state.visibleMembers.count
+        if state.isTruncated {
+            return String(localized: "\(visible) of \(n) members · reorder off")
+        }
         if !state.search.isEmpty {
             return String(localized: "\(visible) of \(n) members")
         }

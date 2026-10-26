@@ -1246,7 +1246,7 @@ final class AppModel {
             beginCardDrag(id)
             return
         }
-        stackDrag.beginRecord(id, positionalReorder: true, history: history)
+        stackDrag.beginRecord(id, positionalReorder: true)
     }
 
     @discardableResult
@@ -1267,7 +1267,7 @@ final class AppModel {
     }
 
     func moveStackEditorMember(_ recordID: UUID, toStart: Bool? = nil, by delta: Int = 0) {
-        guard let state = stackEditor else { return }
+        guard let state = stackEditor, state.canReorder else { return }
         let order: [UUID]?
         if let toStart {
             order = state.moveMemberToEnd(recordID, toStart: toStart)
@@ -1541,49 +1541,17 @@ final class AppModel {
 
     // MARK: Card drag (StackDragSession SSOT — PLAN §3.11)
 
-    /// Begin dragging a history record. Positional reorder when the open playlist is unfiltered.
+    /// Begin dragging a history record (membership append — positional only via Stack Window).
     func beginCardDrag(_ id: UUID) {
-        let positional = history.canReorderStack
-        stackDrag.beginRecord(id, positionalReorder: positional, history: history)
+        stackDrag.beginRecord(id, positionalReorder: false)
     }
 
     func beginStackDrag(_ id: UUID) {
-        stackDrag.beginStack(id, history: history)
+        stackDrag.beginStack(id)
     }
 
     func endCardDrag() {
         stackDrag.end()
-    }
-
-    /// Insert before `targetID`, or at end when `atEnd`. Only while a positional session is live.
-    @discardableResult
-    func dropReorder(before targetID: UUID?, atEnd: Bool = false) -> Bool {
-        stackDrag.claimForDrop()
-        guard let stackID = history.scopedStackID,
-              history.canReorderStack,
-              stackDrag.isPositionalReorder,
-              let fromID = stackDrag.recordID else {
-            endCardDrag()
-            return false
-        }
-        defer { endCardDrag() }
-        var order = history.stackMemberOrder
-        guard let from = order.firstIndex(of: fromID) else { return false }
-        if atEnd {
-            if from == order.count - 1 { return true }
-            order.remove(at: from)
-            order.append(fromID)
-        } else {
-            guard let targetID, fromID != targetID,
-                  order.contains(targetID) else { return true }
-            if from + 1 == order.firstIndex(of: targetID) { return true }
-            order.remove(at: from)
-            guard let newTarget = order.firstIndex(of: targetID) else { return false }
-            order.insert(fromID, at: newTarget)
-        }
-        history.applyStackMemberOrder(order)
-        persistStackMemberOrder(stackID, recordIDs: order)
-        return true
     }
 
     /// Sidebar collection drop (record or stack card).
@@ -1605,17 +1573,14 @@ final class AppModel {
         return true
     }
 
-    /// Drop onto a stack *card*, or onto the open playlist grid (append non-members).
-    /// Priority: positional miss → no-op; already-member on open grid → no-op; else append / move-to-end.
+    /// Drop onto a stack *card* in the panel (append / toast if already a member).
     func dropDraggedCard(onStack stackID: UUID) -> Bool {
         stackDrag.claimForDrop()
         guard stackDrag.isFresh, let recordID = stackDrag.recordID else { return false }
-
-        if history.scopedStackID == stackID {
-            if stackDrag.isPositionalReorder || history.stackMemberOrder.contains(recordID) {
-                endCardDrag()
-                return true
-            }
+        // Positional reorder is Stack Window only — never treat a panel drop as reorder.
+        if stackDrag.isPositionalReorder {
+            endCardDrag()
+            return false
         }
 
         endCardDrag()
@@ -1671,12 +1636,13 @@ final class AppModel {
         }
     }
 
-    /// Persist UI order after optimistic `applyStackMemberOrder`. No full reload — page already matches.
-    func setStackMemberOrder(_ stackID: UUID, recordIDs: [UUID]) {
-        persistStackMemberOrder(stackID, recordIDs: recordIDs)
-    }
-
     private func persistStackMemberOrder(_ stackID: UUID, recordIDs: [UUID]) {
+        // Never write a truncated editor prefix as the full playlist (PLAN §3.11).
+        if let editor = stackEditor, editor.stackID == stackID, editor.isTruncated {
+            toasts.error(String(localized: "This stack is too large to reorder here."))
+            reloadStackEditorIfNeeded()
+            return
+        }
         Task {
             do {
                 try await store.setStackMembers(stackID, recordIDs: recordIDs)

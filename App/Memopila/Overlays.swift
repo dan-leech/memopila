@@ -159,10 +159,13 @@ struct RecordView: View {
             .accessibilityLabel(Text("Inspector"))
             // ↩ and ⌘↩ come through the window's key handler: ↩ must stay a new line while typing.
             Button { model.copyItem() } label: {
-                ShortcutLabel(
-                    title: state.isDirty ? String(localized: "Save and Choose") : String(localized: "Choose for Clipboard"),
-                    shortcut: state.isDirty || state.isEditingText ? "⌘↩" : "↩"
-                )
+                HStack(spacing: 6) {
+                    Image(systemName: state.isDirty ? "square.and.arrow.down" : "doc.on.clipboard")
+                    ShortcutLabel(
+                        title: state.isDirty ? String(localized: "Save and Choose") : String(localized: "Choose for Clipboard"),
+                        shortcut: state.isDirty || state.isEditingText ? "⌘↩" : "↩"
+                    )
+                }
             }
             .buttonStyle(.borderedProminent)
             .disabled(state.isDirty && cannotSaveReason != nil)
@@ -190,10 +193,14 @@ struct RecordView: View {
             .frame(minWidth: 44)
             .floatingHelp(String(localized: "Zoom level: at 100, one image pixel is one screen pixel"))
         ToolbarIcon(systemImage: "plus.magnifyingglass", help: String(localized: "Zoom In (⌘+)")) { zoom.zoom(by: 1.25) }
-        Button("Fit") { zoom.fit() }
-            .floatingHelp(String(localized: "Fit the image in the window (⌘0)"))
-        Button("Actual Size") { zoom.actualSize() }
-            .floatingHelp(String(localized: "One image pixel per screen pixel"))
+        ToolbarIcon(
+            systemImage: "arrow.up.left.and.arrow.down.right",
+            help: String(localized: "Fit the image in the window (⌘0)")
+        ) { zoom.fit() }
+        ToolbarIcon(
+            systemImage: "1.magnifyingglass",
+            help: String(localized: "One image pixel per screen pixel")
+        ) { zoom.actualSize() }
         // Preview's own icon right next to the words: one button, not an icon and a label apart.
         Button { model.openInPreview(state.id) } label: {
             HStack(spacing: 4) {
@@ -245,9 +252,11 @@ struct RecordView: View {
                 Section(groups[index].0) {
                     ForEach(groups[index].1, id: \.self) { action in
                         let isAvailable = state.availableActions.contains(action)
-                        Button(action.title) { state.apply(action) }
-                            .disabled(!isAvailable)
-                            .floatingHelp(isAvailable ? String(localized: "Applies to \(scope)") : action.unavailableReason)
+                        Button { state.apply(action) } label: {
+                            Label(action.title, systemImage: action.systemImage)
+                        }
+                        .disabled(!isAvailable)
+                        .floatingHelp(isAvailable ? String(localized: "Applies to \(scope)") : action.unavailableReason)
                     }
                 }
             }
@@ -280,7 +289,8 @@ struct RecordView: View {
                         if let image {
                             ZoomableImage(image: image, zoom: state.imageZoom)
                         } else if imageFailed {
-                            Text("The image could not be shown.").foregroundStyle(.secondary)
+                            Label("The image could not be shown.", systemImage: "photo.badge.exclamationmark")
+                                .foregroundStyle(.orange)
                         } else {
                             ProgressView().controlSize(.small)
                         }
@@ -393,7 +403,7 @@ struct RecordView: View {
     private var inspector: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                inspectorSection(String(localized: "Title")) {
+                inspectorSection(String(localized: "Title"), systemImage: "textformat") {
                     // Saved when the field is left or ↩ is pressed; no Save needed.
                     TextField("Title", text: $state.title, prompt: Text("Shown on the card"))
                         .textFieldStyle(.roundedBorder)
@@ -410,15 +420,18 @@ struct RecordView: View {
                         .floatingHelp(String(localized: "Shown on the card and found by search; saved when you leave the field"))
                 }
                 Divider()
-                inspectorSection(String(localized: "Source")) { source }
+                inspectorSection(String(localized: "Source"), systemImage: "app.badge") { source }
                 Divider()
-                inspectorSection(String(localized: "Collections")) { collections }
+                inspectorSection(String(localized: "Collections"), systemImage: "folder") { collections }
                 if let details {
                     Divider()
                     DisclosureGroup(isExpanded: $showsDetails) {
                         metadata(details).padding(.top, 6)
                     } label: {
-                        Text("Details").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        Label("Details", systemImage: "info.circle")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .labelStyle(.titleAndIcon)
                     }
                     .floatingHelp(String(localized: "When it was copied, how often, its size and formats"))
                 }
@@ -429,9 +442,16 @@ struct RecordView: View {
         .background(Color.primary.opacity(0.025))
     }
 
-    private func inspectorSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    private func inspectorSection<Content: View>(
+        _ title: String,
+        systemImage: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Label(title, systemImage: systemImage)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .labelStyle(.titleAndIcon)
             content()
         }
     }
@@ -459,7 +479,9 @@ struct RecordView: View {
                 .floatingHelp(String(localized: "Click to open, Option-click to copy the link"))
             }
             if let title = details?.sourceWindowTitle {
-                Text(String(localized: "Window: “\(title)”")).foregroundStyle(.secondary).lineLimit(2)
+                Label(String(localized: "Window: “\(title)”"), systemImage: "macwindow")
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
         }
         .font(.callout)
@@ -473,7 +495,8 @@ struct RecordView: View {
         let recordID = state.id
         return VStack(alignment: .leading, spacing: 6) {
             if members.isEmpty {
-                Text("In no collection").foregroundStyle(.secondary)
+                Label("In no collection", systemImage: "folder.badge.questionmark")
+                    .foregroundStyle(.secondary)
             }
             ForEach(history.collections.filter { members.contains($0.id) }) { collection in
                 let collectionID = collection.id
@@ -545,7 +568,10 @@ struct RecordView: View {
             .pickerStyle(.inline)
             .labelsHidden()
         } label: {
-            Text(state.highlightedLanguage?.displayName ?? String(localized: "Plain Text"))
+            Label(
+                state.highlightedLanguage?.displayName ?? String(localized: "Plain Text"),
+                systemImage: "text.alignleft"
+            )
         }
         .menuStyle(.button)
         .buttonStyle(.borderless)
@@ -578,9 +604,8 @@ struct RecordView: View {
                 .floatingHelp(isOpen ? String(localized: "Hide the text") : String(localized: "Show the text"))
                 Label("Text in Image", systemImage: "text.viewfinder")
                     .font(.callout.weight(.semibold))
-                Text(recognitionSummary)
+                recognitionSummaryLabel
                     .font(.caption)
-                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                 Spacer(minLength: 8)
                 recognitionActions(text)
@@ -609,32 +634,53 @@ struct RecordView: View {
         .background(.bar)
     }
 
-    private var recognitionSummary: String {
-        guard let details else { return "" }
-        switch details.recognitionState {
-        case .done:
-            let lines = TextStats.lineCount(details.recognizedText ?? "")
-            return lines > 1 ? String(localized: "\(lines) lines") : ""
-        case .pending: return String(localized: "Recognizing…")
-        case .noText: return String(localized: "No text found")
-        case .failed: return String(localized: "Could not be recognized")
-        case .off: return String(localized: "Off for this app")
+    @ViewBuilder
+    private var recognitionSummaryLabel: some View {
+        if let details {
+            switch details.recognitionState {
+            case .done:
+                let lines = TextStats.lineCount(details.recognizedText ?? "")
+                if lines > 1 {
+                    Text(String(localized: "\(lines) lines")).foregroundStyle(.secondary)
+                }
+            case .pending:
+                Text(String(localized: "Recognizing…")).foregroundStyle(.secondary)
+            case .noText:
+                Label(String(localized: "No text found"), systemImage: "text.badge.xmark")
+                    .foregroundStyle(.secondary)
+            case .failed:
+                Label(String(localized: "Could not be recognized"), systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+            case .off:
+                Label(String(localized: "Off for this app"), systemImage: "eye.slash")
+                    .foregroundStyle(.orange)
+            }
         }
     }
 
     @ViewBuilder
     private func recognitionActions(_ text: String?) -> some View {
         if let text {
-            Button(state.recognizedText.hasSelection ? String(localized: "Copy Selected Text") : String(localized: "Copy All Text")) {
+            Button {
                 model.copyNewText(state.recognizedText.selectedOrAll ?? text, from: state.id)
+            } label: {
+                Label(
+                    state.recognizedText.hasSelection
+                        ? String(localized: "Copy Selected Text")
+                        : String(localized: "Copy All Text"),
+                    systemImage: "doc.on.doc"
+                )
             }
             .floatingHelp(String(localized: "The text goes to the clipboard and appears in history as a new item"))
         } else if details?.recognitionState == .pending {
             ProgressView().controlSize(.mini)
         } else if details?.recognitionState == .off, let bundleID = card.sourceAppBundleID {
             let name = card.sourceAppName ?? bundleID
-            Button("Recognize Text") { model.setRecognition(true, for: bundleID, name: name) }
-                .floatingHelp(String(localized: "Recognize text in images from \(name), on this Mac"))
+            Button { model.setRecognition(true, for: bundleID, name: name) } label: {
+                Label("Recognize Text", systemImage: "text.viewfinder")
+            }
+            .foregroundStyle(.orange)
+            .floatingHelp(String(localized: "Recognize text in images from \(name), on this Mac"))
         }
     }
 
@@ -708,15 +754,21 @@ struct RecordView: View {
                     .floatingHelp(String(localized: "This item has rich text; saving keeps the plain text only."))
             }
             if let error = state.error {
-                Text(error).font(.caption).foregroundStyle(.red).lineLimit(1)
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .lineLimit(1)
             }
             Spacer(minLength: 8)
             if state.hasText {
                 if let bytes = state.byteCount, state.isNearSizeLimit {
-                    Text(String(localized: "\(ByteCount.string(bytes)) of \(ByteCount.string(state.maxBytes))"))
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(state.isOverSizeLimit ? Color.red : Color.orange)
-                        .floatingHelp(String(localized: "Size of the text against the “Largest item” limit (Settings → Apps → All Apps)"))
+                    Label(
+                        String(localized: "\(ByteCount.string(bytes)) of \(ByteCount.string(state.maxBytes))"),
+                        systemImage: "exclamationmark.circle"
+                    )
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(state.isOverSizeLimit ? Color.red : Color.orange)
+                    .floatingHelp(String(localized: "Size of the text against the “Largest item” limit (Settings → Apps → All Apps)"))
                 }
                 Text(stats).font(.caption).monospacedDigit().foregroundStyle(.secondary).lineLimit(1)
                 if card.displayType != .url, !state.isRich { languageMenu }
@@ -728,10 +780,14 @@ struct RecordView: View {
                     .foregroundStyle(.secondary)
             }
             if state.isDirty {
-                Button("Changes…") { state.showsChanges = true }
-                    .floatingHelp(String(localized: "Compare the edited text with the saved text, line by line"))
-                Button("Revert") { state.revert() }
-                    .floatingHelp(String(localized: "Go back to the saved text (⌘Z undoes this)"))
+                Button { state.showsChanges = true } label: {
+                    Label("Changes…", systemImage: "arrow.left.arrow.right")
+                }
+                .floatingHelp(String(localized: "Compare the edited text with the saved text, line by line"))
+                Button { state.revert() } label: {
+                    Label("Revert", systemImage: "arrow.uturn.backward")
+                }
+                .floatingHelp(String(localized: "Go back to the saved text (⌘Z undoes this)"))
                 Button { model.saveItem() } label: { ShortcutLabel(title: String(localized: "Save"), shortcut: "⌘S") }
                     .buttonStyle(.borderedProminent)
                     .disabled(cannotSaveReason != nil)
@@ -868,21 +924,23 @@ private struct FilePreview: View {
                     if let path = previewPath { QuickLookView(url: URL(fileURLWithPath: path)) }
                 case .denied:
                     // Quick Look would only log sandbox errors and show nothing (first-run test).
-                    unavailable {
+                    unavailable(systemImage: "lock.fill") {
                         Text("Memopila may not read this folder.").font(.callout).foregroundStyle(.orange)
-                        Button("Allow in System Settings…") {
+                        Button {
                             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_FilesAndFolders") {
                                 External.open(url)
                             }
+                        } label: {
+                            Label("Allow in System Settings…", systemImage: "gearshape")
                         }
                         .floatingHelp(String(localized: "Privacy & Security → Files and Folders: let Memopila read this folder, then open the record again"))
                     }
                 case .missing:
-                    unavailable {
+                    unavailable(systemImage: "questionmark.folder") {
                         Text("Unavailable: the file was moved or deleted.").font(.callout).foregroundStyle(.orange)
                     }
                 case .unreachable:
-                    unavailable {
+                    unavailable(systemImage: "externaldrive.badge.exclamationmark") {
                         Text("The volume with this file does not answer.").font(.callout).foregroundStyle(.orange)
                     }
                 case nil:
@@ -901,16 +959,23 @@ private struct FilePreview: View {
                         Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 8)
-                    Button("Reveal in Finder") {
+                    Button {
                         // Network files are left to Finder: checking them could block (review finding).
                         let urls = card.filePaths
                             .filter { !FileVolumes.isLocal($0) || FileManager.default.fileExists(atPath: $0) }
                             .map { URL(fileURLWithPath: $0) }
                         External.reveal(urls)
+                    } label: {
+                        Label("Reveal in Finder", systemImage: "folder")
                     }
                     .disabled(status?.allMissing ?? false)
-                    Button(card.filePaths.count > 1 ? String(localized: "Copy Paths") : String(localized: "Copy Path")) {
+                    Button {
                         copyPath(card.filePaths.joined(separator: "\n"))
+                    } label: {
+                        Label(
+                            card.filePaths.count > 1 ? String(localized: "Copy Paths") : String(localized: "Copy Path"),
+                            systemImage: "doc.on.clipboard"
+                        )
                     }
                     .floatingHelp(card.filePaths.count > 1
                         ? String(localized: "Copy the full paths, one per line, to the clipboard")
@@ -930,13 +995,18 @@ private struct FilePreview: View {
         }
     }
 
-    /// The stored thumbnail, or a document icon, over what to do about the file.
-    private func unavailable<Message: View>(@ViewBuilder _ message: () -> Message) -> some View {
+    /// The stored thumbnail, or a state symbol, over what to do about the file.
+    private func unavailable<Message: View>(
+        systemImage: String = "doc",
+        @ViewBuilder _ message: () -> Message
+    ) -> some View {
         VStack(spacing: 10) {
             if let image {
                 Image(nsImage: image).resizable().scaledToFit().frame(maxWidth: 240, maxHeight: 180)
             } else {
-                Image(systemName: "doc").font(.system(size: 48)).foregroundStyle(.secondary)
+                Image(systemName: systemImage)
+                    .font(.system(size: 48))
+                    .foregroundStyle(.orange)
             }
             message()
         }
@@ -1412,7 +1482,9 @@ struct ActionsPanel: View {
     }
 
     private func rowSymbol(for item: ActionItem) -> String {
-        if item.isChecked != nil { return item.systemImage ?? "checkmark.circle" }
-        return item.systemImage ?? "circle.dashed"
+        // Checked rows already show a trailing ✓ — never invent a second checkmark.
+        if let systemImage = item.systemImage { return systemImage }
+        if item.isChecked != nil { return "circle" }
+        return "circle.dashed"
     }
 }

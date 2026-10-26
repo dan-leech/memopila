@@ -137,13 +137,11 @@ struct CardView: View {
         }
     }
 
-    /// Full-playlist position in the Stack Window (or legacy panel scope).
+    /// Full-playlist position in the Stack Window only (PLAN §3.11).
     @ViewBuilder
     private var stackPositionBadge: some View {
-        let position = model.stackEditor?.position(of: card.id)
-            ?? model.history.stackPosition(of: card.id)
-        if let position {
-            let showGrip = model.stackEditor?.canReorder == true || model.history.isReorderingStack
+        if let position = model.stackEditor?.position(of: card.id) {
+            let showGrip = model.stackEditor?.canReorder == true
             HStack(spacing: 2) {
                 if showGrip {
                     Image(systemName: "line.3.horizontal")
@@ -433,13 +431,19 @@ struct CardView: View {
             Image(systemName: "heart.fill").foregroundStyle(.pink).floatingHelp(String(localized: "Favorite"))
         }
         if card.isEdited {
-            Image(systemName: "pencil").floatingHelp(String(localized: "Edited"))
+            Image(systemName: "pencil")
+                .foregroundStyle(.orange)
+                .floatingHelp(String(localized: "Edited"))
         }
         if card.hasRecognizedText {
-            Image(systemName: "text.viewfinder").floatingHelp(String(localized: "Text found in this image"))
+            Image(systemName: "text.viewfinder")
+                .foregroundStyle(.secondary)
+                .floatingHelp(String(localized: "Text found in this image"))
         }
         if let expires = card.expiresAt, expires.timeIntervalSinceNow < 3_600 {
-            Image(systemName: "clock").floatingHelp(String(localized: "Deleted \(expires.formatted(.relative(presentation: .named)))"))
+            Image(systemName: "clock")
+                .foregroundStyle(.orange)
+                .floatingHelp(String(localized: "Deleted \(expires.formatted(.relative(presentation: .named)))"))
         }
     }
 
@@ -540,16 +544,21 @@ struct CurrentCardView: View {
             HStack(spacing: 6) {
                 if current.allowsSaveAnyway {
                     let saveBusy = model.monitor.isSavingAnyway || model.monitor.isBusy
-                    Button("Save Anyway") { model.monitor.saveCurrentAnyway() }
-                        .disabled(saveBusy)
-                        .floatingHelp(saveBusy
-                            ? String(localized: "Saving…")
-                            : String(localized: "Save this copy into history anyway"))
+                    Button { model.monitor.saveCurrentAnyway() } label: {
+                        Label("Save Anyway", systemImage: "tray.and.arrow.down")
+                    }
+                    .disabled(saveBusy)
+                    .floatingHelp(saveBusy
+                        ? String(localized: "Saving…")
+                        : String(localized: "Save this copy into history anyway"))
                 }
                 Menu {
                     ActionMenuItems(items: ActionRegistry.currentCardActions(current, model: model))
                 } label: {
-                    Text(current.change.identity.bundleID.map { AppInfo.displayName(for: $0) } ?? String(localized: "App"))
+                    Label(
+                        current.change.identity.bundleID.map { AppInfo.displayName(for: $0) } ?? String(localized: "App"),
+                        systemImage: "slider.horizontal.3"
+                    )
                 }
                 .menuStyle(.button)
                 .buttonStyle(.borderless)
@@ -559,8 +568,10 @@ struct CurrentCardView: View {
                     ? String(localized: "The app that copied this is unknown")
                     : String(localized: "Rules and settings for this app"))
                 Spacer()
-                Button("Dismiss") { model.monitor.dismissCurrent() }
-                    .floatingHelp(String(localized: "Hide this card"))
+                Button { model.monitor.dismissCurrent() } label: {
+                    Label("Dismiss", systemImage: "xmark")
+                }
+                .floatingHelp(String(localized: "Hide this card"))
             }
             .controlSize(.small)
         }
@@ -642,7 +653,9 @@ struct ConcealedCardView: View {
             withAnimation(.easeOut(duration: 0.12)) { isHovered = hovering }
         }
         .contextMenu {
-            Button("Clear Clipboard") { model.monitor.clearConcealed() }
+            Button { model.monitor.clearConcealed() } label: {
+                Label("Clear Clipboard", systemImage: "trash")
+            }
         }
         .floatingHelp(String(localized: "A password is on the clipboard. Memopila never reads, saves or shows it."))
         .accessibilityElement(children: .contain)

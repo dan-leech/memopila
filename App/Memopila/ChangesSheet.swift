@@ -16,7 +16,9 @@ struct ChangesSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Text("Changes").font(.headline)
+                Label("Changes", systemImage: "arrow.left.arrow.right")
+                    .font(.headline)
+                    .labelStyle(.titleAndIcon)
                 if let diff, !diff.isEmpty {
                     HStack(spacing: 6) {
                         Text(verbatim: "+\(diff.added)").foregroundStyle(.green)

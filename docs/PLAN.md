@@ -575,7 +575,9 @@ Reusable **playlists** of linked `ClipboardRecord`s (not ephemeral collect-on-co
 
 **Deal modes:** `sequential` | `shuffleBag` | `shuffleRandom`. Separate `loops` (on only for sequential / shuffleBag). Random never exhausts while `n ≥ 1`; `loops` disabled for Random. UI order is drag-edited; shuffle builds a **session** queue only (`DealEngine`).
 
-**Choose** always resets the deal, writes the first/current member, arms the session, bumps `StackModel.lastUsedAt` (not member `markUsed`). Each **⌘V** (keyCode of Latin “v”, ⌘ only, keyUp + delay) while armed and not `memopilaUIKey` advances after paste. Auto-paste / ⌥↩ advances once via the same path. Menu/toolbar Paste and Secure Event Input do not advance. **Exhausted** (bag modes, Loop off, last member pasted): disarm and **clear the clipboard** (owned write + suppression token) so further ⌘V does not keep pasting the last member; toast *Stack finished*. **Stop:** session Carbon Escape when not `memopilaUIKey`, or status-item Stop; disarm on sleep, external pasteboard change, Choose elsewhere (clipboard kept).
+**Choose** always resets the deal, writes the first/current member, arms the session, bumps `StackModel.lastUsedAt` (not member `markUsed`). Each **⌘V** (keyCode of Latin “v”, ⌘ only, keyUp + delay) while armed and not `memopilaUIKey` advances after paste. Auto-paste / ⌥↩ advances once via the same path. Menu/toolbar Paste and Secure Event Input do not advance. **Exhausted** (bag modes, Loop off, last member pasted): disarm and **clear the clipboard** (owned write + suppression token) so further ⌘V does not keep pasting the last member; toast *Stack finished*. Same clear when rebuild/retarget finds **no members left**. **Stop:** session Carbon Escape when not `memopilaUIKey`, or status-item Stop; disarm on sleep, external pasteboard change, Choose elsewhere (clipboard kept).
+
+**Stack Window load cap:** the editor may show only the first *N* members for performance; when truncated, reorder/Move are off and the capped list must **never** be written back via `setStackMembers` (that API replaces the full playlist).
 
 **`memopilaUIKey`:** `panel.isKey` ∨ secondary window key ∨ (`NSApp.isActive` ∧ keyWindow) — not frontmost alone (nonactivating panel).
 
@@ -583,9 +585,9 @@ Reusable **playlists** of linked `ClipboardRecord`s (not ephemeral collect-on-co
 
 **Grid:** `HistoryEntry = record | stack`; paging keeps record offsets separate; stacks merge-sorted by `lastUsedAt`; ⌘1…9 indexes `entries`. Armed bag badge `k/n` with `k = dealt+1`, `n = dealt+remaining+1`.
 
-**Stack Window (edit):** *Edit Stack…* (hover / menu / Space / ⌘E on a stack card; after New Stack) opens a floating window like Edit Record — replaces the panel. Same **CardView** grid as History; right **inspector** (⌥⌘I) holds title, Deal, Loop, Favorite, selected-member actions, Delete. Append members by dropping onto the **stack card** in the panel (window hides the panel). `HistoryScope.stack` remains a **store query** only. Choose in the window arms then closes without returning the panel unless pinned.
+**Stack Window (edit):** *Edit Stack…* (hover / menu / Space / ⌘E on a stack card; after New Stack) opens a floating window like Edit Record — replaces the panel. Same **CardView** grid as History; right **inspector** (⌥⌘I) holds title, Deal, Loop, Favorite, selected-member actions, Delete. Append members by dropping onto the **stack card** in the panel (window hides the panel). `HistoryScope.stack` remains a **store query** only (no panel drill-down / no panel member reorder). Choose in the window arms then closes without returning the panel unless pinned.
 
-**Drag contract (SSOT `StackDragSession`, host = Stack Window):** When the editor search is clear and the playlist is non-empty, dragging a member is **positional** (insert before / trailing **End**). Move Top/Up/Down/Bottom always use full order even while filtered. Panel grid has no stack-member reorder.
+**Drag contract (SSOT `StackDragSession`, host = Stack Window):** Reorder chrome (`reorderDragID` / `dropTargetID`) lives on the session, not `HistoryModel`. When the editor can reorder, dragging a member is **positional** (insert before / trailing **End**). Panel record drags are **membership** only. Move Top/Up/Down/Bottom use editor order and refuse when truncated.
 
 **Tests:** `DealEngine` matrix (empty, n=1, sequential±loop, bag±loop, random, rebuild); retention/Clear/`ids` pin; cascade `StackMember` on record delete; stack-scope page order / empty / filter.
 

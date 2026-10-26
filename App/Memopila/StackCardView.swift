@@ -203,6 +203,14 @@ struct StackCardView: View {
                 Text(String(localized: "\(stack.memberCount) items"))
                     .lineLimit(1)
                 Text("·").foregroundStyle(.tertiary)
+                Image(systemName: ActionRegistry.dealSymbol(mode: stack.dealMode))
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                if stack.loops, stack.dealMode != .shuffleRandom {
+                    Image(systemName: "repeat")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                }
                 Text(ActionRegistry.dealState(mode: stack.dealMode, loops: stack.loops))
                     .lineLimit(1)
                 Spacer(minLength: 2)
@@ -212,9 +220,10 @@ struct StackCardView: View {
                         .foregroundStyle(.pink)
                 }
                 if isArmed {
-                    Text(String(localized: "Armed"))
+                    Label(String(localized: "Armed"), systemImage: "bolt.fill")
                         .font(.system(size: 10.5, weight: .semibold))
                         .foregroundStyle(.orange)
+                        .labelStyle(.titleAndIcon)
                 }
             }
         }

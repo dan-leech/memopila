@@ -54,9 +54,19 @@ final class StackSessionController {
             model.toasts.show(String(localized: "This stack is empty."))
             return
         }
-        let card = try? await model.store.stack(stackID)
-        let dealMode = card?.dealMode ?? .sequential
-        let loops = card?.loops ?? false
+        // Prefer the open editor’s optimistic Deal/Loop over a store read that may lag the last write.
+        let dealMode: StackDealMode
+        let loops: Bool
+        if let editor = model.stackEditor, editor.stackID == stackID {
+            dealMode = editor.stack.dealMode
+            loops = editor.stack.loops
+        } else if let card = try? await model.store.stack(stackID) {
+            dealMode = card.dealMode
+            loops = card.loops
+        } else {
+            dealMode = .sequential
+            loops = false
+        }
         guard let started = DealEngine.startRound(
             stackID: stackID, uiOrder: members, dealMode: dealMode, loops: loops
         ) else { return }
@@ -125,7 +135,9 @@ final class StackSessionController {
                 guard self.generationOK(generation),
                       let current = self.session, current.stackID == stackID else { return }
                 guard let rebuilt = DealEngine.rebuild(current, uiOrder: members) else {
+                    // Same clipboard policy as exhaust: nothing left to paste.
                     self.disarmInternal(toast: false)
+                    model.monitor.clearOwnedClipboard()
                     model.toasts.show(String(localized: "Stack stopped — no members left."))
                     return
                 }
@@ -156,6 +168,7 @@ final class StackSessionController {
                     current, uiOrder: members, dealMode: dealMode, loops: loops
                 ) else {
                     self.disarmInternal(toast: false)
+                    model.monitor.clearOwnedClipboard()
                     model.toasts.show(String(localized: "Stack stopped — no members left."))
                     return
                 }

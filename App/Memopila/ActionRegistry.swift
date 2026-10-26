@@ -229,16 +229,19 @@ enum ActionRegistry {
             ActionItem(
                 id: "stack.deal.sequential",
                 title: String(localized: "In order"),
+                systemImage: dealSymbol(mode: .sequential),
                 isChecked: stack.dealMode == .sequential
             ) { model.setStackDeal(id, mode: .sequential, loops: stack.loops) },
             ActionItem(
                 id: "stack.deal.shuffle",
                 title: String(localized: "Shuffle"),
+                systemImage: dealSymbol(mode: .shuffleBag),
                 isChecked: stack.dealMode == .shuffleBag
             ) { model.setStackDeal(id, mode: .shuffleBag, loops: stack.loops) },
             ActionItem(
                 id: "stack.deal.random",
                 title: String(localized: "Random"),
+                systemImage: dealSymbol(mode: .shuffleRandom),
                 isChecked: stack.dealMode == .shuffleRandom
             ) { model.setStackDeal(id, mode: .shuffleRandom, loops: false) },
             .divider("stack.loop"),
@@ -247,6 +250,7 @@ enum ActionRegistry {
             children.append(ActionItem(
                 id: "stack.loop",
                 title: String(localized: "Loop"),
+                systemImage: "repeat",
                 disabledReason: String(localized: "Not available for Random"),
                 isChecked: false
             ))
@@ -254,6 +258,7 @@ enum ActionRegistry {
             children.append(ActionItem(
                 id: "stack.loop",
                 title: String(localized: "Loop"),
+                systemImage: "repeat",
                 isChecked: stack.loops
             ) { model.setStackDeal(id, mode: stack.dealMode, loops: !stack.loops) })
         }
@@ -263,6 +268,15 @@ enum ActionRegistry {
             systemImage: "arrow.triangle.2.circlepath",
             children: children
         )
+    }
+
+    /// SF Symbol for a deal mode — same glyphs as Stack Window inspector / stack card footer.
+    static func dealSymbol(mode: StackDealMode) -> String {
+        switch mode {
+        case .sequential: "list.number"
+        case .shuffleBag: "shuffle"
+        case .shuffleRandom: "dice"
+        }
     }
 
     /// Compact parent cue: noun alone when empty; `Noun · state` otherwise (never a name list).
@@ -314,6 +328,7 @@ enum ActionRegistry {
             return ActionItem(
                 id: "textAction." + action.rawValue,
                 title: action.title,
+                systemImage: action.systemImage,
                 disabledReason: available ? nil : action.unavailableReason
             ) { run(action) }
         }
@@ -475,6 +490,7 @@ enum ActionRegistry {
         items.append(ActionItem(
             id: "app.recognize",
             title: String(localized: "Recognize Text in Images from \(name)"),
+            systemImage: "text.viewfinder",
             isChecked: settings.recognizeText
         ) { model.setRecognition(!settings.recognizeText, for: bundleID, name: name) })
         if let recordID {
@@ -518,7 +534,12 @@ enum ActionRegistry {
 
     static func currentCardActions(_ current: CurrentClipboard, model: AppModel) -> [ActionItem] {
         guard let bundleID = current.change.identity.bundleID else {
-            return [ActionItem(id: "app", title: String(localized: "App"), disabledReason: String(localized: "App unknown"))]
+            return [ActionItem(
+                id: "app",
+                title: String(localized: "App"),
+                systemImage: "questionmark.app",
+                disabledReason: String(localized: "App unknown")
+            )]
         }
         let name = AppInfo.displayName(for: bundleID)
         var items: [ActionItem] = []
@@ -526,6 +547,7 @@ enum ActionRegistry {
             items.append(ActionItem(
                 id: "current.keep",
                 title: String(localized: "Keep Formats from \(name)"),
+                systemImage: "plus.circle",
                 children: current.change.declaredTypes.map { type in
                     ActionItem(id: "current.keep." + type.rawValue, title: FormatNames.name(type.rawValue)) {
                         model.addFormatRule(FormatRule(appBundleID: bundleID, typePattern: type.rawValue, action: .keep), app: name)
@@ -536,10 +558,18 @@ enum ActionRegistry {
         if current.isTooLarge {
             items.append(raiseLimitMenu(bundleID: bundleID, name: name, model: model))
         }
-        items.append(ActionItem(id: "current.dontSave", title: String(localized: "Don't Save from \(name)")) {
+        items.append(ActionItem(
+            id: "current.dontSave",
+            title: String(localized: "Don't Save from \(name)"),
+            systemImage: "hand.raised"
+        ) {
             model.setCaptureMode(.dontSave, for: bundleID)
         })
-        items.append(ActionItem(id: "current.settings", title: String(localized: "\(name) Settings…")) {
+        items.append(ActionItem(
+            id: "current.settings",
+            title: String(localized: "\(name) Settings…"),
+            systemImage: "gearshape"
+        ) {
             model.openSettings(.apps, app: bundleID)
         })
         return items
@@ -566,7 +596,7 @@ struct ActionMenuItems: View {
                     get: { item.isChecked == true },
                     set: { _ in item.run?() }
                 )) {
-                    Text(item.title)
+                    label(for: item)
                 }
                 .disabled(!item.isEnabled)
                 .floatingHelp(item.disabledReason ?? "")
@@ -677,6 +707,23 @@ extension TextAction {
         case .urlDecode: String(localized: "URL-Decode")
         case .base64Encode: String(localized: "Base64 Encode")
         case .base64Decode: String(localized: "Base64 Decode")
+        }
+    }
+
+    /// One symbol per action — Duplicate As, Transform, and ⌘K share it.
+    var systemImage: String {
+        switch self {
+        case .trimWhitespace: "delete.left"
+        case .removeLineBreaks: "text.append"
+        case .uppercase: "textformat.size.larger"
+        case .lowercase: "textformat.size.smaller"
+        case .titleCase: "textformat.abc.dottedunderline"
+        case .sortLines: "arrow.up.arrow.down"
+        case .removeDuplicateLines: "square.on.square"
+        case .formatJSON: "curlybraces"
+        case .minifyJSON: "curlybraces.square"
+        case .urlEncode, .urlDecode: "link"
+        case .base64Encode, .base64Decode: "number"
         }
     }
 

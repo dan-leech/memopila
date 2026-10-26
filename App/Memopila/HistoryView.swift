@@ -107,56 +107,86 @@ private struct PanelMenu: View {
     var body: some View {
         let monitor = model.monitor
         if monitor.isPaused {
-            Button("Resume Capture") { monitor.resume() }
-                .keyboardShortcut(".")
+            Button { monitor.resume() } label: {
+                Label("Resume Capture", systemImage: "play.fill")
+            }
+            .keyboardShortcut(".")
         } else {
-            Menu("Pause Capture") {
+            Menu {
                 Button("5 Minutes") { monitor.pause(minutes: 5) }
                 Button("15 Minutes") { monitor.pause(minutes: 15) }
                 Button("1 Hour") { monitor.pause(minutes: 60) }
                 Button("Until I Resume") { monitor.pauseIndefinitely() }
                     .keyboardShortcut(".")
+            } label: {
+                Label("Pause Capture", systemImage: "pause.fill")
             }
         }
         if monitor.skipArmed {
-            Button("Cancel Skip") { monitor.toggleSkip() }
+            Button { monitor.toggleSkip() } label: {
+                Label("Cancel Skip", systemImage: "forward.end.circle")
+            }
         } else {
-            Button("Skip Next Copy") { monitor.toggleSkip() }
+            Button { monitor.toggleSkip() } label: {
+                Label("Skip Next Copy", systemImage: "forward.end")
+            }
         }
         // Filtered or searched: everything the panel shows now; else all of history.
         if model.history.isFiltered || !model.history.search.isEmpty {
-            Button(String(localized: "Delete \(model.history.totalCount) Shown…")) { model.deleteAllShown() }
-                .disabled(monitor.isBusy || model.history.totalCount == 0)
+            Button { model.deleteAllShown() } label: {
+                Label(String(localized: "Delete \(model.history.totalCount) Shown…"), systemImage: "trash")
+            }
+            .disabled(monitor.isBusy || model.history.totalCount == 0)
         }
-        Button("Clear History…") { model.present(.confirmClear) }
-            .disabled(monitor.isBusy)
+        Button { model.present(.confirmClear) } label: {
+            Label("Clear History…", systemImage: "trash")
+        }
+        .disabled(monitor.isBusy)
         Divider()
-        Button("Keyboard Shortcuts") { model.present(.shortcuts) }
-            .keyboardShortcut("/")
+        Button { model.present(.shortcuts) } label: {
+            Label("Keyboard Shortcuts", systemImage: "keyboard")
+        }
+        .keyboardShortcut("/")
         if model.isPinned {
-            Button("Unpin Window") { model.isPinned = false }
-                .keyboardShortcut("p")
+            Button { model.isPinned = false } label: {
+                Label("Unpin Window", systemImage: "pin.slash")
+            }
+            .keyboardShortcut("p")
         } else {
-            Button("Pin Window") { model.isPinned = true }
-                .keyboardShortcut("p")
+            Button { model.isPinned = true } label: {
+                Label("Pin Window", systemImage: "pin")
+            }
+            .keyboardShortcut("p")
         }
         if model.settings.showSidebar {
-            Button("Hide Sidebar") { model.settings.showSidebar = false }
-                .keyboardShortcut("s", modifiers: [.option, .command])
+            Button { model.settings.showSidebar = false } label: {
+                Label("Hide Sidebar", systemImage: "sidebar.left")
+            }
+            .keyboardShortcut("s", modifiers: [.option, .command])
         } else {
-            Button("Show Sidebar") { model.settings.showSidebar = true }
-                .keyboardShortcut("s", modifiers: [.option, .command])
+            Button { model.settings.showSidebar = true } label: {
+                Label("Show Sidebar", systemImage: "sidebar.left")
+            }
+            .keyboardShortcut("s", modifiers: [.option, .command])
         }
         Divider()
-        Button("Settings…") { model.openSettings() }
-            .keyboardShortcut(",")
-        Button("About Memopila") { model.openSettings(.about) }
+        Button { model.openSettings() } label: {
+            Label("Settings…", systemImage: "gearshape")
+        }
+        .keyboardShortcut(",")
+        Button { model.openSettings(.about) } label: {
+            Label("About Memopila", systemImage: "info.circle")
+        }
         // A tool for reporting problems: with ⌥ held, as in many Mac apps.
         if model.isOptionHeld {
-            Button("Diagnostics…") { model.openDiagnostics() }
+            Button { model.openDiagnostics() } label: {
+                Label("Diagnostics…", systemImage: "wrench.and.screwdriver")
+            }
         }
-        Button("Quit Memopila") { NSApp.terminate(nil) }
-            .keyboardShortcut("q")
+        Button { NSApp.terminate(nil) } label: {
+            Label("Quit Memopila", systemImage: "power")
+        }
+        .keyboardShortcut("q")
     }
 }
 
@@ -404,14 +434,11 @@ private struct PanelStatus: View {
     }
 
     private var captureStatus: (symbol: String, tint: Color, help: String) {
-        let monitor = model.monitor
-        if monitor.storageError != nil || monitor.access != .allowed || monitor.isPaused {
-            return ("pause.circle.fill", .orange, String(localized: "Capture is paused: new copies are not added to history"))
-        }
-        if monitor.skipArmed {
-            return ("forward.end.circle.fill", .orange, String(localized: "The next copy will be skipped"))
-        }
-        return ("circle.fill", .green, String(localized: "Capturing: every copy is added to history"))
+        CaptureChrome.panelStatus(
+            monitor: model.monitor,
+            stackArmed: model.stackSession.isArmed,
+            progressLabel: model.stackSession.progressLabel
+        )
     }
 }
 
@@ -740,7 +767,7 @@ private struct HistoryGrid: View {
         let history = model.history
         if history.entries.isEmpty, model.monitor.current == nil, history.loadError == nil {
             VStack(spacing: 6) {
-                Image(systemName: history.search.isEmpty ? "list.clipboard" : "magnifyingglass")
+                Image(systemName: emptyStateSymbol)
                     .font(.largeTitle)
                     .foregroundStyle(.tertiary)
                 Text(emptyMessage).foregroundStyle(.secondary).multilineTextAlignment(.center)
@@ -750,6 +777,18 @@ private struct HistoryGrid: View {
                 }
             }
             .padding(24)
+        }
+    }
+
+    private var emptyStateSymbol: String {
+        let history = model.history
+        if !history.search.isEmpty { return "magnifyingglass" }
+        if history.kindFilter == .stacks { return "rectangle.stack" }
+        switch history.scope {
+        case .favorites: return "heart"
+        case .collection: return "folder"
+        case .stack: return "rectangle.stack"
+        default: return "list.clipboard"
         }
     }
 
