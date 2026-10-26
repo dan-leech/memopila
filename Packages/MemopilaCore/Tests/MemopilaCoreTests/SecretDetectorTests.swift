@@ -94,6 +94,49 @@ struct SecretDetectorTests {
         #expect(!masked.contains("c2lnbmF0dXJl"))
     }
 
+    @Test func envDumpWithStripeKeyIsEmbedded() {
+        let env = """
+            DATABASE_URL=postgres://localhost/app
+            STRIPE_SECRET_KEY=\(Sample.stripe)
+            REDIS_URL=redis://localhost:6379
+            """
+        let hit = SecretDetector.detectMatch(env)
+        #expect(hit?.kind == .stripeKey)
+        #expect(hit?.isEmbedded == true)
+        #expect(hit?.matched == Sample.stripe)
+        let masked = SecretDetector.maskedPreview(of: env, kind: .stripeKey)
+        #expect(masked.hasPrefix("sk_live_"))
+        #expect(!masked.contains("DATABASE"))
+    }
+
+    @Test func loneStripeKeyIsNotEmbedded() {
+        let hit = SecretDetector.detectMatch(Sample.stripe)
+        #expect(hit?.kind == .stripeKey)
+        #expect(hit?.isEmbedded == false)
+    }
+
+    @Test func longLoneJWTIsNotEmbedded() {
+        // A real JWT is often >120 chars — must stay titled “JWT”, not “Contains a secret”.
+        let longJWT = Sample.jwt + String(repeating: "a", count: 80)
+        let hit = SecretDetector.detectMatch(longJWT)
+        #expect(hit?.kind == .jwt)
+        #expect(hit?.isEmbedded == false)
+    }
+
+    @Test func lonePrivateKeyIsNotEmbedded() {
+        let hit = SecretDetector.detectMatch(Sample.privateKey)
+        #expect(hit?.kind == .privateKey)
+        #expect(hit?.isEmbedded == false)
+    }
+
+    @Test func cardTitleUsesFullTextLengthWhenPreviewIsOnlyTheToken() {
+        // After ingest, cardPreview may be only the matched Stripe key while textLength is the .env.
+        let matchLen = Sample.stripe.count
+        let envLen = 400
+        #expect(SecretDetector.isEmbedded(matchLength: matchLen, hostLength: envLen))
+        #expect(!SecretDetector.isEmbedded(matchLength: matchLen, hostLength: matchLen))
+    }
+
     // MARK: Reader integration
 
     private func jwtPasteboard() -> FakePasteboard {

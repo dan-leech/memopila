@@ -46,7 +46,7 @@ public struct StackCard: Sendable, Identifiable, Equatable {
     public let lastUsedAt: Date
     /// UI-order member record ids.
     public let memberIDs: [UUID]
-    /// First UI member (or current while armed is applied in the UI).
+    /// First UI-order member — stack card face always shows this (deal cursor is badge-only; Choose resets it).
     public let previewRecordID: UUID?
     public let memberCount: Int
     public let collectionIDs: Set<UUID>
@@ -103,13 +103,15 @@ public struct StackCard: Sendable, Identifiable, Equatable {
         )
     }
 
-    /// Optimistic playlist order patch after drag / Move in Stack (preview = first UI member).
+    /// Optimistic playlist order patch after drag / Move in Stack (face = first UI member).
     public func withMemberIDs(
         _ memberIDs: [UUID],
         preview: String? = nil,
         sensitiveKind: String? = nil
     ) -> StackCard {
-        StackCard(
+        let first = memberIDs.first
+        let sameFirst = first == previewRecordID
+        return StackCard(
             id: id,
             title: title,
             isFavorite: isFavorite,
@@ -118,11 +120,11 @@ public struct StackCard: Sendable, Identifiable, Equatable {
             createdAt: createdAt,
             lastUsedAt: lastUsedAt,
             memberIDs: memberIDs,
-            previewRecordID: memberIDs.first,
+            previewRecordID: first,
             memberCount: memberIDs.count,
             collectionIDs: collectionIDs,
-            sensitiveKind: sensitiveKind ?? self.sensitiveKind,
-            preview: preview ?? self.preview
+            sensitiveKind: sensitiveKind ?? (sameFirst ? self.sensitiveKind : nil),
+            preview: preview ?? (sameFirst ? self.preview : "")
         )
     }
 

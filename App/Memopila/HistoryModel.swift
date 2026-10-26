@@ -58,6 +58,68 @@ final class HistoryModel {
         }
     }
 
+    /// Optimistic playlist patch — face stays the first UI member (PLAN §3.11).
+    func setStackMembersLocally(
+        id: UUID,
+        recordIDs: [UUID],
+        preview: String?,
+        sensitiveKind: String?
+    ) {
+        func patch(_ stack: StackCard) -> StackCard {
+            guard stack.id == id else { return stack }
+            return stack.withMemberIDs(recordIDs, preview: preview, sensitiveKind: sensitiveKind)
+        }
+        stacks = stacks.map(patch)
+        allStacks = allStacks.map(patch)
+        refreshEntriesAfterStackPatch()
+    }
+
+    /// Drop a member from one stack card only (Remove from Stack — not every stack that held it).
+    func removeRecordFromStackLocally(stackID: UUID, recordID: UUID) {
+        func patch(_ stack: StackCard) -> StackCard {
+            guard stack.id == stackID else { return stack }
+            let next = stack.memberIDs.filter { $0 != recordID }
+            guard next.count != stack.memberIDs.count else { return stack }
+            let first = next.first.flatMap { id in records.first(where: { $0.id == id }) }
+            return stack.withMemberIDs(
+                next,
+                preview: first?.preview,
+                sensitiveKind: first?.sensitiveKind
+            )
+        }
+        stacks = stacks.map(patch)
+        allStacks = allStacks.map(patch)
+        refreshEntriesAfterStackPatch()
+    }
+
+    /// Drop deleted records from every loaded stack card; preview follows the new first.
+    func removeRecordsFromStacksLocally(_ ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        var changed = false
+        func patch(_ stack: StackCard) -> StackCard {
+            let next = stack.memberIDs.filter { !ids.contains($0) }
+            guard next.count != stack.memberIDs.count else { return stack }
+            changed = true
+            let first = next.first.flatMap { id in records.first(where: { $0.id == id }) }
+            return stack.withMemberIDs(
+                next,
+                preview: first?.preview,
+                sensitiveKind: first?.sensitiveKind
+            )
+        }
+        stacks = stacks.map(patch)
+        allStacks = allStacks.map(patch)
+        if changed { refreshEntriesAfterStackPatch() }
+    }
+
+    private func refreshEntriesAfterStackPatch() {
+        if case .stack = scope {
+            entries = records.map { .record($0) }
+        } else {
+            entries = Self.mergeEntries(records: records, stacks: stacks)
+        }
+    }
+
     var selectedID: HistoryEntry.ID? {
         didSet {
             guard !isApplyingLoadedSelection else { return }

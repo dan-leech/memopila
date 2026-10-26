@@ -19,13 +19,9 @@ struct StackCardView: View {
     private var isArmed: Bool { model.stackSession.armedStackID == stack.id }
     private var isOnClipboard: Bool { model.monitor.clipboardStackID == stack.id }
     private var showsBadge: Bool { model.chooseBadgeStackID == stack.id }
-
-    private var progressText: String {
-        if isArmed, let label = model.stackSession.progressLabel {
-            return label
-        }
-        return "\(stack.memberCount)"
-    }
+    /// Membership append hover (panel drop onto this stack card — PLAN §3.11).
+    private var isAppendTarget: Bool { model.stackDrag.appendHighlight == .stack(stack.id) }
+    private var showsAccentRing: Bool { hasCursor || isAppendTarget }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -51,17 +47,24 @@ struct StackCardView: View {
             RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
                 .fill(Color(nsColor: .textBackgroundColor))
         )
+        .overlay {
+            if isAppendTarget {
+                RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.06))
+                    .allowsHitTesting(false)
+            }
+        }
         .clipShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: Self.radius, style: .continuous)
                 .strokeBorder(
-                    hasCursor ? Color.accentColor : Color.primary.opacity(isHovered ? 0.2 : 0.08),
-                    lineWidth: hasCursor ? 3 : 1
+                    showsAccentRing ? Color.accentColor : Color.primary.opacity(isHovered ? 0.2 : 0.08),
+                    lineWidth: showsAccentRing ? 3 : 1
                 )
         }
         .overlay {
             if isOnClipboard {
-                let inset: CGFloat = hasCursor ? 2 : 0
+                let inset: CGFloat = showsAccentRing ? 2 : 0
                 RoundedRectangle(cornerRadius: Self.radius - inset, style: .continuous)
                     .strokeBorder(Color.green, lineWidth: 1)
                     .padding(inset)
@@ -69,7 +72,14 @@ struct StackCardView: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            if showsBadge {
+            if isAppendTarget {
+                Image(systemName: "rectangle.stack.badge.plus")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.accentColor)
+                    .padding(8)
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+                    .allowsHitTesting(false)
+            } else if showsBadge {
                 ChooseBadge(pasted: model.chooseBadgeWasPasted)
                     .padding(6)
                     .transition(.scale(scale: 0.6).combined(with: .opacity))
@@ -95,24 +105,55 @@ struct StackCardView: View {
 
     private var titleStrip: some View {
         HStack(spacing: 5) {
-            Image(systemName: "rectangle.stack.fill")
+            Image(systemName: isAppendTarget ? "rectangle.stack.badge.plus" : "rectangle.stack.fill")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(Color.accentColor)
             Text(stack.title.isEmpty ? String(localized: "Stack") : stack.title)
                 .font(.system(size: 12, weight: .semibold))
                 .lineLimit(1)
             Spacer(minLength: 4)
-            Text(progressText)
-                .font(.caption.monospacedDigit().weight(.semibold))
-                .padding(.horizontal, 6)
-                .padding(.vertical, 1)
-                .background(Color.accentColor.opacity(isArmed ? 0.28 : 0.16), in: Capsule())
-                .foregroundStyle(isArmed ? Color.accentColor : .primary)
+            // One trailing capsule: count idle, or bolt+k/n while armed (k/n already is the size).
+            titleTrailingBadge
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 3)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.accentColor.opacity(0.12))
+    }
+
+    @ViewBuilder
+    private var titleTrailingBadge: some View {
+        if isArmed {
+            HStack(spacing: 3) {
+                Image(systemName: "bolt.fill")
+                    .font(.system(size: 9, weight: .bold))
+                Text(model.stackSession.progressLabel ?? "\(stack.memberCount)")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(Color.orange.opacity(0.22), in: Capsule())
+            .foregroundStyle(.orange)
+            .floatingHelp(
+                model.stackSession.progressLabel.map {
+                    String(localized: "Armed \($0) — ⌘V pastes the next; Choose starts again from the first item")
+                } ?? String(localized: "Armed — ⌘V pastes the next member")
+            )
+            .accessibilityLabel(
+                Text(
+                    [String(localized: "Armed"), model.stackSession.progressLabel ?? "\(stack.memberCount)"]
+                        .joined(separator: " ")
+                )
+            )
+        } else {
+            Text("\(stack.memberCount)")
+                .font(.caption.monospacedDigit().weight(.semibold))
+                .padding(.horizontal, 6)
+                .padding(.vertical, 1)
+                .background(Color.accentColor.opacity(0.16), in: Capsule())
+                .foregroundStyle(.primary)
+                .floatingHelp(String(localized: "How many cards are in this stack"))
+        }
     }
 
     /// Front face fills almost the whole body; only a 5×5pt stair peeks on the trailing/bottom edge.
@@ -218,12 +259,7 @@ struct StackCardView: View {
                     Image(systemName: "heart.fill")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(.pink)
-                }
-                if isArmed {
-                    Label(String(localized: "Armed"), systemImage: "bolt.fill")
-                        .font(.system(size: 10.5, weight: .semibold))
-                        .foregroundStyle(.orange)
-                        .labelStyle(.titleAndIcon)
+                        .floatingHelp(String(localized: "Favorite"))
                 }
             }
         }
@@ -272,10 +308,9 @@ struct StackCardView: View {
             String(localized: "Stack"),
             stack.title.isEmpty ? String(localized: "Stack") : stack.title,
         ]
+        parts.append(String(localized: "\(stack.memberCount) items"))
         if isArmed, let label = model.stackSession.progressLabel {
             parts.append(label)
-        } else {
-            parts.append(String(localized: "\(stack.memberCount) items"))
         }
         parts.append(ActionRegistry.dealState(mode: stack.dealMode, loops: stack.loops))
         if stack.isFavorite { parts.append(String(localized: "Favorite")) }

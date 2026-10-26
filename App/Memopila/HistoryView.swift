@@ -750,9 +750,11 @@ private struct HistoryGrid: View {
                     model.beginStackDrag(stack.id)
                     return DragSupport.provider(for: stack, store: model.store, armedMemberID: model.stackSession.currentMemberID)
                 }
-                .onDrop(of: [.item], isTargeted: nil) { _ in
-                    model.dropDraggedCard(onStack: stack.id)
-                }
+                .onDrop(
+                    of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
+                    delegate: PanelStackAppendDropDelegate(stackID: stack.id, model: model)
+                )
+                .floatingHelp(String(localized: "Drop a history card here to add it to this stack"))
                 .transition(.asymmetric(
                     insertion: .scale(scale: 0.85).combined(with: .opacity),
                     removal: .opacity
@@ -1229,5 +1231,34 @@ extension DisplayType {
         case .file: "doc"
         case .mixed: "square.stack"
         }
+    }
+}
+
+/// Membership append onto a panel stack card (chrome via `StackDragSession.appendHighlight`).
+private struct PanelStackAppendDropDelegate: DropDelegate {
+    let stackID: UUID
+    let model: AppModel
+
+    private var canAppend: Bool { model.stackDrag.canMembershipAppend }
+
+    func validateDrop(info: DropInfo) -> Bool { canAppend }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        if canAppend {
+            model.stackDrag.setAppendHighlight(.stack(stackID))
+            return DropProposal(operation: .copy)
+        }
+        model.stackDrag.setAppendHighlight(nil)
+        return DropProposal(operation: .cancel)
+    }
+
+    func dropExited(info: DropInfo) {
+        if model.stackDrag.appendHighlight == .stack(stackID) {
+            model.stackDrag.setAppendHighlight(nil)
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        model.dropDraggedCard(onStack: stackID)
     }
 }

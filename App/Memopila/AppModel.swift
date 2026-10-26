@@ -949,6 +949,10 @@ final class AppModel {
         commitPendingDeletion()
         let set = Set(ids)
         history.hide(set)
+        // Stack Window + stack cards keep their own lists — prune now (store cascade waits for Undo).
+        // Face stays the new first UI member; deal cursor is badge-only.
+        stackEditor?.removeMembers(set)
+        history.removeRecordsFromStacksLocally(set)
         let task = Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))
             guard !Task.isCancelled, let self, let pending = self.pendingDeletion else { return }
@@ -969,6 +973,8 @@ final class AppModel {
         pending.task.cancel()
         pendingDeletion = nil
         history.unhide(pending.ids)
+        // Membership was never removed from the store during the Undo window.
+        reloadStackEditorIfNeeded()
     }
 
     /// A record waiting out its Undo period came back — copied again, merged into by an edit or a
@@ -977,6 +983,7 @@ final class AppModel {
         guard let pending = pendingDeletion, pending.ids.contains(id) else { return }
         pendingDeletion = (pending.ids.subtracting([id]), pending.task)
         history.unhide([id])
+        reloadStackEditorIfNeeded()
     }
 
     /// Before quitting: the delete waiting for Undo is carried out, not forgotten.
@@ -1024,6 +1031,9 @@ final class AppModel {
                 prunePreviewFiles()
                 // Rebuild after members are gone — pre-delete rebuild kept stale IDs (P24).
                 if stackSession.isArmed { stackSession.rebuildFromStore() }
+                // Editor may still show ghosts if Undo-window prune was skipped / raced.
+                stackEditor?.removeMembers(ids)
+                reloadStackEditorIfNeeded()
                 return
             case .failure(.busy) where attempt < 3:
                 // Another delete, clear or edit is running; this one follows it.
@@ -1409,6 +1419,7 @@ final class AppModel {
             // A secret typed in may now expire: the timer follows (§3.10).
             if case .deleteAfter = policy { runRetention() }
             if stackSession.isArmed { stackSession.rebuildFromStore() }
+            reloadStackEditorIfNeeded()
             if let state = itemState, state.id == id {
                 // Saved in place: what was saved is the new starting point.
                 state.textSaved(text, rich: savedRich)
@@ -1423,6 +1434,7 @@ final class AppModel {
             history.storeDidChange()
             // Merge retargets StackMember rows — refresh the deal queue if armed.
             if stackSession.isArmed { stackSession.rebuildFromStore() }
+            reloadStackEditorIfNeeded()
             toasts.show(String(localized: "Merged with an existing record"))
             await showRecord(survivor)
             return nil
@@ -1475,6 +1487,8 @@ final class AppModel {
                 thumbnails.removeAll()
                 history.storeDidChange()
                 prunePreviewFiles()
+                if stackSession.isArmed { stackSession.rebuildFromStore() }
+                reloadStackEditorIfNeeded()
                 toasts.show(scope == .all ? String(localized: "History cleared") : String(localized: "History cleared except favorites"))
             case .failure(let error):
                 report(error)
@@ -1649,6 +1663,11 @@ final class AppModel {
     }
 
     func removeRecord(_ recordID: UUID, fromStack stackID: UUID) {
+        if stackEditor?.stackID == stackID {
+            stackEditor?.removeMembers([recordID])
+        }
+        // Only this stack — the record may still belong to others.
+        history.removeRecordFromStackLocally(stackID: stackID, recordID: recordID)
         Task {
             do {
                 try await store.removeStackMember(stackID, recordID: recordID)
@@ -1669,6 +1688,14 @@ final class AppModel {
             toasts.error(String(localized: "This stack is too large to reorder here."))
             reloadStackEditorIfNeeded()
             return
+        }
+        if let editor = stackEditor, editor.stackID == stackID {
+            history.setStackMembersLocally(
+                id: stackID,
+                recordIDs: recordIDs,
+                preview: editor.members.first?.preview,
+                sensitiveKind: editor.members.first?.sensitiveKind
+            )
         }
         Task {
             do {

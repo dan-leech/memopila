@@ -137,7 +137,16 @@ public actor ClipboardStore {
                 payloadSizeBytes: snapshot.payloadSizeBytes
             )
             apply(DedupMerge.newRecord(from: observation), to: record)
-            record.cardPreview = enrichment.cardPreview
+            // Face the matched token when a secret is embedded in a larger paste (.env) so the
+            // mask is not `DATABASE_URL=…` while the label names Stripe (§3.10).
+            if let kind = snapshot.sensitiveKind,
+               let text = RichText.plainText(of: snapshot.items),
+               let match = SecretDetector.detectMatch(text, kinds: [kind]),
+               match.isEmbedded {
+                record.cardPreview = TextDecoding.prefix(match.matched, maxScalars: IngestEnrichment.cardPreviewScalars)
+            } else {
+                record.cardPreview = enrichment.cardPreview
+            }
             record.textIndex = enrichment.textIndex
             record.textLength = enrichment.textLength
             record.lineCount = enrichment.lineCount
@@ -533,14 +542,18 @@ public actor ClipboardStore {
             record.payloadSizeBytes = size
             // As for a copy: formatting that says nothing makes it text (`FormattingSignificance`).
             record.displayTypeRaw = DisplayType.classify(items).rawValue
-            record.cardPreview = TextDecoding.prefix(text, maxScalars: IngestEnrichment.cardPreviewScalars)
             record.textIndex = TextDecoding.prefix(text, maxScalars: IngestEnrichment.searchScalars)
             record.textLength = text.count
             record.lineCount = TextStats.lineCount(text)
             // Edited text is checked like a copy: a token typed in is masked, and expires under
             // *Delete after* (review findings).
-            let secret = secretPolicy == .off ? nil : SecretDetector.detect(text, kinds: secretKinds)
-            record.sensitiveKind = secret?.rawValue
+            let secret = secretPolicy == .off ? nil : SecretDetector.detectMatch(text, kinds: secretKinds)
+            if let secret, secret.isEmbedded {
+                record.cardPreview = TextDecoding.prefix(secret.matched, maxScalars: IngestEnrichment.cardPreviewScalars)
+            } else {
+                record.cardPreview = TextDecoding.prefix(text, maxScalars: IngestEnrichment.cardPreviewScalars)
+            }
+            record.sensitiveKind = secret?.kind.rawValue
             let pinned = try record.isFavorite || stackedRecordIDs(in: context).contains(id)
             if secret != nil, case .deleteAfter(let minutes) = secretPolicy, !pinned {
                 let expiry = now.addingTimeInterval(TimeInterval(minutes) * 60)

@@ -478,6 +478,13 @@ private struct StackEditorView: View {
                 } description: {
                     Text(String(localized: "Drop history cards here to add them. Pin the panel to drag from History."))
                 }
+                .padding(Self.spacing)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background {
+                    if model.stackDrag.appendHighlight == .editor {
+                        dropPlaceholderChrome()
+                    }
+                }
                 .onDrop(
                     of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
                     delegate: StackEditorAppendDropDelegate(model: model)
@@ -499,19 +506,53 @@ private struct StackEditorView: View {
                             spacing: Self.spacing
                         ) {
                             ForEach(Array(state.visibleMembers.enumerated()), id: \.element.id) { index, card in
+                                if case .before(let targetID) = model.stackDrag.reorderGap,
+                                   targetID == card.id {
+                                    reorderPhantom(
+                                        height: cardHeight,
+                                        accessibility: String(localized: "Insert before this card"),
+                                        help: String(localized: "Drop here to place the card before this one")
+                                    )
+                                    .onDrop(
+                                        of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
+                                        delegate: StackEditorMemberDropDelegate(targetID: card.id, model: model)
+                                    )
+                                    .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                                }
                                 memberCard(card, index: index, cardHeight: cardHeight)
                             }
                             if state.canReorder,
                                let dragID = model.stackDrag.reorderDragID,
                                state.order.last != dragID {
-                                endSlot
-                                    .frame(height: cardHeight)
-                                    .onDrop(
-                                        of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
-                                        delegate: StackEditorEndDropDelegate(model: model)
-                                    )
+                                let endActive = model.stackDrag.reorderGap == .end
+                                dropPlaceholder(
+                                    title: String(localized: "End"),
+                                    systemImage: "arrow.down.to.line",
+                                    accessibility: String(localized: "Move to end of stack"),
+                                    help: String(localized: "Drop here to move the card to the end of the stack"),
+                                    emphasized: endActive
+                                )
+                                .frame(height: cardHeight)
+                                .opacity(endActive ? 1 : 0.45)
+                                .onDrop(
+                                    of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
+                                    delegate: StackEditorEndDropDelegate(model: model)
+                                )
+                            } else if model.stackDrag.appendHighlight == .editor {
+                                dropPlaceholder(
+                                    title: String(localized: "Add"),
+                                    systemImage: "plus",
+                                    accessibility: String(localized: "Add to stack"),
+                                    help: String(localized: "Drop here to add the card to this stack")
+                                )
+                                .frame(height: cardHeight)
+                                .onDrop(
+                                    of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
+                                    delegate: StackEditorAppendDropDelegate(model: model)
+                                )
                             }
                         }
+                        .animation(.easeOut(duration: 0.12), value: model.stackDrag.reorderGap)
                         .padding(Self.spacing)
                         .onDrop(
                             of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
@@ -523,32 +564,58 @@ private struct StackEditorView: View {
         }
     }
 
-    private var endSlot: some View {
+    private func dropPlaceholderChrome(emphasized: Bool = true) -> some View {
         let radius: CGFloat = 9
+        let stroke: CGFloat = emphasized ? 3 : 1.5
         return RoundedRectangle(cornerRadius: radius, style: .continuous)
-            .fill(Color.accentColor.opacity(0.06))
+            .fill(Color.accentColor.opacity(emphasized ? 0.10 : 0.04))
             .overlay {
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .strokeBorder(Color.accentColor, lineWidth: 3)
+                    .strokeBorder(
+                        Color.accentColor.opacity(emphasized ? 1 : 0.55),
+                        style: StrokeStyle(lineWidth: stroke, dash: emphasized ? [] : [6, 4])
+                    )
             }
+    }
+
+    /// Empty accent slot — the insert gap itself (not a highlight on a real card).
+    private func reorderPhantom(height: CGFloat, accessibility: String, help: String) -> some View {
+        dropPlaceholderChrome(emphasized: true)
             .overlay {
-                Label(String(localized: "End"), systemImage: "arrow.down.to.line")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(Color.accentColor)
+                Image(systemName: "rectangle.dashed")
+                    .font(.title2.weight(.medium))
+                    .foregroundStyle(Color.accentColor.opacity(0.85))
             }
-            .accessibilityLabel(Text(String(localized: "Move to end of stack")))
-            .floatingHelp(String(localized: "Drop here to move the card to the end of the stack"))
+            .frame(height: height)
+            .accessibilityLabel(Text(accessibility))
+            .floatingHelp(help)
+    }
+
+    private func dropPlaceholder(
+        title: String,
+        systemImage: String,
+        accessibility: String,
+        help: String,
+        emphasized: Bool = true
+    ) -> some View {
+        dropPlaceholderChrome(emphasized: emphasized)
+            .overlay {
+                Label(title, systemImage: systemImage)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.accentColor.opacity(emphasized ? 1 : 0.7))
+            }
+            .accessibilityLabel(Text(accessibility))
+            .floatingHelp(help)
     }
 
     @ViewBuilder
     private func memberCard(_ card: HistoryCard, index: Int, cardHeight: CGFloat) -> some View {
         let selected = state.selectedID == card.id
-        let dropTarget = model.stackDrag.dropTargetID == card.id
         let dragging = model.stackDrag.reorderDragID == card.id
         CardView(
             card: card,
             index: index,
-            hasCursor: selected || dropTarget,
+            hasCursor: selected,
             model: model,
             onDoubleClick: { model.openRecord(card.id) }
         )
@@ -666,14 +733,26 @@ private struct StackEditorMemberDropDelegate: DropDelegate {
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         if canReorderHere {
-            model.stackDrag.setDropBefore(targetID)
+            model.stackDrag.setAppendHighlight(nil)
+            model.stackDrag.setReorderGap(.before(targetID))
             return DropProposal(operation: .move)
         }
         if canAppendHere {
-            model.stackDrag.setDropBefore(nil)
+            model.stackDrag.setReorderGap(nil)
+            model.stackDrag.setAppendHighlight(.editor)
             return DropProposal(operation: .copy)
         }
+        model.stackDrag.setAppendHighlight(nil)
         return DropProposal(operation: .cancel)
+    }
+
+    func dropExited(info: DropInfo) {
+        if model.stackDrag.appendHighlight == .editor {
+            model.stackDrag.setAppendHighlight(nil)
+        }
+        if model.stackDrag.reorderGap == .before(targetID) {
+            model.stackDrag.setReorderGap(nil)
+        }
     }
 
     func performDrop(info: DropInfo) -> Bool {
@@ -693,8 +772,14 @@ private struct StackEditorEndDropDelegate: DropDelegate {
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
         guard validateDrop(info: info) else { return DropProposal(operation: .cancel) }
-        model.stackDrag.setDropBefore(nil)
+        model.stackDrag.setReorderGap(.end)
         return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        if model.stackDrag.reorderGap == .end {
+            model.stackDrag.setReorderGap(nil)
+        }
     }
 
     func performDrop(info: DropInfo) -> Bool {
@@ -718,7 +803,18 @@ private struct StackEditorAppendDropDelegate: DropDelegate {
     func validateDrop(info: DropInfo) -> Bool { canAppend }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        canAppend ? DropProposal(operation: .copy) : DropProposal(operation: .cancel)
+        if canAppend {
+            model.stackDrag.setAppendHighlight(.editor)
+            return DropProposal(operation: .copy)
+        }
+        model.stackDrag.setAppendHighlight(nil)
+        return DropProposal(operation: .cancel)
+    }
+
+    func dropExited(info: DropInfo) {
+        if model.stackDrag.appendHighlight == .editor {
+            model.stackDrag.setAppendHighlight(nil)
+        }
     }
 
     func performDrop(info: DropInfo) -> Bool {

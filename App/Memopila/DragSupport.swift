@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 /// Dragging a card into another app, as in Pasta. Data is loaded from the store only when the drop
 /// target asks for a type; file cards drag as their file.
 enum DragSupport {
-    /// Stack drag-out uses the preview member (current dealt if armed, else first UI). Empty → empty provider.
+    /// Stack drag-out: current dealt while armed (clipboard), else first UI member. Card face stays first.
     static func provider(for stack: StackCard, store: ClipboardStore, armedMemberID: UUID?) -> NSItemProvider {
         let memberID = (armedMemberID.flatMap { id in stack.memberIDs.contains(id) ? id : nil })
             ?? stack.previewRecordID

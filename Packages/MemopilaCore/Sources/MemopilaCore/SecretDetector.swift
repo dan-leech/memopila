@@ -46,6 +46,21 @@ public enum SecretPolicy: Sendable, Hashable, Codable {
     public static let `default` = SecretPolicy.deleteAfter(minutes: 8 * 60)
 }
 
+/// A credential found in copied text (PLAN §3.10).
+public struct SecretMatch: Sendable, Equatable {
+    public let kind: SecretKind
+    /// The matched token (or the whole trimmed text for a card number).
+    public let matched: String
+    /// True when the secret is only a part of a larger paste (.env, logs) — card title stays generic.
+    public let isEmbedded: Bool
+
+    public init(kind: SecretKind, matched: String, isEmbedded: Bool) {
+        self.kind = kind
+        self.matched = matched
+        self.isEmbedded = isEmbedded
+    }
+}
+
 public enum SecretDetector {
     /// Secrets are short; larger text is not scanned (keeps capture cheap).
     public static let maxScannedBytes = 256 * 1_024
@@ -53,7 +68,8 @@ public enum SecretDetector {
     static let maxCardTextLength = 64
 
     private static let patterns: [(SecretKind, String)] = [
-        (.privateKey, #"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----"#),
+        // Full PEM block — a lone key must not count as “embedded” (BEGIN-line-only would).
+        (.privateKey, #"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----[\s\S]+?-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----"#),
         (.jwt, #"\beyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"#),
         (.githubToken, #"\b(?:gh[pousr]_[A-Za-z0-9]{36,}|github_pat_[A-Za-z0-9_]{40,})"#),
         (.gitlabToken, #"\bglpat-[A-Za-z0-9_-]{20,}"#),
@@ -68,11 +84,54 @@ public enum SecretDetector {
 
     /// The first enabled secret kind found in `text`, or `nil`.
     public static func detect(_ text: String, kinds: Set<SecretKind> = Set(SecretKind.allCases)) -> SecretKind? {
+        detectMatch(text, kinds: kinds)?.kind
+    }
+
+    /// First enabled secret in `text`, with the matched span (for card mask / embedded title).
+    public static func detectMatch(
+        _ text: String,
+        kinds: Set<SecretKind> = Set(SecretKind.allCases)
+    ) -> SecretMatch? {
         guard !kinds.isEmpty, text.utf8.count <= maxScannedBytes else { return nil }
-        for (kind, pattern) in patterns where kinds.contains(kind) && text.range(of: pattern, options: .regularExpression) != nil {
-            return kind
+        for (kind, pattern) in patterns where kinds.contains(kind) {
+            if let range = text.range(of: pattern, options: .regularExpression) {
+                let matched = String(text[range])
+                return SecretMatch(
+                    kind: kind,
+                    matched: matched,
+                    isEmbedded: isEmbedded(matchLength: matched.count, hostLength: text.trimmingCharacters(in: .whitespacesAndNewlines).count)
+                )
+            }
         }
-        return kinds.contains(.creditCard) && isCardNumber(text) ? .creditCard : nil
+        if kinds.contains(.creditCard), isCardNumber(text) {
+            let matched = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return SecretMatch(kind: .creditCard, matched: matched, isEmbedded: false)
+        }
+        return nil
+    }
+
+    /// Match for a known kind inside already-stored preview text (card chrome).
+    public static func match(of kind: SecretKind, in text: String) -> String? {
+        if kind == .creditCard {
+            return isCardNumber(text) ? text.trimmingCharacters(in: .whitespacesAndNewlines) : nil
+        }
+        guard let pattern = patterns.first(where: { $0.0 == kind })?.1,
+              let range = text.range(of: pattern, options: .regularExpression) else { return nil }
+        return String(text[range])
+    }
+
+    /// Host paste is more than the credential (.env / dump). Ratio avoids treating a long JWT/PEM as embedded.
+    public static func isEmbedded(matchLength: Int, hostLength: Int) -> Bool {
+        guard matchLength > 0, hostLength > 0 else { return false }
+        // ≥80% of the paste is the credential → the paste *is* the secret.
+        return matchLength * 5 < hostLength * 4
+    }
+
+    public static func isEmbedded(match: String, in text: String) -> Bool {
+        isEmbedded(
+            matchLength: match.count,
+            hostLength: text.trimmingCharacters(in: .whitespacesAndNewlines).count
+        )
     }
 
     /// 13–19 digits (spaces or dashes allowed) with a known network prefix and a valid Luhn sum.
@@ -102,8 +161,14 @@ public enum SecretDetector {
     }
 
     /// Card text for a masked secret: the first characters and dots, never the whole value.
-    public static func maskedPreview(of text: String, visible: Int = 10) -> String {
-        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+    /// Prefer the matched token when `kind` is known so a .env dump does not mask `DATABASE_URL=…`.
+    public static func maskedPreview(
+        of text: String,
+        kind: SecretKind? = nil,
+        visible: Int = 10
+    ) -> String {
+        let source = kind.flatMap { match(of: $0, in: text) } ?? text
+        let trimmed = source.trimmingCharacters(in: .whitespacesAndNewlines)
         let head = trimmed.prefix(visible).split(whereSeparator: \.isNewline).first.map(String.init) ?? ""
         return head + "••••••••"
     }

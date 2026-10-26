@@ -113,6 +113,19 @@ final class StackEditorState {
         )
     }
 
+    /// Drop members from the in-memory window immediately (store / reload remain SSOT).
+    func removeMembers(_ ids: Set<UUID>) {
+        guard !ids.isEmpty else { return }
+        let next = order.filter { !ids.contains($0) }
+        let removed = order.count - next.count
+        guard removed > 0 else { return }
+        applyOrder(next)
+        totalMemberCount = max(next.count, totalMemberCount - removed)
+        if let selectedID, ids.contains(selectedID) {
+            self.selectedID = nil
+        }
+    }
+
     func applyDeal(mode: StackDealMode, loops: Bool) {
         stack = stack.withDeal(mode: mode, loops: loops)
     }

@@ -751,6 +751,16 @@
         }
       }
     },
+    "Add": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить"
+          }
+        }
+      }
+    },
     "Add %lld to Collection": {
       "localizations": {
         "ru": {
@@ -857,6 +867,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Добавить в избранное или убрать из него"
+          }
+        }
+      }
+    },
+    "Add to stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить в стек"
           }
         }
       }
@@ -1149,6 +1169,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Активен %@"
+          }
+        }
+      }
+    },
+    "Armed %@ — ⌘V pastes the next; Choose starts again from the first item": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Активен %@ — ⌘V вставляет следующего; Choose снова начнёт с первого"
+          }
+        }
+      }
+    },
+    "Armed — ⌘V pastes the next member": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Активен — ⌘V вставляет следующего участника"
           }
         }
       }
@@ -1773,6 +1813,16 @@
         }
       }
     },
+    "Contains a secret": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Есть секрет"
+          }
+        }
+      }
+    },
     "Copied from %@": {
       "localizations": {
         "ru": {
@@ -2039,6 +2089,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Раздача"
+          }
+        }
+      }
+    },
+    "Deal position — Choose starts again from the first item": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Позиция раздачи — Choose снова начнёт с первого"
           }
         }
       }
@@ -2585,12 +2645,42 @@
         }
       }
     },
+    "Drop a history card here to add it to this stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перетащите сюда карточку истории, чтобы добавить её в стек"
+          }
+        }
+      }
+    },
+    "Drop here to add the card to this stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перетащите сюда, чтобы добавить карточку в стек"
+          }
+        }
+      }
+    },
     "Drop here to move the card to the end of the stack": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Перетащите сюда, чтобы переместить карточку в конец стека"
+          }
+        }
+      }
+    },
+    "Drop here to place the card before this one": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перетащите сюда, чтобы поставить карточку перед этой"
           }
         }
       }
@@ -3411,6 +3501,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Используются"
+          }
+        }
+      }
+    },
+    "Insert before this card": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вставить перед этой карточкой"
           }
         }
       }

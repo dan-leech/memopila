@@ -197,14 +197,35 @@ struct CardView: View {
         card.sensitiveKind.flatMap(SecretKind.init(rawValue:))
     }
 
+    /// .env / dump: kind alone would mislabel the whole paste (PLAN §3.10).
+    /// Use full `textLength` — after ingest the preview may be only the matched token.
+    private var secretIsEmbedded: Bool {
+        guard let kind = secretKind else { return false }
+        let matchLength = SecretDetector.match(of: kind, in: card.preview)?.count
+            ?? (card.preview.count > 0 ? card.preview.count : 0)
+        let hostLength = card.textLength ?? card.preview.count
+        if matchLength > 0, hostLength > 0 {
+            return SecretDetector.isEmbedded(matchLength: matchLength, hostLength: hostLength)
+        }
+        return (card.lineCount ?? 1) > 1
+    }
+
+    private var secretCardTitle: String {
+        guard let secretKind else { return "" }
+        return secretIsEmbedded
+            ? String(localized: "Contains a secret")
+            : secretKind.cardTitle
+    }
+
     @ViewBuilder
     private var content: some View {
         if let secretKind {
             VStack(alignment: .leading, spacing: 6) {
-                Label(secretKind.cardTitle, systemImage: "key.fill")
+                Label(secretCardTitle, systemImage: "key.fill")
                     .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(.orange)
-                Text(SecretDetector.maskedPreview(of: card.preview))
+                    .floatingHelp(secretKind.cardTitle)
+                Text(SecretDetector.maskedPreview(of: card.preview, kind: secretKind))
                     .font(.system(size: 11.5, design: .monospaced))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -472,8 +493,8 @@ struct CardView: View {
     private var accessibilityText: String {
         var parts = [card.displayType.title]
         if let title = card.customTitle { parts.append(title) }
-        if let secretKind {
-            parts.append(secretKind.cardTitle)
+        if secretKind != nil {
+            parts.append(secretCardTitle)
         } else if !card.preview.isEmpty {
             parts.append(String(card.preview.prefix(120)))
         }
