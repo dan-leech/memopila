@@ -390,7 +390,6 @@ private struct PanelStatus: View {
             label(status, "\(model.history.totalCount)")
             label(status, nil)
         }
-        .font(.system(size: 11).monospacedDigit())
         .floatingHelp(status.help + " · " + countText)
         .accessibilityElement(children: .combine)
         .contextMenu {
@@ -401,16 +400,30 @@ private struct PanelStatus: View {
     }
 
     private func label(_ status: (symbol: String, tint: Color, help: String), _ text: String?) -> some View {
-        HStack(spacing: 5) {
-            Image(systemName: status.symbol)
-                .foregroundStyle(status.tint)
-                .imageScale(.small)
+        // `.center` + geometric pulse: `circle.fill` SF Symbol sits optically high next to text.
+        HStack(alignment: .center, spacing: 5) {
+            statusGlyph(status.symbol, tint: status.tint)
             if let text {
                 Text(verbatim: text)
+                    .font(.system(size: 11).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .fixedSize()
             }
+        }
+    }
+
+    @ViewBuilder
+    private func statusGlyph(_ symbol: String, tint: Color) -> some View {
+        if symbol == "circle.fill" {
+            Circle()
+                .fill(tint)
+                .frame(width: 7, height: 7)
+        } else {
+            Image(systemName: symbol)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(tint)
+                .frame(width: 11, height: 11)
         }
     }
 

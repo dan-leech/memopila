@@ -21,13 +21,13 @@ enum CaptureChrome {
     }
 
     /// Template symbol for the status item (monochrome).
+    /// Armed paste stacks keep `list.clipboard` — bolt lives on the stack card / panel footer only.
     static func menuBarSymbol(monitor: ClipboardMonitor, stackArmed: Bool) -> String {
         switch kind(monitor: monitor, stackArmed: stackArmed) {
         case .blocked: "exclamationmark.triangle"
         case .paused: "pause.circle"
         case .skip: "forward.end.circle"
-        case .armed: "bolt.fill"
-        case .capturing: "list.clipboard"
+        case .armed, .capturing: "list.clipboard"
         }
     }
 
