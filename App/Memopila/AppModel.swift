@@ -1206,7 +1206,8 @@ final class AppModel {
             return
         }
         if let existing = stackEditor, existing.stackID == id {
-            hidePanelForWindow()
+            // Pinned panel stays so history cards can be dropped into the editor (§3.11).
+            if !isPinned { hidePanelForWindow() }
             windows.showStack()
             existing.reload()
             return
@@ -1214,7 +1215,7 @@ final class AppModel {
         let state = StackEditorState(stack: card, store: store)
         stackEditor = state
         state.reload()
-        hidePanelForWindow()
+        if !isPinned { hidePanelForWindow() }
         windows.showStack()
         windows.updateStackTitle(state.title)
     }
@@ -1584,6 +1585,32 @@ final class AppModel {
         }
 
         endCardDrag()
+        appendOrMoveToEndOfStack(stackID, recordID: recordID)
+        return true
+    }
+
+    /// Membership drop onto the open Stack Window grid / empty state (not positional reorder).
+    @discardableResult
+    func dropOntoOpenStackEditor() -> Bool {
+        stackDrag.claimForDrop()
+        guard let state = stackEditor,
+              stackDrag.isFresh,
+              !stackDrag.isPositionalReorder,
+              let recordID = stackDrag.recordID else {
+            endCardDrag()
+            return false
+        }
+        let stackID = state.stackID
+        endCardDrag()
+        if state.order.contains(recordID) {
+            toasts.show(String(localized: "Already in stack"))
+            return true
+        }
+        appendOrMoveToEndOfStack(stackID, recordID: recordID)
+        return true
+    }
+
+    private func appendOrMoveToEndOfStack(_ stackID: UUID, recordID: UUID) {
         Task {
             let members = (try? await store.stackMemberIDs(stackID)) ?? []
             if members.contains(recordID) {
@@ -1592,6 +1619,7 @@ final class AppModel {
                 do {
                     try await store.setStackMembers(stackID, recordIDs: order)
                     history.storeDidChange()
+                    if stackEditor?.stackID == stackID { reloadStackEditorIfNeeded() }
                     if stackSession.armedStackID == stackID { stackSession.rebuildFromStore() }
                     toasts.show(String(localized: "Moved to end of stack"))
                 } catch {
@@ -1602,7 +1630,6 @@ final class AppModel {
                 addRecord(recordID, toStack: stackID, toast: true)
             }
         }
-        return true
     }
 
     /// Playlist membership (§3.11): join clears `expiresAt`; leave does not restore it (§6).

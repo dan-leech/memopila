@@ -256,13 +256,13 @@ private struct StackEditorView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         }
                         Label(
-                            String(localized: "Add members by dropping cards onto this stack in the panel."),
+                            String(localized: "Drop history cards onto this window to add them. Pin the panel to drag from History."),
                             systemImage: "hand.draw"
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                        .floatingHelp(String(localized: "Close this window, then drag a history card onto the stack card"))
+                        .floatingHelp(String(localized: "Pin the panel, open this stack, then drag cards from History into the grid"))
                     }
                 }
 
@@ -476,8 +476,12 @@ private struct StackEditorView: View {
                 ContentUnavailableView {
                     Label(String(localized: "Empty stack"), systemImage: "rectangle.stack")
                 } description: {
-                    Text(String(localized: "Drop cards onto this stack in the panel to add them."))
+                    Text(String(localized: "Drop history cards here to add them. Pin the panel to drag from History."))
                 }
+                .onDrop(
+                    of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
+                    delegate: StackEditorAppendDropDelegate(model: model)
+                )
             } else if state.visibleMembers.isEmpty {
                 ContentUnavailableView.search
             } else {
@@ -509,6 +513,10 @@ private struct StackEditorView: View {
                             }
                         }
                         .padding(Self.spacing)
+                        .onDrop(
+                            of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
+                            delegate: StackEditorAppendDropDelegate(model: model)
+                        )
                     }
                 }
             }
@@ -635,7 +643,7 @@ private struct StackEditorMemberDropDelegate: DropDelegate {
     let targetID: UUID
     let model: AppModel
 
-    func validateDrop(info: DropInfo) -> Bool {
+    private var canReorderHere: Bool {
         guard model.stackDrag.isPositionalReorder,
               let state = model.stackEditor, state.canReorder,
               let from = model.stackDrag.recordID,
@@ -643,14 +651,36 @@ private struct StackEditorMemberDropDelegate: DropDelegate {
         return true
     }
 
+    private var canAppendHere: Bool {
+        guard let state = model.stackEditor,
+              model.stackDrag.isFresh,
+              !model.stackDrag.isPositionalReorder,
+              let id = model.stackDrag.recordID,
+              !state.order.contains(id) else { return false }
+        return true
+    }
+
+    func validateDrop(info: DropInfo) -> Bool {
+        canReorderHere || canAppendHere
+    }
+
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        guard validateDrop(info: info) else { return DropProposal(operation: .cancel) }
-        model.stackDrag.setDropBefore(targetID)
-        return DropProposal(operation: .move)
+        if canReorderHere {
+            model.stackDrag.setDropBefore(targetID)
+            return DropProposal(operation: .move)
+        }
+        if canAppendHere {
+            model.stackDrag.setDropBefore(nil)
+            return DropProposal(operation: .copy)
+        }
+        return DropProposal(operation: .cancel)
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        model.dropStackEditorReorder(before: targetID, atEnd: false)
+        if canReorderHere {
+            return model.dropStackEditorReorder(before: targetID, atEnd: false)
+        }
+        return model.dropOntoOpenStackEditor()
     }
 }
 
@@ -669,5 +699,29 @@ private struct StackEditorEndDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         model.dropStackEditorReorder(before: nil, atEnd: true)
+    }
+}
+
+/// Membership append onto empty state / grid chrome (panel stays when pinned).
+private struct StackEditorAppendDropDelegate: DropDelegate {
+    let model: AppModel
+
+    private var canAppend: Bool {
+        guard let state = model.stackEditor,
+              model.stackDrag.isFresh,
+              !model.stackDrag.isPositionalReorder,
+              let id = model.stackDrag.recordID,
+              !state.order.contains(id) else { return false }
+        return true
+    }
+
+    func validateDrop(info: DropInfo) -> Bool { canAppend }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        canAppend ? DropProposal(operation: .copy) : DropProposal(operation: .cancel)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        model.dropOntoOpenStackEditor()
     }
 }
