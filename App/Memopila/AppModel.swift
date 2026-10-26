@@ -150,6 +150,8 @@ final class AppModel {
         self.store = store
         monitor = ClipboardMonitor(settings: settings, store: store)
         history = HistoryModel(store: store)
+        history.onSortModeChange = { [settings] mode in settings.historySortMode = mode }
+        history.sortMode = settings.historySortMode
         thumbnails = ThumbnailCache(store: store)
         recognition = RecognitionService(store: store, settings: settings)
         panel = PanelController(model: self)

@@ -22,13 +22,13 @@
 Memopila lives in the menu bar and keeps a history of what you copy: text, rich text, links, images, PDFs, colours and files. Press **⌥⌘V**, find what you need, and press ↩. The record goes back on the clipboard and you are returned to the app you were in.
 
 > [!NOTE]
-> **1.0.0** — v1 features from the [plan](docs/PLAN.md) are implemented. Pasteboard access is checked on macOS 15.6, 26.6 and 27.0; remaining PLAN §10 spikes (including 27.2+ when Apple ships it) are follow-ups, not missing product.
+> **1.1.0** — pinboard order for Favorites and Collections, Stack Window *Duplicate & Edit*, History **Arrange** (Newest first / Frequently chosen), and stack age retention by freshest activity. Pasteboard access is checked on macOS 15.6, 26.6 and 27.0; remaining PLAN §10 spikes (including 27.2+ when Apple ships it) are follow-ups, not missing product.
 
 ## Features
 
 ### History and search
 - **Menu bar app** with a floating history panel on **⌥⌘V** (you can change the shortcut). The panel does not take focus from your app, shows over full-screen apps, can be pinned open, and remembers its frame on each display.
-- **Sidebar** with History, Favorites, source Apps and Collections. A **filter bar** filters by kind (text, links, images, files, colours) and by period.
+- **Sidebar** with History, Favorites, source Apps and Collections. A **filter bar** filters by kind (text, links, images, files, colours); the period control also **Arranges** History (Newest first or Frequently chosen).
 - **Search** covers text, titles, text found in images, app names, source pages and file names, and highlights the matches on the cards.
 - **Cards** in a grid you can resize (⌘+ / ⌘−). Drag a card into another app. A thin green line marks the card that is on the clipboard right now.
 - **History on disk** (SwiftData). RAM holds only the visible cards and a small thumbnail cache.
@@ -38,7 +38,7 @@ Memopila lives in the menu bar and keeps a history of what you copy: text, rich 
 - **Current — not saved** card: when a copy is too large, unsupported or failed, a red card says why and offers *Save Anyway* and per-app quick fixes.
 - **Per-app settings:** *Don't save*, *Delete after*, size limit, text recognition, source page, and format rules (keep or skip types per app, e.g. for Photoshop). Each is two clicks away from any card. A clipboard inspector shows what an app actually puts on the clipboard.
 - **Pause capture** (5 min, 15 min, 1 hour or until you resume) and **Skip next copy**, from the menu or optional hotkeys.
-- **Sensible retention:** by default 500 items, 30 days and 512 MB of stored data. Favorites and paste-stack members are never deleted automatically.
+- **Sensible retention:** by default 500 items, 30 days and 512 MB of stored data. Favorites and members of live paste stacks are never deleted automatically; stale non-favorite stacks age out as a unit when their freshest activity is older than the keep period.
 
 ### Edit Record
 - One window to view and edit any record:
@@ -52,8 +52,8 @@ Memopila lives in the menu bar and keeps a history of what you copy: text, rich 
 - **Copied from <page>** for copies from a browser.
 
 ### Organize and transform
-- **Favorites**, **Collections** and custom **titles**.
-- **Paste stacks:** reusable playlists of history records (not a one-shot collect-on-copy queue). Choose resets the deal; each **⌘V** advances; Esc or the status menu stops. Deal modes: in order, shuffle, or random; optional loop for the first two.
+- **Favorites** and **Collections** are ordered **pinboards**: drag cards to rearrange; Choose does not reshuffle them; starring or dropping into a collection puts the card at the front. Custom **titles** on records.
+- **Paste stacks:** reusable playlists of history records (not a one-shot collect-on-copy queue). Choose resets the deal; each **⌘V** advances; Esc or the status menu stops. Deal modes: in order, shuffle, or random; optional loop for the first two. In the Stack Window, drag to reorder members; **Duplicate & Edit** makes an independent copy in the stack and opens it to edit (**Save & Close** returns to the stack).
 - **⌘K actions panel** with every action for the selected card.
 - **Duplicate As:** plain text, text from an image, or a text action (trim, change case, sort lines, remove duplicate lines, format or minify JSON, URL and Base64 encode or decode). The result becomes a new card.
 - **Select several cards** to make a stack, favorite or delete them together. *Undo* is available after a delete.

@@ -43,6 +43,16 @@ final class HistoryModel {
             reload(selectFirst: true)
         }
     }
+    /// History Arrange (§8.2). Persisted via SettingsStore; not part of `isFiltered`.
+    var sortMode: HistorySortMode = .recent {
+        didSet {
+            guard sortMode != oldValue else { return }
+            onSortModeChange?(sortMode)
+            reload(selectFirst: true)
+        }
+    }
+    /// Persist Arrange when the user changes it (wired from AppModel → SettingsStore).
+    @ObservationIgnored var onSortModeChange: ((HistorySortMode) -> Void)?
     /// Records only (paged). Load-more offset uses this count (P22).
     private(set) var records: [HistoryCard] = []
     /// Matching stacks (hard-capped, reloaded with the query).
@@ -132,7 +142,7 @@ final class HistoryModel {
                 return .stack(updated)
             }
         } else {
-            entries = Self.mergeEntries(records: records, stacks: stacks)
+            entries = Self.mergeEntries(records: records, stacks: stacks, sort: sortMode)
         }
     }
 
@@ -184,7 +194,8 @@ final class HistoryModel {
             scope: scope,
             search: search,
             kinds: kindFilter == .stacks ? [] : kindFilter.kinds,
-            since: scope.isPinboard ? nil : periodFilter.since(now: Date())
+            since: scope.isPinboard ? nil : periodFilter.since(now: Date()),
+            sort: scope.isPinboard ? .recent : sortMode
         )
     }
 
@@ -192,6 +203,7 @@ final class HistoryModel {
         if scope.isPinboard {
             return kindFilter != .all || !search.isEmpty
         }
+        // Arrange is not a filter — Show All leaves Frequently chosen alone.
         return scope != .all || kindFilter != .all || periodFilter != .anyTime
     }
 
@@ -413,7 +425,7 @@ final class HistoryModel {
                         records = visibleRecords
                         stacks = loadedStacks
                         allStacks = loadedAllStacks
-                        entries = Self.mergeEntries(records: visibleRecords, stacks: loadedStacks)
+                        entries = Self.mergeEntries(records: visibleRecords, stacks: loadedStacks, sort: sortMode)
                     }
                     self.memberships = memberships
                     recordTotal = total
@@ -432,10 +444,36 @@ final class HistoryModel {
         }
     }
 
-    private static func mergeEntries(records: [HistoryCard], stacks: [StackCard]) -> [HistoryEntry] {
+    private static func mergeEntries(
+        records: [HistoryCard],
+        stacks: [StackCard],
+        sort: HistorySortMode = .recent
+    ) -> [HistoryEntry] {
         var result: [HistoryEntry] = records.map { .record($0) } + stacks.map { .stack($0) }
-        result.sort { $0.sortDate > $1.sortDate }
+        switch sort {
+        case .recent:
+            result.sort {
+                if $0.sortDate != $1.sortDate { return $0.sortDate > $1.sortDate }
+                return Self.entryIDTieBreak($0, $1)
+            }
+        case .mostUsed:
+            result.sort {
+                if $0.useCount != $1.useCount { return $0.useCount > $1.useCount }
+                if $0.sortDate != $1.sortDate { return $0.sortDate > $1.sortDate }
+                return Self.entryIDTieBreak($0, $1)
+            }
+        }
         return result
+    }
+
+    /// Stable merge when dates / useCounts match (UUID string).
+    private static func entryIDTieBreak(_ a: HistoryEntry, _ b: HistoryEntry) -> Bool {
+        switch (a.id, b.id) {
+        case (.record(let x), .record(let y)): x.uuidString < y.uuidString
+        case (.stack(let x), .stack(let y)): x.uuidString < y.uuidString
+        case (.record, .stack): true
+        case (.stack, .record): false
+        }
     }
 
     private func reloadSidebar(after delay: Duration = .zero) {
@@ -484,7 +522,7 @@ final class HistoryModel {
             if case .stack = scope {
                 entries = records.map { .record($0) }
             } else {
-                entries = Self.mergeEntries(records: records, stacks: stacks)
+                entries = Self.mergeEntries(records: records, stacks: stacks, sort: sortMode)
             }
         }
     }
@@ -651,7 +689,7 @@ final class HistoryModel {
         if scope.isPinboard {
             entries.removeAll { $0.id == .stack(id) }
         } else {
-            entries = Self.mergeEntries(records: records, stacks: stacks)
+            entries = Self.mergeEntries(records: records, stacks: stacks, sort: sortMode)
         }
         if selectedID == .stack(id) {
             selectedID = entries.first?.id
@@ -669,7 +707,7 @@ final class HistoryModel {
             } else if case .stack = scope {
                 entries = records.map { .record($0) }
             } else {
-                entries = Self.mergeEntries(records: records, stacks: stacks)
+                entries = Self.mergeEntries(records: records, stacks: stacks, sort: sortMode)
             }
         }
     }
@@ -713,7 +751,7 @@ final class HistoryModel {
         } else if case .stack = scope {
             entries = records.map { .record($0) }
         } else if !scope.isPinboard {
-            entries = Self.mergeEntries(records: records, stacks: stacks)
+            entries = Self.mergeEntries(records: records, stacks: stacks, sort: sortMode)
         } else {
             refreshEntriesAfterStackPatch()
         }
@@ -735,7 +773,7 @@ final class HistoryModel {
                 }
             }
         } else {
-            entries = Self.mergeEntries(records: records, stacks: stacks)
+            entries = Self.mergeEntries(records: records, stacks: stacks, sort: sortMode)
         }
     }
 
@@ -852,6 +890,16 @@ enum PeriodFilter: CaseIterable, Hashable {
         case .today: String(localized: "Today")
         case .week: String(localized: "Last 7 Days")
         case .month: String(localized: "Last 30 Days")
+        }
+    }
+}
+
+extension HistorySortMode {
+    /// Full menu row label (button uses short “Frequent”).
+    var menuTitle: String {
+        switch self {
+        case .recent: String(localized: "Newest first")
+        case .mostUsed: String(localized: "Frequently chosen")
         }
     }
 }

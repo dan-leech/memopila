@@ -592,4 +592,132 @@ struct ClipboardStoreTests {
         try await store.markUsed(b, at: Date(timeIntervalSince1970: 99))
         #expect(try await store.pinboardEntries(HistoryQuery(scope: .favorites)).map(\.id) == [.record(a), .record(b)])
     }
+
+    // MARK: useCount arrange + stack age retention (§8.2 / §6)
+
+    @Test func should_bump_useCount_on_choose_not_copyCount() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let id) = await ingest(store, snapshot("x", at: 1)) else { return }
+        #expect(try await store.card(id)?.useCount == 0)
+        #expect(try await store.card(id)?.copyCount == 1)
+        try await store.markUsed(id, at: Date(timeIntervalSince1970: 10))
+        let card = try #require(try await store.card(id))
+        #expect(card.useCount == 1)
+        #expect(card.copyCount == 1)
+        #expect(card.lastCopiedAt == Date(timeIntervalSince1970: 10))
+    }
+
+    @Test func should_page_mostUsed_by_useCount_then_recency() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let a) = await ingest(store, snapshot("a", at: 1)),
+              case .committed(let b) = await ingest(store, snapshot("b", at: 2)),
+              case .committed(let c) = await ingest(store, snapshot("c", at: 3)) else { return }
+        try await store.markUsed(a, at: Date(timeIntervalSince1970: 10))
+        try await store.markUsed(a, at: Date(timeIntervalSince1970: 11))
+        try await store.markUsed(c, at: Date(timeIntervalSince1970: 12))
+        let recent = try await store.page(HistoryQuery(sort: .recent), offset: 0, limit: 10)
+        #expect(recent.map(\.id) == [c, a, b])
+        let used = try await store.page(HistoryQuery(sort: .mostUsed), offset: 0, limit: 10)
+        #expect(used.map(\.id) == [a, c, b])
+    }
+
+    @Test func should_sum_useCount_on_edit_merge() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let a) = await ingest(store, snapshot("draft", at: 1)),
+              case .committed(let b) = await ingest(store, snapshot("final", at: 2)) else { return }
+        try await store.markUsed(a, at: Date(timeIntervalSince1970: 3))
+        try await store.markUsed(a, at: Date(timeIntervalSince1970: 4))
+        try await store.markUsed(b, at: Date(timeIntervalSince1970: 5))
+        #expect(try await store.editText(a, text: "final", opSeq: 1, maxBytes: 1_000) == .merged(into: b))
+        #expect(try await store.card(b)?.useCount == 3)
+    }
+
+    @Test func should_start_duplicateInStack_at_useCount_zero() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let a) = await ingest(store, snapshot("alpha", at: 1)) else { return }
+        try await store.markUsed(a, at: Date(timeIntervalSince1970: 2))
+        let stackID = try await store.createStack(title: "S", recordIDs: [a], now: Date(timeIntervalSince1970: 3))
+        let copy = try await store.duplicateInStack(recordID: a, stackID: stackID, now: Date(timeIntervalSince1970: 4))
+        #expect(try await store.card(copy)?.useCount == 0)
+        #expect(try await store.card(a)?.useCount == 1)
+    }
+
+    @Test func should_age_delete_stale_non_favorite_stack_and_sole_members() async throws {
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits(maxAge: 100)
+        guard case .committed(let a) = await ingest(store, snapshot("a", at: 1), limits: limits) else { return }
+        let stackID = try await store.createStack(title: "Stale", recordIDs: [a], now: Date(timeIntervalSince1970: 1))
+        try await store.applyRetention(limits: limits, now: Date(timeIntervalSince1970: 1_000))
+        #expect(try await store.stack(stackID) == nil)
+        #expect(try await store.card(a) == nil)
+    }
+
+    @Test func should_spare_favorite_stack_past_age_cutoff() async throws {
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits(maxAge: 100)
+        guard case .committed(let a) = await ingest(store, snapshot("a", at: 1), limits: limits) else { return }
+        let stackID = try await store.createStack(title: "Keep", recordIDs: [a], now: Date(timeIntervalSince1970: 1))
+        try await store.setStackFavorite(stackID, true)
+        try await store.applyRetention(limits: limits, now: Date(timeIntervalSince1970: 1_000))
+        #expect(try await store.stack(stackID) != nil)
+        #expect(try await store.card(a) != nil)
+    }
+
+    @Test func should_keep_member_still_in_fresh_stack_when_other_ages_out() async throws {
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits(maxAge: 100)
+        guard case .committed(let shared) = await ingest(store, snapshot("shared", at: 1), limits: limits),
+              case .committed(let onlyFresh) = await ingest(store, snapshot("fresh-only", at: 2), limits: limits)
+        else { return }
+        let staleID = try await store.createStack(
+            title: "Stale",
+            recordIDs: [shared],
+            now: Date(timeIntervalSince1970: 1)
+        )
+        let freshID = try await store.createStack(
+            title: "Fresh",
+            recordIDs: [shared, onlyFresh],
+            now: Date(timeIntervalSince1970: 950)
+        )
+        try await store.applyRetention(limits: limits, now: Date(timeIntervalSince1970: 1_000))
+        #expect(try await store.stack(staleID) == nil)
+        #expect(try await store.stack(freshID) != nil)
+        #expect(try await store.card(shared) != nil)
+        #expect(try await store.card(onlyFresh) != nil)
+    }
+
+    @Test func should_keep_favorite_member_when_stack_ages_out() async throws {
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits(maxAge: 100)
+        guard case .committed(let fav) = await ingest(store, snapshot("fav", at: 1), limits: limits),
+              case .committed(let free) = await ingest(store, snapshot("free", at: 1), limits: limits)
+        else { return }
+        try await store.setFavorite(fav, true, limits: limits, now: Date(timeIntervalSince1970: 2))
+        let stackID = try await store.createStack(
+            title: "Stale",
+            recordIDs: [fav, free],
+            now: Date(timeIntervalSince1970: 1)
+        )
+        try await store.applyRetention(limits: limits, now: Date(timeIntervalSince1970: 1_000))
+        #expect(try await store.stack(stackID) == nil)
+        #expect(try await store.card(fav) != nil)
+        #expect(try await store.card(free) == nil)
+    }
+
+    @Test func should_keep_favorites_pinboard_order_when_useCount_changes() async throws {
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits()
+        guard case .committed(let older) = await ingest(store, snapshot("older", at: 1)),
+              case .committed(let newer) = await ingest(store, snapshot("newer", at: 2)) else { return }
+        try await store.setFavorite(older, true, limits: limits, now: Date(timeIntervalSince1970: 3))
+        try await store.setFavorite(newer, true, limits: limits, now: Date(timeIntervalSince1970: 4))
+        try await store.markUsed(older, at: Date(timeIntervalSince1970: 100))
+        try await store.markUsed(older, at: Date(timeIntervalSince1970: 101))
+        #expect(try await store.page(HistoryQuery(sort: .mostUsed), offset: 0, limit: 10).map(\.id).first == older)
+        #expect(
+            try await store.pinboardEntries(HistoryQuery(scope: .favorites)).map(\.id)
+                == [.record(newer), .record(older)],
+            "Choose / useCount must not reshuffle Favorites"
+        )
+    }
 }

@@ -5,13 +5,15 @@ import SwiftData
 /// One history card: metadata only; payload bytes live in `PayloadRepresentation` rows (PLAN §3.5, §7.2).
 @Model
 final class ClipboardRecord {
-    #Index<ClipboardRecord>([\.contentHash], [\.lastCopiedAt], [\.isFavorite], [\.lastSourceAppBundleID], [\.displayTypeRaw], [\.expiresAt])
+    #Index<ClipboardRecord>([\.contentHash], [\.lastCopiedAt], [\.isFavorite], [\.lastSourceAppBundleID], [\.displayTypeRaw], [\.expiresAt], [\.useCount])
 
     var id: UUID
     var displayTypeRaw: String
     var firstCopiedAt: Date
     var lastCopiedAt: Date
     var copyCount: Int
+    /// Choose / Restore count (not capture `copyCount`).
+    var useCount: Int = 0
     var isFavorite: Bool
     var lastSourceAppBundleID: String?
     var lastSourceAppName: String?
@@ -69,6 +71,7 @@ final class ClipboardRecord {
         self.firstCopiedAt = firstCopiedAt
         self.lastCopiedAt = lastCopiedAt
         self.copyCount = copyCount
+        self.useCount = 0
         self.isFavorite = false
         self.contentHash = contentHash
         self.hashSchemeVersion = hashSchemeVersion
@@ -199,6 +202,8 @@ final class StackModel {
     var dealModeRaw: String
     var createdAt: Date
     var lastUsedAt: Date
+    /// Choose-stack count (not member captures).
+    var useCount: Int = 0
 
     init(
         id: UUID = UUID(),
@@ -216,6 +221,7 @@ final class StackModel {
         self.dealModeRaw = dealModeRaw
         self.createdAt = createdAt
         self.lastUsedAt = lastUsedAt
+        self.useCount = 0
     }
 }
 
@@ -250,7 +256,7 @@ final class StackTag {
 }
 
 enum StoreSchema {
-    static var models: [any PersistentModel.Type] { StoreSchemaV3.models }
+    static var models: [any PersistentModel.Type] { StoreSchemaV4.models }
 }
 
 /// The first released history schema (PLAN §7.2).
@@ -288,15 +294,42 @@ enum StoreSchemaV3: VersionedSchema {
     }
 }
 
+/// Empty row type so V4’s checksum differs from V3 (`Duplicate version checksums` otherwise).
+/// Additive `useCount` on shared `@Model` types still invalidates older on-disk hashes — see
+/// `ClipboardStore.openContainer` inferred fallback.
+@Model
+final class SchemaStampV4 {
+    var id: UUID
+
+    init(id: UUID = UUID()) {
+        self.id = id
+    }
+}
+
+/// Choose/Restore `useCount` on records and stacks (additive Int defaults).
+enum StoreSchemaV4: VersionedSchema {
+    static var versionIdentifier: Schema.Version { Schema.Version(4, 0, 0) }
+
+    static var models: [any PersistentModel.Type] {
+        [
+            ClipboardRecord.self, PayloadRepresentation.self, RecordThumbnail.self,
+            CollectionModel.self, RecordTag.self, FavoriteSlot.self, CollectionSlot.self,
+            StackModel.self, StackMember.self, StackTag.self,
+            SchemaStampV4.self,
+        ]
+    }
+}
+
 enum StoreMigrationPlan: SchemaMigrationPlan {
     static var schemas: [any VersionedSchema.Type] {
-        [StoreSchemaV1.self, StoreSchemaV2.self, StoreSchemaV3.self]
+        [StoreSchemaV1.self, StoreSchemaV2.self, StoreSchemaV3.self, StoreSchemaV4.self]
     }
 
     static var stages: [MigrationStage] {
         [
             MigrationStage.lightweight(fromVersion: StoreSchemaV1.self, toVersion: StoreSchemaV2.self),
             MigrationStage.lightweight(fromVersion: StoreSchemaV2.self, toVersion: StoreSchemaV3.self),
+            MigrationStage.lightweight(fromVersion: StoreSchemaV3.self, toVersion: StoreSchemaV4.self),
         ]
     }
 }

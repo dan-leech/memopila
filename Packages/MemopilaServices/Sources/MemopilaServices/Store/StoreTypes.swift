@@ -33,6 +33,19 @@ public enum HistoryEntry: Sendable, Identifiable, Equatable {
         case .stack(let card): card.lastUsedAt
         }
     }
+
+    public var useCount: Int {
+        switch self {
+        case .record(let card): card.useCount
+        case .stack(let card): card.useCount
+        }
+    }
+}
+
+/// History arrange mode (§8.2): newest activity vs Choose frequency.
+public enum HistorySortMode: String, Sendable, Hashable, CaseIterable {
+    case recent
+    case mostUsed
 }
 
 /// Paste-stack card DTO (§3.11 / §7.1).
@@ -44,6 +57,7 @@ public struct StackCard: Sendable, Identifiable, Equatable {
     public let dealMode: StackDealMode
     public let createdAt: Date
     public let lastUsedAt: Date
+    public let useCount: Int
     /// UI-order member record ids.
     public let memberIDs: [UUID]
     /// First UI-order member — stack card face always shows this (deal cursor is badge-only; Choose resets it).
@@ -62,6 +76,7 @@ public struct StackCard: Sendable, Identifiable, Equatable {
         dealMode: StackDealMode,
         createdAt: Date,
         lastUsedAt: Date,
+        useCount: Int = 0,
         memberIDs: [UUID],
         previewRecordID: UUID?,
         memberCount: Int,
@@ -76,6 +91,7 @@ public struct StackCard: Sendable, Identifiable, Equatable {
         self.dealMode = dealMode
         self.createdAt = createdAt
         self.lastUsedAt = lastUsedAt
+        self.useCount = useCount
         self.memberIDs = memberIDs
         self.previewRecordID = previewRecordID
         self.memberCount = memberCount
@@ -94,6 +110,7 @@ public struct StackCard: Sendable, Identifiable, Equatable {
             dealMode: dealMode,
             createdAt: createdAt,
             lastUsedAt: lastUsedAt,
+            useCount: useCount,
             memberIDs: memberIDs,
             previewRecordID: previewRecordID,
             memberCount: memberCount,
@@ -119,6 +136,7 @@ public struct StackCard: Sendable, Identifiable, Equatable {
             dealMode: dealMode,
             createdAt: createdAt,
             lastUsedAt: lastUsedAt,
+            useCount: useCount,
             memberIDs: memberIDs,
             previewRecordID: first,
             memberCount: memberIDs.count,
@@ -138,6 +156,7 @@ public struct StackCard: Sendable, Identifiable, Equatable {
             dealMode: mode,
             createdAt: createdAt,
             lastUsedAt: lastUsedAt,
+            useCount: useCount,
             memberIDs: memberIDs,
             previewRecordID: previewRecordID,
             memberCount: memberCount,
@@ -166,6 +185,7 @@ public struct HistoryCard: Sendable, Identifiable, Equatable {
     public let firstCopiedAt: Date
     public let lastCopiedAt: Date
     public let copyCount: Int
+    public let useCount: Int
     public let isFavorite: Bool
     public let sourceAppBundleID: String?
     public let sourceAppName: String?
@@ -180,6 +200,64 @@ public struct HistoryCard: Sendable, Identifiable, Equatable {
 
     /// Plain text can be produced for Copy as plain text and text actions.
     public var hasText: Bool { textLength != nil }
+
+    public init(
+        id: UUID,
+        displayType: DisplayType,
+        preview: String,
+        customTitle: String?,
+        textLength: Int?,
+        lineCount: Int?,
+        sensitiveKind: String?,
+        pixelWidth: Int?,
+        pixelHeight: Int?,
+        filePaths: [String],
+        colorHex: String?,
+        payloadSizeBytes: Int,
+        firstCopiedAt: Date,
+        lastCopiedAt: Date,
+        copyCount: Int,
+        useCount: Int = 0,
+        isFavorite: Bool,
+        sourceAppBundleID: String?,
+        sourceAppName: String?,
+        sourceURL: String?,
+        isEdited: Bool,
+        expiresAt: Date?,
+        hasRecognizedText: Bool,
+        storedTypes: [String],
+        skippedTypes: [String],
+        hasThumbnail: Bool,
+        codeLanguage: String?
+    ) {
+        self.id = id
+        self.displayType = displayType
+        self.preview = preview
+        self.customTitle = customTitle
+        self.textLength = textLength
+        self.lineCount = lineCount
+        self.sensitiveKind = sensitiveKind
+        self.pixelWidth = pixelWidth
+        self.pixelHeight = pixelHeight
+        self.filePaths = filePaths
+        self.colorHex = colorHex
+        self.payloadSizeBytes = payloadSizeBytes
+        self.firstCopiedAt = firstCopiedAt
+        self.lastCopiedAt = lastCopiedAt
+        self.copyCount = copyCount
+        self.useCount = useCount
+        self.isFavorite = isFavorite
+        self.sourceAppBundleID = sourceAppBundleID
+        self.sourceAppName = sourceAppName
+        self.sourceURL = sourceURL
+        self.isEdited = isEdited
+        self.expiresAt = expiresAt
+        self.hasRecognizedText = hasRecognizedText
+        self.storedTypes = storedTypes
+        self.skippedTypes = skippedTypes
+        self.hasThumbnail = hasThumbnail
+        self.codeLanguage = codeLanguage
+    }
 
     /// Optimistic grid patch. Favor-on clears `expiresAt` (store does the same, §6).
     public func withFavorite(_ isFavorite: Bool) -> HistoryCard {
@@ -199,6 +277,7 @@ public struct HistoryCard: Sendable, Identifiable, Equatable {
             firstCopiedAt: firstCopiedAt,
             lastCopiedAt: lastCopiedAt,
             copyCount: copyCount,
+            useCount: useCount,
             isFavorite: isFavorite,
             sourceAppBundleID: sourceAppBundleID,
             sourceAppName: sourceAppName,
@@ -254,12 +333,21 @@ public struct HistoryQuery: Sendable, Hashable {
     public var kinds: Set<DisplayType>
     /// The filter bar's period: records copied since this date; `nil` = any time.
     public var since: Date?
+    /// History arrange (§8.2). Pinboards / stack drill-down ignore this.
+    public var sort: HistorySortMode
 
-    public init(scope: HistoryScope = .all, search: String = "", kinds: Set<DisplayType> = [], since: Date? = nil) {
+    public init(
+        scope: HistoryScope = .all,
+        search: String = "",
+        kinds: Set<DisplayType> = [],
+        since: Date? = nil,
+        sort: HistorySortMode = .recent
+    ) {
         self.scope = scope
         self.search = search
         self.kinds = kinds
         self.since = since
+        self.sort = sort
     }
 
     var words: [String] {

@@ -16,7 +16,7 @@ public actor ClipboardStore {
 
     /// Persistent store at `url`; `nil` keeps everything in memory (tests).
     public init(url: URL?) throws {
-        let schema = Schema(versionedSchema: StoreSchemaV3.self)
+        let schema = Schema(versionedSchema: StoreSchemaV4.self)
         let configuration: ModelConfiguration
         if let url {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -24,11 +24,22 @@ public actor ClipboardStore {
         } else {
             configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         }
-        container = try ModelContainer(for: schema, migrationPlan: StoreMigrationPlan.self, configurations: [configuration])
+        container = try Self.openContainer(schema: schema, configuration: configuration)
         // Seed FavoriteSlot / tag positions once after V2→V3 (lightweight migrate leaves positions at 0).
         let context = ModelContext(container)
         try? Self.seedPinboardOrderIfNeeded(in: context)
         try? context.save()
+    }
+
+    /// Staged `StoreMigrationPlan` first (V1→V4). If the on-disk model hash is unknown — typical after
+    /// additive properties on shared `@Model` types changed every VersionedSchema checksum — fall back
+    /// to inferred lightweight migration (no plan). A later launch with the plan then succeeds.
+    private static func openContainer(schema: Schema, configuration: ModelConfiguration) throws -> ModelContainer {
+        do {
+            return try ModelContainer(for: schema, migrationPlan: StoreMigrationPlan.self, configurations: [configuration])
+        } catch {
+            return try ModelContainer(for: schema, configurations: [configuration])
+        }
     }
 
     /// Opens the store at `url`. If it cannot be opened, its files move to a dated folder next to
@@ -194,7 +205,7 @@ public actor ClipboardStore {
         }
         var descriptor = FetchDescriptor<ClipboardRecord>(
             predicate: try predicate(for: query, in: context),
-            sortBy: [SortDescriptor(\.lastCopiedAt, order: .reverse)]
+            sortBy: Self.sortDescriptors(for: query.sort)
         )
         descriptor.fetchOffset = offset
         descriptor.fetchLimit = limit
@@ -222,7 +233,7 @@ public actor ClipboardStore {
         } else {
             var descriptor = FetchDescriptor<ClipboardRecord>(
                 predicate: try predicate(for: query, in: context),
-                sortBy: [SortDescriptor(\.lastCopiedAt, order: .reverse)]
+                sortBy: Self.sortDescriptors(for: query.sort)
             )
             descriptor.propertiesToFetch = [\.id, \.isFavorite]
             records = try context.fetch(descriptor).map { ($0.id, $0.isFavorite) }
@@ -410,11 +421,12 @@ public actor ClipboardStore {
 
     // MARK: - Mutations
 
-    /// After a confirmed Restore: move to the top, `copyCount` unchanged (§3.4).
+    /// After a confirmed Restore: move to the top, bump Choose `useCount`, `copyCount` unchanged (§3.4).
     public func markUsed(_ id: UUID, at date: Date) throws {
         let context = makeContext()
         guard let record = try fetchRecord(id, in: context) else { return }
         record.lastCopiedAt = max(record.lastCopiedAt, date)
+        record.useCount += 1
         try context.save()
     }
 
@@ -528,7 +540,9 @@ public actor ClipboardStore {
 
         if let survivor = try fetchRecord(withHash: hash, in: context), survivor.id != id {
             try saveOrRollback(context) {
+                let editedUseCount = record.useCount
                 apply(DedupMerge.mergeEdited(try metadata(of: record, in: context), into: try metadata(of: survivor, in: context)), to: survivor)
+                survivor.useCount += editedUseCount
                 if survivor.customTitle == nil { survivor.customTitle = record.customTitle }
                 survivor.searchText = Self.searchText(for: survivor)
                 let survivorID = survivor.id
@@ -579,25 +593,92 @@ public actor ClipboardStore {
     }
 
     /// Age, short retention and count cap (§6). Returns when the next expiry is due.
+    /// Also age-deletes non-favorite stacks whose freshest activity is older than `maxAge`.
     @discardableResult
     public func applyRetention(limits: RetentionLimits, now: Date) throws -> Date? {
         let context = makeContext()
-        let candidates = try retentionCandidates(in: context)
-        var victims = RetentionPlanner.planAge(existing: candidates, now: now, maxAge: limits.maxAge)
-        victims += RetentionPlanner.planExpired(existing: candidates, now: now)
-        // The count and the storage limit apply to what is left, not to records already going.
-        var planned = Set(victims)
-        victims += RetentionPlanner.planCountShrink(existing: candidates.filter { !planned.contains($0.id) }, maxCount: limits.maxCount)
-        planned = Set(victims)
-        victims += RetentionPlanner.planStorageShrink(
-            existing: candidates.filter { !planned.contains($0.id) },
-            maxStorageBytes: limits.maxStorageBytes
-        )
-        let removed = Set(victims)
-        if !removed.isEmpty {
-            try saveOrRollback(context) { try deleteRecords(ids: Array(removed), in: context) }
+        var next: Date?
+        try saveOrRollback(context) {
+            try ageDeleteStaleStacks(maxAge: limits.maxAge, now: now, in: context)
+            let candidates = try retentionCandidates(in: context)
+            var victims = RetentionPlanner.planAge(existing: candidates, now: now, maxAge: limits.maxAge)
+            victims += RetentionPlanner.planExpired(existing: candidates, now: now)
+            // The count and the storage limit apply to what is left, not to records already going.
+            var planned = Set(victims)
+            victims += RetentionPlanner.planCountShrink(existing: candidates.filter { !planned.contains($0.id) }, maxCount: limits.maxCount)
+            planned = Set(victims)
+            victims += RetentionPlanner.planStorageShrink(
+                existing: candidates.filter { !planned.contains($0.id) },
+                maxStorageBytes: limits.maxStorageBytes
+            )
+            let removed = Set(victims)
+            if !removed.isEmpty {
+                try deleteRecords(ids: Array(removed), in: context)
+            }
+            next = RetentionPlanner.nextExpiry(existing: candidates.filter { !removed.contains($0.id) })
         }
-        return RetentionPlanner.nextExpiry(existing: candidates.filter { !removed.contains($0.id) })
+        return next
+    }
+
+    /// Non-favorite stacks with `freshAt < now - maxAge` go as a unit; cascade former members
+    /// that are not favorite and not in any surviving stack.
+    private func ageDeleteStaleStacks(maxAge: TimeInterval, now: Date, in context: ModelContext) throws {
+        let cutoff = now.addingTimeInterval(-maxAge)
+        let stacks = try context.fetch(FetchDescriptor<StackModel>())
+        guard !stacks.isEmpty else { return }
+        let members = try context.fetch(FetchDescriptor<StackMember>())
+        let membersByStack = Dictionary(grouping: members, by: \.stackID)
+        let recordIDs = Set(members.map(\.recordID))
+        var lastCopied: [UUID: Date] = [:]
+        if !recordIDs.isEmpty {
+            let ids = Array(recordIDs)
+            var desc = FetchDescriptor<ClipboardRecord>(predicate: #Predicate { ids.contains($0.id) })
+            desc.propertiesToFetch = [\.id, \.lastCopiedAt]
+            for record in try context.fetch(desc) {
+                lastCopied[record.id] = record.lastCopiedAt
+            }
+        }
+
+        let stale = stacks.filter { stack in
+            guard !stack.isFavorite else { return false }
+            let memberDates = (membersByStack[stack.id] ?? []).compactMap { lastCopied[$0.recordID] }
+            let freshAt = RetentionPlanner.stackFreshAt(lastUsedAt: stack.lastUsedAt, memberLastCopiedAt: memberDates)
+            return freshAt < cutoff
+        }
+        guard !stale.isEmpty else { return }
+
+        let staleStackIDs = stale.map(\.id)
+        let formerMemberIDs = Set(staleStackIDs.flatMap { membersByStack[$0]?.map(\.recordID) ?? [] })
+        try deleteStackRows(ids: staleStackIDs, in: context)
+
+        let stillStacked = try stackedRecordIDs(in: context)
+        var cascade: [UUID] = []
+        if !formerMemberIDs.isEmpty {
+            let ids = Array(formerMemberIDs)
+            var desc = FetchDescriptor<ClipboardRecord>(predicate: #Predicate { ids.contains($0.id) })
+            desc.propertiesToFetch = [\.id, \.isFavorite]
+            for record in try context.fetch(desc) {
+                if !record.isFavorite && !stillStacked.contains(record.id) {
+                    cascade.append(record.id)
+                }
+            }
+        }
+        if !cascade.isEmpty {
+            try deleteRecords(ids: cascade, in: context)
+        }
+    }
+
+    /// Stack entity + membership / tags / pinboard slots (not member records).
+    private func deleteStackRows(ids: [UUID], in context: ModelContext) throws {
+        guard !ids.isEmpty else { return }
+        try context.delete(model: StackMember.self, where: #Predicate { ids.contains($0.stackID) })
+        try context.delete(model: StackTag.self, where: #Predicate { ids.contains($0.stackID) })
+        let kind = FavoriteSlotKind.stack.rawValue
+        try context.delete(model: FavoriteSlot.self, where: #Predicate { $0.entryKindRaw == kind && ids.contains($0.entryID) })
+        try context.delete(model: CollectionSlot.self, where: #Predicate { $0.entryKindRaw == kind && ids.contains($0.entryID) })
+        try context.delete(model: StackModel.self, where: #Predicate { ids.contains($0.id) })
+        try Self.compactFavoriteSlots(in: context)
+        try Self.compactAllCollectionSlots(in: context)
     }
 
     /// *Also delete N existing items from <App>* (§5.1): non-pinned only (P32).
@@ -698,7 +779,7 @@ public actor ClipboardStore {
     /// Stacks matching `query`, hard-capped (P22). Not a paged record fetch.
     public func stacks(_ query: HistoryQuery, limit: Int = 200) throws -> [StackCard] {
         let context = makeContext()
-        var descriptor = FetchDescriptor<StackModel>(sortBy: [SortDescriptor(\.lastUsedAt, order: .reverse)])
+        var descriptor = FetchDescriptor<StackModel>(sortBy: Self.stackSortDescriptors(for: query.sort))
         descriptor.fetchLimit = limit
         let models = try context.fetch(descriptor)
         let members = try context.fetch(FetchDescriptor<StackMember>())
@@ -736,6 +817,7 @@ public actor ClipboardStore {
                 dealMode: StackDealMode(rawValue: stack.dealModeRaw) ?? .sequential,
                 createdAt: stack.createdAt,
                 lastUsedAt: stack.lastUsedAt,
+                useCount: stack.useCount,
                 memberIDs: memberIDs,
                 previewRecordID: memberIDs.first,
                 memberCount: memberIDs.count,
@@ -776,12 +858,12 @@ public actor ClipboardStore {
         title: String,
         recordIDs: [UUID],
         dealMode: StackDealMode = .sequential,
-        loops: Bool = false
+        loops: Bool = false,
+        now: Date = Date()
     ) throws -> UUID {
         let context = makeContext()
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = trimmed.isEmpty ? "Stack" : trimmed
-        let now = Date()
         let stack = StackModel(
             title: name,
             loops: loops && dealMode != .shuffleRandom,
@@ -836,21 +918,13 @@ public actor ClipboardStore {
         let context = makeContext()
         guard let stack = try fetchStack(id, in: context) else { return }
         stack.lastUsedAt = max(stack.lastUsedAt, date)
+        stack.useCount += 1
         try context.save()
     }
 
     public func deleteStacks(_ ids: [UUID]) throws {
         let context = makeContext()
-        try saveOrRollback(context) {
-            try context.delete(model: StackMember.self, where: #Predicate { ids.contains($0.stackID) })
-            try context.delete(model: StackTag.self, where: #Predicate { ids.contains($0.stackID) })
-            let kind = FavoriteSlotKind.stack.rawValue
-            try context.delete(model: FavoriteSlot.self, where: #Predicate { $0.entryKindRaw == kind && ids.contains($0.entryID) })
-            try context.delete(model: CollectionSlot.self, where: #Predicate { $0.entryKindRaw == kind && ids.contains($0.entryID) })
-            try context.delete(model: StackModel.self, where: #Predicate { ids.contains($0.id) })
-            try Self.compactFavoriteSlots(in: context)
-            try Self.compactAllCollectionSlots(in: context)
-        }
+        try saveOrRollback(context) { try deleteStackRows(ids: ids, in: context) }
     }
 
     /// Replace UI order. Clears `expiresAt` on newly joined members (P36).
@@ -1212,10 +1286,34 @@ public actor ClipboardStore {
     private static var cardProperties: [PartialKeyPath<ClipboardRecord>] {
         [
         \.id, \.displayTypeRaw, \.cardPreview, \.customTitle, \.textLength, \.lineCount, \.sensitiveKind, \.pixelWidth, \.pixelHeight,
-        \.filePaths, \.colorHex, \.payloadSizeBytes, \.firstCopiedAt, \.lastCopiedAt, \.copyCount, \.isFavorite,
+        \.filePaths, \.colorHex, \.payloadSizeBytes, \.firstCopiedAt, \.lastCopiedAt, \.copyCount, \.useCount, \.isFavorite,
         \.lastSourceAppBundleID, \.lastSourceAppName, \.sourceURL, \.editedAt, \.expiresAt, \.ocrStateRaw,
         \.storedTypes, \.skippedTypes, \.hasThumbnail, \.codeLanguage,
         ]
+    }
+
+    private static func sortDescriptors(for mode: HistorySortMode) -> [SortDescriptor<ClipboardRecord>] {
+        switch mode {
+        case .recent:
+            [SortDescriptor(\.lastCopiedAt, order: .reverse)]
+        case .mostUsed:
+            [
+                SortDescriptor(\.useCount, order: .reverse),
+                SortDescriptor(\.lastCopiedAt, order: .reverse),
+            ]
+        }
+    }
+
+    private static func stackSortDescriptors(for mode: HistorySortMode) -> [SortDescriptor<StackModel>] {
+        switch mode {
+        case .recent:
+            [SortDescriptor(\.lastUsedAt, order: .reverse)]
+        case .mostUsed:
+            [
+                SortDescriptor(\.useCount, order: .reverse),
+                SortDescriptor(\.lastUsedAt, order: .reverse),
+            ]
+        }
     }
 
     private static func card(_ record: ClipboardRecord) -> HistoryCard {
@@ -1235,6 +1333,7 @@ public actor ClipboardStore {
             firstCopiedAt: record.firstCopiedAt,
             lastCopiedAt: record.lastCopiedAt,
             copyCount: record.copyCount,
+            useCount: record.useCount,
             isFavorite: record.isFavorite,
             sourceAppBundleID: record.lastSourceAppBundleID,
             sourceAppName: record.lastSourceAppName,

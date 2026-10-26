@@ -82,6 +82,15 @@ struct RetentionTests {
             == .accept(victims: [free.id]))
         #expect(RetentionPlanner.planExpired(existing: [pinned], now: Date(timeIntervalSince1970: 100)).isEmpty)
     }
+
+    @Test func stackFreshAt_is_max_of_lastUsed_and_member_copies() {
+        let used = Date(timeIntervalSince1970: 50)
+        let older = Date(timeIntervalSince1970: 10)
+        let newer = Date(timeIntervalSince1970: 80)
+        #expect(RetentionPlanner.stackFreshAt(lastUsedAt: used, memberLastCopiedAt: []) == used)
+        #expect(RetentionPlanner.stackFreshAt(lastUsedAt: used, memberLastCopiedAt: [older]) == used)
+        #expect(RetentionPlanner.stackFreshAt(lastUsedAt: used, memberLastCopiedAt: [older, newer]) == newer)
+    }
 }
 
 @Suite("Dedup metadata merge (§4)")

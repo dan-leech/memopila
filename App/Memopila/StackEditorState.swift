@@ -143,6 +143,7 @@ final class StackEditorState {
             dealMode: stack.dealMode,
             createdAt: stack.createdAt,
             lastUsedAt: stack.lastUsedAt,
+            useCount: stack.useCount,
             memberIDs: stack.memberIDs,
             previewRecordID: stack.previewRecordID,
             memberCount: stack.memberCount,

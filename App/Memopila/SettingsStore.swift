@@ -57,6 +57,10 @@ final class SettingsStore {
     var pausedUntil: Date? { didSet { defaults.set(pausedUntil, forKey: Key.pausedUntil) } }
     var pausedIndefinitely: Bool { didSet { defaults.set(pausedIndefinitely, forKey: Key.pausedIndefinitely) } }
     var showSidebar: Bool { didSet { defaults.set(showSidebar, forKey: Key.showSidebar) } }
+    /// History Arrange: newest activity vs Frequently chosen (§8.2). Not part of `isFiltered`.
+    var historySortMode: HistorySortMode {
+        didSet { defaults.set(historySortMode.rawValue, forKey: Key.historySortMode) }
+    }
     /// Cards visible at once, as in Pasta: columns × rows, 3 × 3 by default (§8.2).
     var gridSize: GridSize { didSet { store(gridSize, Key.gridSize) } }
     /// Panel frame per display (§8.1), keyed by `PanelController.displayKey`.
@@ -87,6 +91,7 @@ final class SettingsStore {
         pausedUntil = defaults.object(forKey: Key.pausedUntil) as? Date
         pausedIndefinitely = defaults.bool(forKey: Key.pausedIndefinitely)
         showSidebar = defaults.object(forKey: Key.showSidebar) as? Bool ?? true
+        historySortMode = defaults.string(forKey: Key.historySortMode).flatMap(HistorySortMode.init(rawValue:)) ?? .recent
         gridSize = Self.load(GridSize.self, Key.gridSize, defaults) ?? .default
         panelFrames = defaults.dictionary(forKey: Key.panelFrames) as? [String: String] ?? [:]
     }
@@ -218,6 +223,7 @@ final class SettingsStore {
         static let pausedUntil = "pausedUntil"
         static let pausedIndefinitely = "pausedIndefinitely"
         static let showSidebar = "showSidebar"
+        static let historySortMode = "historySortMode"
         static let gridSize = "gridSize"
         static let panelFrames = "panelFrames"
     }

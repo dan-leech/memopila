@@ -110,6 +110,11 @@ public enum RetentionPlanner {
         existing.filter { !$0.isPinned }.compactMap(\.expiresAt).min()
     }
 
+    /// Freshest stack activity: Choose (`lastUsedAt`) or any member capture (`lastCopiedAt`).
+    public static func stackFreshAt(lastUsedAt: Date, memberLastCopiedAt: [Date]) -> Date {
+        ([lastUsedAt] + memberLastCopiedAt).max() ?? lastUsedAt
+    }
+
     private static func oldestFirst(_ candidates: [RetentionCandidate]) -> [RetentionCandidate] {
         candidates.sorted {
             $0.lastCopiedAt != $1.lastCopiedAt ? $0.lastCopiedAt < $1.lastCopiedAt : $0.id.uuidString < $1.id.uuidString

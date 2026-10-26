@@ -1193,6 +1193,16 @@
         }
       }
     },
+    "Arrange": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Порядок"
+          }
+        }
+      }
+    },
     "As if copied from": {
       "localizations": {
         "ru": {
@@ -3135,6 +3145,46 @@
         }
       }
     },
+    "Frequent": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Частые"
+          }
+        }
+      }
+    },
+    "Frequent · %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Частые · %@"
+          }
+        }
+      }
+    },
+    "Frequently chosen": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Часто выбираемые"
+          }
+        }
+      }
+    },
+    "Frequently chosen first — period still limits which items appear": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сначала часто выбираемые — период по-прежнему ограничивает список"
+          }
+        }
+      }
+    },
     "General": {
       "localizations": {
         "ru": {
@@ -4221,6 +4271,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Новый стек…"
+          }
+        }
+      }
+    },
+    "Newest first": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сначала новые"
           }
         }
       }
@@ -6951,6 +7011,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Этот стек слишком большой, чтобы менять порядок здесь."
+          }
+        }
+      }
+    },
+    "Time": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Время"
           }
         }
       }

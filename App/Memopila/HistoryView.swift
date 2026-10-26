@@ -259,7 +259,7 @@ private struct FilterBar: View {
     private var history: HistoryModel { model.history }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 6) {
+        HStack(alignment: .center, spacing: 6) {
             FlowLayout(spacing: 6) {
                 ForEach(visibleKinds, id: \.self) { kind in
                     let isOn = history.kindFilter == kind
@@ -284,35 +284,53 @@ private struct FilterBar: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            PanelStatus(model: model)
-            if !history.scope.isPinboard {
-                Menu {
-                    ForEach(PeriodFilter.allCases, id: \.self) { period in
-                        Button {
-                            history.periodFilter = period
-                        } label: {
-                            if period == history.periodFilter {
-                                Label(period.title, systemImage: "checkmark")
-                            } else {
-                                Text(period.title)
+            // Status + period share one baseline (`.top` left the count hanging above Any Time).
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                PanelStatus(model: model)
+                if !history.scope.isPinboard {
+                    Menu {
+                        Section(String(localized: "Time")) {
+                            ForEach(PeriodFilter.allCases, id: \.self) { period in
+                                Button {
+                                    history.periodFilter = period
+                                } label: {
+                                    if period == history.periodFilter {
+                                        Label(period.title, systemImage: "checkmark")
+                                    } else {
+                                        Text(period.title)
+                                    }
+                                }
                             }
                         }
+                        Section(String(localized: "Arrange")) {
+                            ForEach(HistorySortMode.allCases, id: \.self) { mode in
+                                Button {
+                                    history.sortMode = mode
+                                } label: {
+                                    if mode == history.sortMode {
+                                        Label(mode.menuTitle, systemImage: "checkmark")
+                                    } else {
+                                        Text(mode.menuTitle)
+                                    }
+                                }
+                            }
+                        }
+                    } label: {
+                        Label(viewMenuLabel, systemImage: viewMenuSymbol)
+                            .labelStyle(.titleAndIcon)
+                            .font(.system(size: 12, weight: viewMenuIsDefault ? .regular : .semibold))
+                            .foregroundStyle(viewMenuIsDefault ? Color.secondary : Color.accentColor)
+                            .padding(.horizontal, 6)
+                            .contentShape(Rectangle())
                     }
-                } label: {
-                    Label(history.periodFilter.title, systemImage: "calendar")
-                        .font(.system(size: 12, weight: history.periodFilter == .anyTime ? .regular : .semibold))
-                        .foregroundStyle(history.periodFilter == .anyTime ? Color.secondary : Color.accentColor)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .contentShape(Rectangle())
+                    .menuStyle(.button)
+                    .menuIndicator(.hidden)
+                    .buttonStyle(ToolbarIconStyle(recolorsLabel: false))
+                    .fixedSize()
+                    .floatingHelp(viewMenuHelp)
+                    .accessibilityLabel(Text(viewMenuHelp))
+                    .accessibilityValue(Text(viewMenuLabel))
                 }
-                .menuStyle(.button)
-                .menuIndicator(.hidden)
-                .buttonStyle(ToolbarIconStyle(recolorsLabel: false))
-                .fixedSize()
-                .floatingHelp(String(localized: "Only items copied in this period"))
-                .accessibilityLabel(Text("Only items copied in this period"))
-                .accessibilityValue(Text(history.periodFilter.title))
             }
         }
         .padding(.horizontal, 12)
@@ -331,6 +349,30 @@ private struct FilterBar: View {
         case .all: String(localized: "Every kind of item")
         case .stacks: String(localized: "Only paste stacks")
         default: String(localized: "Only \(kind.title.lowercased())")
+        }
+    }
+
+    private var viewMenuIsDefault: Bool {
+        history.sortMode == .recent && history.periodFilter == .anyTime
+    }
+
+    private var viewMenuLabel: String {
+        switch (history.sortMode, history.periodFilter) {
+        case (.recent, .anyTime): history.periodFilter.title
+        case (.recent, _): history.periodFilter.title
+        case (.mostUsed, .anyTime): String(localized: "Frequent")
+        case (.mostUsed, _): String(localized: "Frequent · \(history.periodFilter.title)")
+        }
+    }
+
+    private var viewMenuSymbol: String {
+        history.sortMode == .mostUsed ? "arrow.up.arrow.down" : "calendar"
+    }
+
+    private var viewMenuHelp: String {
+        switch history.sortMode {
+        case .recent: String(localized: "Only items copied in this period")
+        case .mostUsed: String(localized: "Frequently chosen first — period still limits which items appear")
         }
     }
 }
@@ -402,12 +444,13 @@ private struct PanelStatus: View {
     }
 
     private func label(_ status: (symbol: String, tint: Color, help: String), _ text: String?) -> some View {
-        // `.center` + geometric pulse: `circle.fill` SF Symbol sits optically high next to text.
-        HStack(alignment: .center, spacing: 5) {
+        // Baseline with the period menu; geometric circle (not `circle.fill`) stays optically centered.
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
             statusGlyph(status.symbol, tint: status.tint)
+                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] }
             if let text {
                 Text(verbatim: text)
-                    .font(.system(size: 11).monospacedDigit())
+                    .font(.system(size: 12).monospacedDigit())
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .fixedSize()
