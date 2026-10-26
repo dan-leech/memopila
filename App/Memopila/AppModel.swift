@@ -89,8 +89,11 @@ final class AppModel {
     private(set) var chooseBadgeWasPasted = false
     /// Armed paste-stack session (§3.11).
     @ObservationIgnored private(set) var stackSession: StackSessionController!
-    /// Panel card-drag SSOT (§3.11 drop contract).
-    @ObservationIgnored private(set) var stackDrag = StackDragSession()
+    /// Panel card-drag SSOT (§3.11 drop contract). Not ObservationIgnored: Favorites/Collections
+    /// chrome (`reorderGap` / End slot) must invalidate the History grid while dragging.
+    private(set) var stackDrag = StackDragSession()
+    /// Bumped on every pinboard/stack-drag begin so LazyVGrid definitely refreshes chrome.
+    private(set) var stackDragRevision = 0
     /// Open Stack Window state (nil when closed).
     private(set) var stackEditor: StackEditorState?
     /// Status-item tooltip / Stop affordance bump.
@@ -1554,19 +1557,103 @@ final class AppModel {
         }
     }
 
-    // MARK: Card drag (StackDragSession SSOT — PLAN §3.11)
+    // MARK: Card drag (StackDragSession SSOT — PLAN §3.11 + pinboard)
 
-    /// Begin dragging a history record (membership append — positional only via Stack Window).
+    /// Begin dragging a history record (membership append, or pinboard reorder in Favorites/Collections).
     func beginCardDrag(_ id: UUID) {
-        stackDrag.beginRecord(id, positionalReorder: false)
+        // Pinboard scopes always start positional reorder (not membership). Append to stacks from History.
+        if history.scope.isPinboard {
+            stackDrag.beginPinboardReorder(.record(id))
+        } else {
+            stackDrag.beginRecord(id, positionalReorder: false)
+        }
+        stackDragRevision &+= 1
     }
 
     func beginStackDrag(_ id: UUID) {
-        stackDrag.beginStack(id)
+        if history.scope.isPinboard {
+            stackDrag.beginPinboardReorder(.stack(id))
+        } else {
+            stackDrag.beginStack(id)
+        }
+        stackDragRevision &+= 1
+    }
+
+    /// Favorites / Collection grid reorder drop.
+    @discardableResult
+    func dropPinboardReorder(before targetID: HistoryEntry.ID?, atEnd: Bool) -> Bool {
+        stackDrag.claimForDrop()
+        guard history.scope.isPinboard,
+              stackDrag.isPinboardReorder,
+              let fromID = stackDrag.reorderDragID else {
+            endCardDrag()
+            return false
+        }
+        var order = history.entries.map(\.id)
+        guard let fromIndex = order.firstIndex(of: fromID) else {
+            endCardDrag()
+            return false
+        }
+        order.remove(at: fromIndex)
+        if atEnd {
+            order.append(fromID)
+        } else if let targetID, let toIndex = order.firstIndex(of: targetID) {
+            order.insert(fromID, at: toIndex)
+        } else {
+            endCardDrag()
+            return false
+        }
+        // Filtered pinboard: splice into the full board so hidden slots are not deleted.
+        let scope = history.scope
+        let visibleOrder = order
+        history.applyPinboardOrderLocally(visibleOrder)
+        endCardDrag()
+        stackDragRevision &+= 1
+        Task {
+            do {
+                let fullQuery = HistoryQuery(scope: scope)
+                let full = try await store.pinboardEntries(fullQuery, limit: ClipboardStore.maxPinboardEntries).map(\.id)
+                let merged: [HistoryEntry.ID]
+                if history.kindFilter == .all, history.search.isEmpty {
+                    merged = visibleOrder
+                } else {
+                    merged = Self.splicePinboardOrder(full: full, visible: visibleOrder)
+                }
+                switch scope {
+                case .favorites:
+                    try await store.reorderFavorites(merged)
+                case .collection(let collectionID):
+                    try await store.reorderCollection(collectionID, merged)
+                default:
+                    break
+                }
+            } catch {
+                history.storeDidChange()
+            }
+        }
+        return true
+    }
+
+    /// Replace the relative order of `visible` ids inside `full`, keeping non-visible ids in place.
+    private static func splicePinboardOrder(full: [HistoryEntry.ID], visible: [HistoryEntry.ID]) -> [HistoryEntry.ID] {
+        let visibleSet = Set(visible)
+        var queue = visible
+        return full.map { id in
+            if visibleSet.contains(id), !queue.isEmpty {
+                return queue.removeFirst()
+            }
+            return id
+        } + queue
     }
 
     func endCardDrag() {
         stackDrag.end()
+        stackDragRevision &+= 1
+    }
+
+    /// Invalidate History / Stack Window drag chrome after gap or append-highlight changes.
+    func noteStackDragChrome() {
+        stackDragRevision &+= 1
     }
 
     /// Sidebar collection drop (record or stack card).

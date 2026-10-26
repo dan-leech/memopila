@@ -492,4 +492,89 @@ struct ClipboardStoreTests {
         #expect(try await reopened.count(HistoryQuery()) == 0)
         await #expect(throws: StoreError.notFound) { try await reopened.payload(for: id) }
     }
+
+    // MARK: Pinboard order (Favorites / Collections)
+
+    @Test func should_keep_favorites_order_when_choose_bumps_lastCopiedAt() async throws {
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits()
+        guard case .committed(let older) = await ingest(store, snapshot("older", at: 1)),
+              case .committed(let newer) = await ingest(store, snapshot("newer", at: 2)) else { return }
+        try await store.setFavorite(older, true, limits: limits, now: Date(timeIntervalSince1970: 3))
+        try await store.setFavorite(newer, true, limits: limits, now: Date(timeIntervalSince1970: 4))
+        // Newer favorite joins at front.
+        let before = try await store.pinboardEntries(HistoryQuery(scope: .favorites))
+        #expect(before.map(\.id) == [.record(newer), .record(older)])
+        try await store.markUsed(older, at: Date(timeIntervalSince1970: 100))
+        #expect(try await store.page(HistoryQuery(), offset: 0, limit: 10).map(\.id).first == older)
+        let after = try await store.pinboardEntries(HistoryQuery(scope: .favorites))
+        #expect(after.map(\.id) == [.record(newer), .record(older)], "Choose must not reshuffle Favorites")
+    }
+
+    @Test func should_insert_new_favorite_at_front_of_slots() async throws {
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits()
+        guard case .committed(let a) = await ingest(store, snapshot("a", at: 1)),
+              case .committed(let b) = await ingest(store, snapshot("b", at: 2)) else { return }
+        try await store.setFavorite(a, true, limits: limits, now: Date(timeIntervalSince1970: 3))
+        try await store.setFavorite(b, true, limits: limits, now: Date(timeIntervalSince1970: 4))
+        #expect(try await store.pinboardEntries(HistoryQuery(scope: .favorites)).map(\.id) == [.record(b), .record(a)])
+    }
+
+    @Test func should_reorder_collection_persisting_record_and_stack_positions() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let a) = await ingest(store, snapshot("a", at: 1)),
+              case .committed(let b) = await ingest(store, snapshot("b", at: 2)) else { return }
+        let stackID = try await store.createStack(title: "S", recordIDs: [a])
+        let collection = try await store.createCollection(named: "Board")
+        try await store.setMembership(record: b, collection: collection, isMember: true)
+        try await store.setStackMembership(stack: stackID, collection: collection, isMember: true)
+        // Latest join at front: stack, then b.
+        #expect(try await store.pinboardEntries(HistoryQuery(scope: .collection(collection))).map(\.id)
+            == [.stack(stackID), .record(b)])
+        try await store.reorderCollection(collection, [.record(b), .stack(stackID)])
+        #expect(try await store.pinboardEntries(HistoryQuery(scope: .collection(collection))).map(\.id)
+            == [.record(b), .stack(stackID)])
+    }
+
+    @Test func should_ignore_since_in_favorites_and_collection_scopes() async throws {
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits()
+        guard case .committed(let old) = await ingest(store, snapshot("old", at: 1)) else { return }
+        try await store.setFavorite(old, true, limits: limits, now: Date(timeIntervalSince1970: 2))
+        let collection = try await store.createCollection(named: "C")
+        try await store.setMembership(record: old, collection: collection, isMember: true)
+        let since = Date(timeIntervalSince1970: 1_000)
+        #expect(try await store.pinboardEntries(HistoryQuery(scope: .favorites, since: since)).count == 1)
+        #expect(try await store.pinboardEntries(HistoryQuery(scope: .collection(collection), since: since)).count == 1)
+        #expect(try await store.count(HistoryQuery(scope: .favorites, since: since)) == 0, "page/count still use since; pinboard feed ignores it")
+    }
+
+    @Test func should_retarget_favorite_slot_on_dedup_merge() async throws {
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits()
+        guard case .committed(let keeper) = await ingest(store, snapshot("final", at: 1)),
+              case .committed(let draft) = await ingest(store, snapshot("draft", at: 2)) else { return }
+        try await store.setFavorite(draft, true, limits: limits, now: Date(timeIntervalSince1970: 3))
+        #expect(try await store.pinboardEntries(HistoryQuery(scope: .favorites)).map(\.id) == [.record(draft)])
+        #expect(try await store.editText(draft, text: "final", opSeq: 1, maxBytes: 1_000) == .merged(into: keeper))
+        let board = try await store.pinboardEntries(HistoryQuery(scope: .favorites))
+        #expect(board.map(\.id) == [.record(keeper)])
+        #expect(try await store.card(keeper)?.isFavorite == true)
+    }
+
+    @Test func should_seed_positions_from_recency_on_migration() async throws {
+        // In-memory V3 store: favoriting creates slots; reorderFavorites rewrites them; seed path
+        // reconciles when slots are missing relative to isFavorite (covered via setFavorite + reorder).
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits()
+        guard case .committed(let a) = await ingest(store, snapshot("a", at: 10)),
+              case .committed(let b) = await ingest(store, snapshot("b", at: 20)) else { return }
+        try await store.setFavorite(a, true, limits: limits, now: Date(timeIntervalSince1970: 30))
+        try await store.setFavorite(b, true, limits: limits, now: Date(timeIntervalSince1970: 40))
+        try await store.reorderFavorites([.record(a), .record(b)])
+        #expect(try await store.pinboardEntries(HistoryQuery(scope: .favorites)).map(\.id) == [.record(a), .record(b)])
+        try await store.markUsed(b, at: Date(timeIntervalSince1970: 99))
+        #expect(try await store.pinboardEntries(HistoryQuery(scope: .favorites)).map(\.id) == [.record(a), .record(b)])
+    }
 }

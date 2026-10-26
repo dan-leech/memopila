@@ -11,9 +11,12 @@ public actor ClipboardStore {
     private let container: ModelContainer
     private var staleGuard = IngestStaleGuard()
 
+    /// Hard cap for Favorites / Collections pinboard feeds (not paged History).
+    public static let maxPinboardEntries = 200
+
     /// Persistent store at `url`; `nil` keeps everything in memory (tests).
     public init(url: URL?) throws {
-        let schema = Schema(versionedSchema: StoreSchemaV2.self)
+        let schema = Schema(versionedSchema: StoreSchemaV3.self)
         let configuration: ModelConfiguration
         if let url {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -22,6 +25,10 @@ public actor ClipboardStore {
             configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         }
         container = try ModelContainer(for: schema, migrationPlan: StoreMigrationPlan.self, configurations: [configuration])
+        // Seed FavoriteSlot / tag positions once after V2→V3 (lightweight migrate leaves positions at 0).
+        let context = ModelContext(container)
+        try? Self.seedPinboardOrderIfNeeded(in: context)
+        try? context.save()
     }
 
     /// Opens the store at `url`. If it cannot be opened, its files move to a dated folder next to
@@ -443,16 +450,18 @@ public actor ClipboardStore {
         staleGuard.recordClear(opSeq: opSeq)
     }
 
-    /// Favorite on / off with the count cap and age rules of §6.
+    /// Favorite on / off with the count cap and age rules of §6. Favorites pinboard: join at front.
     public func setFavorite(_ id: UUID, _ isFavorite: Bool, limits: RetentionLimits, now: Date) throws {
         let context = makeContext()
         guard let record = try fetchRecord(id, in: context) else { return }
         try saveOrRollback(context) {
             record.isFavorite = isFavorite
-            guard !isFavorite else {
+            if isFavorite {
                 record.expiresAt = nil
+                try Self.insertFavoriteSlotFront(kind: .record, entryID: id, in: context)
                 return
             }
+            try Self.removeFavoriteSlot(kind: .record, entryID: id, in: context)
             let candidates = try retentionCandidates(in: context)
             var victims = RetentionPlanner.planUnfavorite(id, existing: candidates, maxCount: limits.maxCount)
             // Older than History keeps, the record goes too, as the next cleanup would delete it
@@ -529,6 +538,8 @@ public actor ClipboardStore {
                     context.insert(RecordTag(recordID: survivorID, collectionID: tag.collectionID))
                 }
                 try retargetStackMembers(from: id, to: survivorID, in: context)
+                try Self.retargetFavoriteSlot(from: id, to: survivorID, in: context)
+                try Self.retargetCollectionSlots(from: id, to: survivorID, in: context)
                 try deleteRecords(ids: [id], in: context)
             }
             return .merged(into: survivor.id)
@@ -648,6 +659,7 @@ public actor ClipboardStore {
         try saveOrRollback(context) {
             try context.delete(model: RecordTag.self, where: #Predicate { $0.collectionID == id })
             try context.delete(model: StackTag.self, where: #Predicate { $0.collectionID == id })
+            try context.delete(model: CollectionSlot.self, where: #Predicate { $0.collectionID == id })
             try context.delete(model: CollectionModel.self, where: #Predicate { $0.id == id })
         }
     }
@@ -669,8 +681,14 @@ public actor ClipboardStore {
         ))
         if isMember, existing.isEmpty {
             context.insert(RecordTag(recordID: recordID, collectionID: collectionID))
+            try Self.insertCollectionSlotFront(
+                collectionID: collectionID, kind: .record, entryID: recordID, in: context
+            )
         } else if !isMember {
             existing.forEach { context.delete($0) }
+            try Self.removeCollectionSlot(
+                collectionID: collectionID, kind: .record, entryID: recordID, in: context
+            )
         }
         try context.save()
     }
@@ -796,8 +814,14 @@ public actor ClipboardStore {
     public func setStackFavorite(_ id: UUID, _ isFavorite: Bool) throws {
         let context = makeContext()
         guard let stack = try fetchStack(id, in: context) else { return }
-        stack.isFavorite = isFavorite
-        try context.save()
+        try saveOrRollback(context) {
+            stack.isFavorite = isFavorite
+            if isFavorite {
+                try Self.insertFavoriteSlotFront(kind: .stack, entryID: id, in: context)
+            } else {
+                try Self.removeFavoriteSlot(kind: .stack, entryID: id, in: context)
+            }
+        }
     }
 
     public func setStackDeal(_ id: UUID, dealMode: StackDealMode, loops: Bool) throws {
@@ -820,7 +844,12 @@ public actor ClipboardStore {
         try saveOrRollback(context) {
             try context.delete(model: StackMember.self, where: #Predicate { ids.contains($0.stackID) })
             try context.delete(model: StackTag.self, where: #Predicate { ids.contains($0.stackID) })
+            let kind = FavoriteSlotKind.stack.rawValue
+            try context.delete(model: FavoriteSlot.self, where: #Predicate { $0.entryKindRaw == kind && ids.contains($0.entryID) })
+            try context.delete(model: CollectionSlot.self, where: #Predicate { $0.entryKindRaw == kind && ids.contains($0.entryID) })
             try context.delete(model: StackModel.self, where: #Predicate { ids.contains($0.id) })
+            try Self.compactFavoriteSlots(in: context)
+            try Self.compactAllCollectionSlots(in: context)
         }
     }
 
@@ -880,10 +909,137 @@ public actor ClipboardStore {
         ))
         if isMember, existing.isEmpty {
             context.insert(StackTag(stackID: stackID, collectionID: collectionID))
+            try Self.insertCollectionSlotFront(
+                collectionID: collectionID, kind: .stack, entryID: stackID, in: context
+            )
         } else if !isMember {
             existing.forEach { context.delete($0) }
+            try Self.removeCollectionSlot(
+                collectionID: collectionID, kind: .stack, entryID: stackID, in: context
+            )
         }
         try context.save()
+    }
+
+    // MARK: - Pinboard order (Favorites / Collections)
+
+    /// Unified ordered feed for Favorites or a Collection. Ignores `query.since`. Not paged.
+    public func pinboardEntries(_ query: HistoryQuery, limit: Int = ClipboardStore.maxPinboardEntries) throws -> [HistoryEntry] {
+        guard query.scope.isPinboard else { return [] }
+        let context = makeContext()
+        try Self.seedPinboardOrderIfNeeded(in: context)
+        try context.save()
+
+        let orderedIDs: [HistoryEntry.ID]
+        switch query.scope {
+        case .favorites:
+            orderedIDs = try Self.favoriteEntryIDs(in: context)
+        case .collection(let collectionID):
+            orderedIDs = try Self.collectionEntryIDs(collectionID: collectionID, in: context)
+        default:
+            return []
+        }
+
+        // Filter kinds/search without period; materialize only what we keep (cap after filter).
+        var filterQuery = query
+        filterQuery.since = nil
+        var result: [HistoryEntry] = []
+        result.reserveCapacity(min(limit, orderedIDs.count))
+
+        let recordIDs = orderedIDs.compactMap { id -> UUID? in
+            if case .record(let uuid) = id { return uuid }
+            return nil
+        }
+        var recordsByID: [UUID: ClipboardRecord] = [:]
+        if !recordIDs.isEmpty {
+            let ids = recordIDs
+            for record in try context.fetch(FetchDescriptor<ClipboardRecord>(predicate: #Predicate { ids.contains($0.id) })) {
+                recordsByID[record.id] = record
+            }
+        }
+
+        // Stack DTOs matching scope + kinds + search (period ignored). Lookup only — board order is slots.
+        let stackCards = try stacks(
+            HistoryQuery(scope: query.scope, search: query.search, kinds: query.kinds, since: nil),
+            limit: Self.maxPinboardEntries
+        )
+        let stacksByID = Dictionary(uniqueKeysWithValues: stackCards.map { ($0.id, $0) })
+
+        for entryID in orderedIDs {
+            guard result.count < limit else { break }
+            switch entryID {
+            case .record(let id):
+                guard let record = recordsByID[id],
+                      Self.recordMatchesPinboardFilters(record, query: filterQuery) else { continue }
+                result.append(.record(Self.card(record)))
+            case .stack(let id):
+                guard let card = stacksByID[id] else { continue }
+                result.append(.stack(card))
+            }
+        }
+        return result
+    }
+
+    /// Rewrite Favorites pinboard order (full unfiltered list). Positions become 0..<n.
+    public func reorderFavorites(_ entryIDs: [HistoryEntry.ID]) throws {
+        let context = makeContext()
+        try saveOrRollback(context) {
+            for slot in try context.fetch(FetchDescriptor<FavoriteSlot>()) {
+                context.delete(slot)
+            }
+            var position = 0
+            var seen = Set<HistoryEntry.ID>()
+            for entryID in entryIDs {
+                guard seen.insert(entryID).inserted else { continue }
+                switch entryID {
+                case .record(let id):
+                    guard let record = try fetchRecord(id, in: context), record.isFavorite else { continue }
+                    context.insert(FavoriteSlot(entryKindRaw: FavoriteSlotKind.record.rawValue, entryID: id, position: position))
+                    position += 1
+                case .stack(let id):
+                    guard let stack = try fetchStack(id, in: context), stack.isFavorite else { continue }
+                    context.insert(FavoriteSlot(entryKindRaw: FavoriteSlotKind.stack.rawValue, entryID: id, position: position))
+                    position += 1
+                }
+            }
+        }
+    }
+
+    /// Rewrite one collection's pinboard order (records ∪ stacks). Keeps membership tags in sync.
+    public func reorderCollection(_ collectionID: UUID, _ entryIDs: [HistoryEntry.ID]) throws {
+        let context = makeContext()
+        try saveOrRollback(context) {
+            try context.delete(model: CollectionSlot.self, where: #Predicate { $0.collectionID == collectionID })
+            try context.delete(model: RecordTag.self, where: #Predicate { $0.collectionID == collectionID })
+            try context.delete(model: StackTag.self, where: #Predicate { $0.collectionID == collectionID })
+            var position = 0
+            var seen = Set<HistoryEntry.ID>()
+            for entryID in entryIDs {
+                guard seen.insert(entryID).inserted else { continue }
+                switch entryID {
+                case .record(let id):
+                    guard try fetchRecord(id, in: context) != nil else { continue }
+                    context.insert(RecordTag(recordID: id, collectionID: collectionID))
+                    context.insert(CollectionSlot(
+                        collectionID: collectionID,
+                        entryKindRaw: FavoriteSlotKind.record.rawValue,
+                        entryID: id,
+                        position: position
+                    ))
+                    position += 1
+                case .stack(let id):
+                    guard try fetchStack(id, in: context) != nil else { continue }
+                    context.insert(StackTag(stackID: id, collectionID: collectionID))
+                    context.insert(CollectionSlot(
+                        collectionID: collectionID,
+                        entryKindRaw: FavoriteSlotKind.stack.rawValue,
+                        entryID: id,
+                        position: position
+                    ))
+                    position += 1
+                }
+            }
+        }
     }
 
     // MARK: - Text recognition (§3.8)
@@ -1131,7 +1287,12 @@ public actor ClipboardStore {
         let empty = stacks.filter { !populated.contains($0.id) }.map(\.id)
         guard !empty.isEmpty else { return }
         try context.delete(model: StackTag.self, where: #Predicate { empty.contains($0.stackID) })
+        let kind = FavoriteSlotKind.stack.rawValue
+        try context.delete(model: FavoriteSlot.self, where: #Predicate { $0.entryKindRaw == kind && empty.contains($0.entryID) })
+        try context.delete(model: CollectionSlot.self, where: #Predicate { $0.entryKindRaw == kind && empty.contains($0.entryID) })
         try context.delete(model: StackModel.self, where: #Predicate { empty.contains($0.id) })
+        try Self.compactFavoriteSlots(in: context)
+        try Self.compactAllCollectionSlots(in: context)
     }
 
     private func stackMatches(
@@ -1173,6 +1334,11 @@ public actor ClipboardStore {
         records.forEach { context.delete($0) }
         try context.delete(model: RecordTag.self, where: #Predicate { ids.contains($0.recordID) })
         try context.delete(model: StackMember.self, where: #Predicate { ids.contains($0.recordID) })
+        let kind = FavoriteSlotKind.record.rawValue
+        try context.delete(model: FavoriteSlot.self, where: #Predicate { $0.entryKindRaw == kind && ids.contains($0.entryID) })
+        try context.delete(model: CollectionSlot.self, where: #Predicate { $0.entryKindRaw == kind && ids.contains($0.entryID) })
+        try Self.compactFavoriteSlots(in: context)
+        try Self.compactAllCollectionSlots(in: context)
     }
 
     private func saveOrRollback(_ context: ModelContext, _ changes: () throws -> Void) throws {
@@ -1253,4 +1419,347 @@ public actor ClipboardStore {
         record.sourceWindowTitle = metadata.sourceWindowTitle
         record.expiresAt = metadata.expiresAt
     }
+
+    // MARK: - Pinboard helpers
+
+    private static func recordMatchesPinboardFilters(_ record: ClipboardRecord, query: HistoryQuery) -> Bool {
+        if !query.kinds.isEmpty {
+            let raws = query.kinds.map(\.rawValue)
+            guard raws.contains(record.displayTypeRaw) else { return false }
+        }
+        for word in query.words {
+            guard record.searchText.localizedStandardContains(word) else { return false }
+        }
+        return true
+    }
+
+    private static func favoriteEntryIDs(in context: ModelContext) throws -> [HistoryEntry.ID] {
+        let slots = try context.fetch(FetchDescriptor<FavoriteSlot>(sortBy: [SortDescriptor(\.position)]))
+        return slots.compactMap { slot -> HistoryEntry.ID? in
+            switch FavoriteSlotKind(rawValue: slot.entryKindRaw) {
+            case .record: .record(slot.entryID)
+            case .stack: .stack(slot.entryID)
+            case nil: nil
+            }
+        }
+    }
+
+    private static func collectionEntryIDs(collectionID: UUID, in context: ModelContext) throws -> [HistoryEntry.ID] {
+        let slots = try context.fetch(FetchDescriptor<CollectionSlot>(
+            predicate: #Predicate { $0.collectionID == collectionID },
+            sortBy: [SortDescriptor(\.position)]
+        ))
+        return slots.compactMap { slot -> HistoryEntry.ID? in
+            switch FavoriteSlotKind(rawValue: slot.entryKindRaw) {
+            case .record: .record(slot.entryID)
+            case .stack: .stack(slot.entryID)
+            case nil: nil
+            }
+        }
+    }
+
+    fileprivate static func insertFavoriteSlotFront(kind: FavoriteSlotKind, entryID: UUID, in context: ModelContext) throws {
+        let kindRaw = kind.rawValue
+        let existing = try context.fetch(FetchDescriptor<FavoriteSlot>(
+            predicate: #Predicate { $0.entryKindRaw == kindRaw && $0.entryID == entryID }
+        ))
+        if !existing.isEmpty { return }
+        for slot in try context.fetch(FetchDescriptor<FavoriteSlot>()) {
+            slot.position += 1
+        }
+        context.insert(FavoriteSlot(entryKindRaw: kindRaw, entryID: entryID, position: 0))
+    }
+
+    fileprivate static func removeFavoriteSlot(kind: FavoriteSlotKind, entryID: UUID, in context: ModelContext) throws {
+        let kindRaw = kind.rawValue
+        let rows = try context.fetch(FetchDescriptor<FavoriteSlot>(
+            predicate: #Predicate { $0.entryKindRaw == kindRaw && $0.entryID == entryID }
+        ))
+        guard !rows.isEmpty else { return }
+        rows.forEach { context.delete($0) }
+        try compactFavoriteSlots(in: context)
+    }
+
+    fileprivate static func compactFavoriteSlots(in context: ModelContext) throws {
+        let ordered = try context.fetch(FetchDescriptor<FavoriteSlot>(sortBy: [SortDescriptor(\.position)]))
+        for (index, slot) in ordered.enumerated() { slot.position = index }
+    }
+
+    fileprivate static func insertCollectionSlotFront(
+        collectionID: UUID,
+        kind: FavoriteSlotKind,
+        entryID: UUID,
+        in context: ModelContext
+    ) throws {
+        let kindRaw = kind.rawValue
+        let existing = try context.fetch(FetchDescriptor<CollectionSlot>(
+            predicate: #Predicate {
+                $0.collectionID == collectionID && $0.entryKindRaw == kindRaw && $0.entryID == entryID
+            }
+        ))
+        if !existing.isEmpty { return }
+        let siblings = try context.fetch(FetchDescriptor<CollectionSlot>(
+            predicate: #Predicate { $0.collectionID == collectionID }
+        ))
+        for slot in siblings { slot.position += 1 }
+        context.insert(CollectionSlot(
+            collectionID: collectionID,
+            entryKindRaw: kindRaw,
+            entryID: entryID,
+            position: 0
+        ))
+    }
+
+    fileprivate static func removeCollectionSlot(
+        collectionID: UUID,
+        kind: FavoriteSlotKind,
+        entryID: UUID,
+        in context: ModelContext
+    ) throws {
+        let kindRaw = kind.rawValue
+        let rows = try context.fetch(FetchDescriptor<CollectionSlot>(
+            predicate: #Predicate {
+                $0.collectionID == collectionID && $0.entryKindRaw == kindRaw && $0.entryID == entryID
+            }
+        ))
+        guard !rows.isEmpty else { return }
+        rows.forEach { context.delete($0) }
+        try compactCollectionSlots(collectionID: collectionID, in: context)
+    }
+
+    fileprivate static func compactCollectionSlots(collectionID: UUID, in context: ModelContext) throws {
+        let ordered = try context.fetch(FetchDescriptor<CollectionSlot>(
+            predicate: #Predicate { $0.collectionID == collectionID },
+            sortBy: [SortDescriptor(\.position)]
+        ))
+        for (index, slot) in ordered.enumerated() { slot.position = index }
+    }
+
+    fileprivate static func compactAllCollectionSlots(in context: ModelContext) throws {
+        let slots = try context.fetch(FetchDescriptor<CollectionSlot>())
+        let byCollection = Dictionary(grouping: slots, by: \.collectionID)
+        for (collectionID, _) in byCollection {
+            try compactCollectionSlots(collectionID: collectionID, in: context)
+        }
+    }
+
+    fileprivate static func retargetFavoriteSlot(from oldID: UUID, to survivorID: UUID, in context: ModelContext) throws {
+        let kind = FavoriteSlotKind.record.rawValue
+        let oldSlots = try context.fetch(FetchDescriptor<FavoriteSlot>(
+            predicate: #Predicate { $0.entryKindRaw == kind && $0.entryID == oldID }
+        ))
+        guard let old = oldSlots.first else { return }
+        let survivorSlots = try context.fetch(FetchDescriptor<FavoriteSlot>(
+            predicate: #Predicate { $0.entryKindRaw == kind && $0.entryID == survivorID }
+        ))
+        if let kept = survivorSlots.first {
+            kept.position = min(kept.position, old.position)
+            context.delete(old)
+            try compactFavoriteSlots(in: context)
+        } else {
+            old.entryID = survivorID
+        }
+    }
+
+    fileprivate static func retargetCollectionSlots(from oldID: UUID, to survivorID: UUID, in context: ModelContext) throws {
+        let kind = FavoriteSlotKind.record.rawValue
+        let oldSlots = try context.fetch(FetchDescriptor<CollectionSlot>(
+            predicate: #Predicate { $0.entryKindRaw == kind && $0.entryID == oldID }
+        ))
+        for old in oldSlots {
+            let collectionID = old.collectionID
+            let survivorSlots = try context.fetch(FetchDescriptor<CollectionSlot>(
+                predicate: #Predicate {
+                    $0.collectionID == collectionID && $0.entryKindRaw == kind && $0.entryID == survivorID
+                }
+            ))
+            if let kept = survivorSlots.first {
+                kept.position = min(kept.position, old.position)
+                context.delete(old)
+            } else {
+                old.entryID = survivorID
+            }
+            try compactCollectionSlots(collectionID: collectionID, in: context)
+        }
+    }
+
+    /// After V2→V3 or when slots are missing: assign positions from recency once.
+    fileprivate static func seedPinboardOrderIfNeeded(in context: ModelContext) throws {
+        try seedFavoriteSlotsIfNeeded(in: context)
+        try seedCollectionSlotsIfNeeded(in: context)
+    }
+
+    private static func seedFavoriteSlotsIfNeeded(in context: ModelContext) throws {
+        let slotCount = try context.fetchCount(FetchDescriptor<FavoriteSlot>())
+        let favoriteRecords = try context.fetch(FetchDescriptor<ClipboardRecord>(
+            predicate: #Predicate { $0.isFavorite },
+            sortBy: [SortDescriptor(\.lastCopiedAt, order: .reverse)]
+        ))
+        let favoriteStacks = try context.fetch(FetchDescriptor<StackModel>(
+            predicate: #Predicate { $0.isFavorite },
+            sortBy: [SortDescriptor(\.lastUsedAt, order: .reverse)]
+        ))
+        guard slotCount == 0, !favoriteRecords.isEmpty || !favoriteStacks.isEmpty else {
+            // Drop orphan slots / ensure every favorite has a slot.
+            try reconcileFavoriteSlots(records: favoriteRecords, stacks: favoriteStacks, in: context)
+            return
+        }
+        var ranked: [(kind: FavoriteSlotKind, id: UUID, date: Date)] = favoriteRecords.map {
+            (.record, $0.id, $0.lastCopiedAt)
+        }
+        ranked += favoriteStacks.map { (.stack, $0.id, $0.lastUsedAt) }
+        ranked.sort { $0.date > $1.date }
+        for (index, item) in ranked.enumerated() {
+            context.insert(FavoriteSlot(entryKindRaw: item.kind.rawValue, entryID: item.id, position: index))
+        }
+    }
+
+    private static func reconcileFavoriteSlots(
+        records: [ClipboardRecord],
+        stacks: [StackModel],
+        in context: ModelContext
+    ) throws {
+        let expectedRecords = Set(records.map(\.id))
+        let expectedStacks = Set(stacks.map(\.id))
+        let slots = try context.fetch(FetchDescriptor<FavoriteSlot>())
+        var changed = false
+        for slot in slots {
+            switch FavoriteSlotKind(rawValue: slot.entryKindRaw) {
+            case .record:
+                if !expectedRecords.contains(slot.entryID) {
+                    context.delete(slot)
+                    changed = true
+                }
+            case .stack:
+                if !expectedStacks.contains(slot.entryID) {
+                    context.delete(slot)
+                    changed = true
+                }
+            case nil:
+                context.delete(slot)
+                changed = true
+            }
+        }
+        let remaining = try context.fetch(FetchDescriptor<FavoriteSlot>())
+        let haveRecords = Set(remaining.filter { $0.entryKindRaw == FavoriteSlotKind.record.rawValue }.map(\.entryID))
+        let haveStacks = Set(remaining.filter { $0.entryKindRaw == FavoriteSlotKind.stack.rawValue }.map(\.entryID))
+        var next = remaining.map(\.position).max().map { $0 + 1 } ?? 0
+        for record in records where !haveRecords.contains(record.id) {
+            context.insert(FavoriteSlot(entryKindRaw: FavoriteSlotKind.record.rawValue, entryID: record.id, position: next))
+            next += 1
+            changed = true
+        }
+        for stack in stacks where !haveStacks.contains(stack.id) {
+            context.insert(FavoriteSlot(entryKindRaw: FavoriteSlotKind.stack.rawValue, entryID: stack.id, position: next))
+            next += 1
+            changed = true
+        }
+        if changed { try compactFavoriteSlots(in: context) }
+    }
+
+    private static func seedCollectionSlotsIfNeeded(in context: ModelContext) throws {
+        let collections = try context.fetch(FetchDescriptor<CollectionModel>())
+        for collection in collections {
+            let id = collection.id
+            let slotCount = try context.fetchCount(FetchDescriptor<CollectionSlot>(
+                predicate: #Predicate { $0.collectionID == id }
+            ))
+            let recordTags = try context.fetch(FetchDescriptor<RecordTag>(predicate: #Predicate { $0.collectionID == id }))
+            let stackTags = try context.fetch(FetchDescriptor<StackTag>(predicate: #Predicate { $0.collectionID == id }))
+            guard slotCount == 0, !recordTags.isEmpty || !stackTags.isEmpty else {
+                try reconcileCollectionSlots(
+                    collectionID: id,
+                    recordTags: recordTags,
+                    stackTags: stackTags,
+                    in: context
+                )
+                continue
+            }
+            var ranked: [(kind: FavoriteSlotKind, id: UUID, date: Date)] = []
+            for tag in recordTags {
+                let recordID = tag.recordID
+                let date = try context.fetch(FetchDescriptor<ClipboardRecord>(predicate: #Predicate { $0.id == recordID })).first?.lastCopiedAt
+                    ?? .distantPast
+                ranked.append((.record, recordID, date))
+            }
+            for tag in stackTags {
+                let stackID = tag.stackID
+                let date = try context.fetch(FetchDescriptor<StackModel>(predicate: #Predicate { $0.id == stackID })).first?.lastUsedAt
+                    ?? .distantPast
+                ranked.append((.stack, stackID, date))
+            }
+            ranked.sort { $0.date > $1.date }
+            for (index, item) in ranked.enumerated() {
+                context.insert(CollectionSlot(
+                    collectionID: id,
+                    entryKindRaw: item.kind.rawValue,
+                    entryID: item.id,
+                    position: index
+                ))
+            }
+        }
+    }
+
+    private static func reconcileCollectionSlots(
+        collectionID: UUID,
+        recordTags: [RecordTag],
+        stackTags: [StackTag],
+        in context: ModelContext
+    ) throws {
+        let expectedRecords = Set(recordTags.map(\.recordID))
+        let expectedStacks = Set(stackTags.map(\.stackID))
+        let slots = try context.fetch(FetchDescriptor<CollectionSlot>(
+            predicate: #Predicate { $0.collectionID == collectionID }
+        ))
+        var changed = false
+        for slot in slots {
+            switch FavoriteSlotKind(rawValue: slot.entryKindRaw) {
+            case .record:
+                if !expectedRecords.contains(slot.entryID) {
+                    context.delete(slot)
+                    changed = true
+                }
+            case .stack:
+                if !expectedStacks.contains(slot.entryID) {
+                    context.delete(slot)
+                    changed = true
+                }
+            case nil:
+                context.delete(slot)
+                changed = true
+            }
+        }
+        let remaining = try context.fetch(FetchDescriptor<CollectionSlot>(
+            predicate: #Predicate { $0.collectionID == collectionID }
+        ))
+        let haveRecords = Set(remaining.filter { $0.entryKindRaw == FavoriteSlotKind.record.rawValue }.map(\.entryID))
+        let haveStacks = Set(remaining.filter { $0.entryKindRaw == FavoriteSlotKind.stack.rawValue }.map(\.entryID))
+        var next = remaining.map(\.position).max().map { $0 + 1 } ?? 0
+        for id in expectedRecords where !haveRecords.contains(id) {
+            context.insert(CollectionSlot(
+                collectionID: collectionID,
+                entryKindRaw: FavoriteSlotKind.record.rawValue,
+                entryID: id,
+                position: next
+            ))
+            next += 1
+            changed = true
+        }
+        for id in expectedStacks where !haveStacks.contains(id) {
+            context.insert(CollectionSlot(
+                collectionID: collectionID,
+                entryKindRaw: FavoriteSlotKind.stack.rawValue,
+                entryID: id,
+                position: next
+            ))
+            next += 1
+            changed = true
+        }
+        if changed { try compactCollectionSlots(collectionID: collectionID, in: context) }
+    }
+}
+
+enum FavoriteSlotKind: String {
+    case record
+    case stack
 }

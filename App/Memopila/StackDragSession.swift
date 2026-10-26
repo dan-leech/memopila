@@ -1,12 +1,19 @@
 import AppKit
 import Foundation
+import MemopilaServices
 import Observation
 
-/// Card-drag session SSOT (PLAN §3.11): membership drops + Stack Window positional reorder.
+/// Card-drag session SSOT (PLAN §3.11 + pinboard order): membership drops, Stack Window
+/// positional reorder, and Favorites/Collections pinboard reorder.
 ///
 /// Contract:
-/// - Positional reorder only while the **Stack Window** editor can reorder (search clear, not truncated).
-/// - Otherwise a record drag is **membership** (append onto a panel stack card / editor grid / collection).
+/// - Stack Window positional: `isPositionalReorder` (search clear, not truncated) — membership off.
+/// - Pinboard positional: `isPinboardReorder` (Favorites / Collection).
+///   On a **stack card**, both intents share one drop surface (spatial SSOT):
+///   - leading strip → insert-before (reorder gap / phantom);
+///   - card body → membership append (`appendHighlight`).
+///   Record cards / End / phantoms are reorder-only. Dragging a stack is reorder-only.
+/// - History (non-pinboard): record drag is membership (append onto stack card / editor / collection).
 /// - Reorder chrome (`reorderDragID` / `reorderGap`) lives here — not on `HistoryModel`.
 ///   Gap is a **phantom slot** (insert-before or trailing End), never a highlight on an existing card.
 /// - Membership chrome (`appendHighlight`) highlights the panel stack card or the editor Add / empty state.
@@ -25,10 +32,10 @@ final class StackDragSession {
         case stack(UUID)
     }
 
-    /// Phantom insert gap while reordering in the Stack Window.
+    /// Phantom insert gap while reordering (Stack Window or pinboard).
     enum ReorderGap: Equatable {
-        /// Open a slot immediately before this member.
-        case before(UUID)
+        /// Open a slot immediately before this entry.
+        case before(HistoryEntry.ID)
         /// Trailing End slot.
         case end
     }
@@ -37,9 +44,11 @@ final class StackDragSession {
     private(set) var startedAt: Date?
     /// Captured at begin: member drag inside an editable Stack Window playlist.
     private(set) var isPositionalReorder = false
-    /// Dim the card being dragged in the Stack Window.
-    private(set) var reorderDragID: UUID?
-    /// Phantom gap under the pointer (before a member, or End).
+    /// Favorites / Collection grid reorder (panel).
+    private(set) var isPinboardReorder = false
+    /// Dim the card being dragged.
+    private(set) var reorderDragID: HistoryEntry.ID?
+    /// Phantom gap under the pointer (before an entry, or End).
     private(set) var reorderGap: ReorderGap?
     /// Membership append hover (panel stack card or Stack Window grid / empty).
     private(set) var appendHighlight: AppendHighlight?
@@ -63,7 +72,8 @@ final class StackDragSession {
         return Date().timeIntervalSince(startedAt) < 60
     }
 
-    /// Record drag that can join a stack (not a positional reorder inside the editor).
+    /// Record drag that can join a stack. Off only during Stack Window member reorder.
+    /// Pinboard allows append on the stack-card body (leading strip stays reorder).
     var canMembershipAppend: Bool {
         isFresh && !isPositionalReorder && recordID != nil
     }
@@ -73,11 +83,26 @@ final class StackDragSession {
         source = .record(id)
         startedAt = Date()
         isPositionalReorder = positionalReorder
+        isPinboardReorder = false
         if positionalReorder {
-            reorderDragID = id
+            reorderDragID = .record(id)
             reorderGap = nil
             installMouseUpMonitor()
         }
+    }
+
+    func beginPinboardReorder(_ id: HistoryEntry.ID) {
+        end(clearChrome: true)
+        switch id {
+        case .record(let uuid): source = .record(uuid)
+        case .stack(let uuid): source = .stack(uuid)
+        }
+        startedAt = Date()
+        isPositionalReorder = false
+        isPinboardReorder = true
+        reorderDragID = id
+        reorderGap = nil
+        installMouseUpMonitor()
     }
 
     func beginStack(_ id: UUID) {
@@ -85,6 +110,7 @@ final class StackDragSession {
         source = .stack(id)
         startedAt = Date()
         isPositionalReorder = false
+        isPinboardReorder = false
     }
 
     /// Call at the start of `performDrop` so the mouse-up clearer cannot nil the session first.
@@ -110,6 +136,7 @@ final class StackDragSession {
         source = nil
         startedAt = nil
         isPositionalReorder = false
+        isPinboardReorder = false
         if clearChrome {
             reorderDragID = nil
             reorderGap = nil

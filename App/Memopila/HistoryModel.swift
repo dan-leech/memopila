@@ -13,6 +13,14 @@ final class HistoryModel {
     var scope: HistoryScope = .all {
         didSet {
             guard scope != oldValue else { return }
+            // Entering Favorites/Collections: clear leftover History filters so reorder is obvious.
+            if scope.isPinboard {
+                let resetKind = kindFilter != .all
+                let resetSearch = !search.isEmpty
+                if resetKind { kindFilter = .all }
+                if resetSearch { search = "" }
+                if resetKind || resetSearch { return } // didSets reload
+            }
             reload(selectFirst: true)
         }
     }
@@ -115,6 +123,14 @@ final class HistoryModel {
     private func refreshEntriesAfterStackPatch() {
         if case .stack = scope {
             entries = records.map { .record($0) }
+        } else if scope.isPinboard {
+            // Keep pinboard slot order; only refresh stack payloads in place.
+            entries = entries.map { entry in
+                guard case .stack(let stack) = entry,
+                      let updated = stacks.first(where: { $0.id == stack.id }) ?? allStacks.first(where: { $0.id == stack.id })
+                else { return entry }
+                return .stack(updated)
+            }
         } else {
             entries = Self.mergeEntries(records: records, stacks: stacks)
         }
@@ -163,15 +179,25 @@ final class HistoryModel {
 
     var query: HistoryQuery {
         // Stacks filter is not a DisplayType set — store gets an untyped query; records are dropped in reload.
+        // Pinboards ignore period (ordered slots, not clipboard age).
         HistoryQuery(
             scope: scope,
             search: search,
             kinds: kindFilter == .stacks ? [] : kindFilter.kinds,
-            since: periodFilter.since(now: Date())
+            since: scope.isPinboard ? nil : periodFilter.since(now: Date())
         )
     }
 
-    var isFiltered: Bool { scope != .all || kindFilter != .all || periodFilter != .anyTime }
+    var isFiltered: Bool {
+        if scope.isPinboard {
+            return kindFilter != .all || !search.isEmpty
+        }
+        return scope != .all || kindFilter != .all || periodFilter != .anyTime
+    }
+
+    /// In-grid pinboard reorder chrome (Favorites / Collection). Always on in those scopes;
+    /// search/kind only affect which cards are visible (persist splices into the full board).
+    var canReorderPinboard: Bool { scope.isPinboard }
 
     /// `HistoryScope.stack` is a store-query scope only (Stack Window loads members itself).
     var scopedStackID: UUID? {
@@ -299,6 +325,7 @@ final class HistoryModel {
         let limit = min(max(Self.pageSize, records.count), Self.maxReloadCount)
         let stacksOnly = kindFilter == .stacks
         let stackScopeID = scopedStackID
+        let pinboard = scope.isPinboard
         reloadTask = Task {
             do {
                 async let allStackPage = store.stacks(HistoryQuery(), limit: Self.maxStacks)
@@ -323,6 +350,37 @@ final class HistoryModel {
                     }
                     self.memberships = memberships
                     recordTotal = total
+                } else if pinboard {
+                    async let board = store.pinboardEntries(query, limit: ClipboardStore.maxPinboardEntries)
+                    let (loadedEntries, loadedAllStacks) = try await (board, allStackPage)
+                    guard generation == self.generation else { return }
+                    var visible = loadedEntries.filter { entry in
+                        if case .record(let card) = entry { return !hiddenIDs.contains(card.id) }
+                        return true
+                    }
+                    if stacksOnly {
+                        visible = visible.filter {
+                            if case .stack = $0 { return true }
+                            return false
+                        }
+                    }
+                    let visibleRecords = visible.compactMap { entry -> HistoryCard? in
+                        if case .record(let card) = entry { return card }
+                        return nil
+                    }
+                    let visibleStacks = visible.compactMap { entry -> StackCard? in
+                        if case .stack(let card) = entry { return card }
+                        return nil
+                    }
+                    hiddenRecordAdjustment = 0
+                    withAnimation(animated ? .spring(response: 0.35, dampingFraction: 0.82) : nil) {
+                        records = visibleRecords
+                        stacks = visibleStacks
+                        allStacks = loadedAllStacks
+                        entries = visible
+                    }
+                    memberships = try await store.memberships(of: visibleRecords.map(\.id))
+                    recordTotal = visibleRecords.count
                 } else if stacksOnly {
                     async let stackPage = store.stacks(query, limit: Self.maxStacks)
                     let (loadedStacks, loadedAllStacks) = try await (stackPage, allStackPage)
@@ -397,8 +455,9 @@ final class HistoryModel {
         isApplyingLoadedSelection = false
     }
 
-    /// Next record page when near the end of **records** (P22).
+    /// Next record page when near the end of **records** (P22). Pinboards are not paged.
     func entryAppeared(_ entry: HistoryEntry) {
+        guard !scope.isPinboard else { return }
         guard case .record(let card) = entry else { return }
         guard !isLoadingMore, records.count < recordTotal,
               let index = records.lastIndex(where: { $0.id == card.id }), index >= records.count - 12 else { return }
@@ -563,11 +622,7 @@ final class HistoryModel {
         let removed = records.count - remaining.count
         withAnimation(.easeOut(duration: 0.2)) {
             records = remaining.map(\.element)
-            if case .stack = scope {
-                entries = records.map { .record($0) }
-            } else {
-                entries = Self.mergeEntries(records: records, stacks: stacks)
-            }
+            rebuildEntriesPreservingPinboardOrder(removingRecordIDs: ids)
         }
         recordTotal = max(0, recordTotal - removed)
         if let selected, let id = selectedID, case .record(let rid) = id, ids.contains(rid) {
@@ -587,7 +642,11 @@ final class HistoryModel {
             scope = .all
             return
         }
-        entries = Self.mergeEntries(records: records, stacks: stacks)
+        if scope.isPinboard {
+            entries.removeAll { $0.id == .stack(id) }
+        } else {
+            entries = Self.mergeEntries(records: records, stacks: stacks)
+        }
         if selectedID == .stack(id) {
             selectedID = entries.first?.id
         }
@@ -597,7 +656,11 @@ final class HistoryModel {
     func replaceLocally(_ card: HistoryCard) {
         if let index = records.firstIndex(where: { $0.id == card.id }) {
             records[index] = card
-            if case .stack = scope {
+            if scope.isPinboard {
+                if let entryIndex = entries.firstIndex(where: { $0.id == .record(card.id) }) {
+                    entries[entryIndex] = .record(card)
+                }
+            } else if case .stack = scope {
                 entries = records.map { .record($0) }
             } else {
                 entries = Self.mergeEntries(records: records, stacks: stacks)
@@ -608,21 +671,86 @@ final class HistoryModel {
     /// Optimistic favorite flip on a loaded record card (heart reacts before store round-trip).
     func setFavoriteLocally(record id: UUID, isFavorite: Bool) {
         guard let card = records.first(where: { $0.id == id }) else { return }
-        replaceLocally(card.withFavorite(isFavorite))
+        let updated = card.withFavorite(isFavorite)
+        replaceLocally(updated)
+        if scope == .favorites {
+            if isFavorite {
+                // Join at front of pinboard.
+                entries.removeAll { $0.id == .record(id) }
+                entries.insert(.record(updated), at: 0)
+                if !records.contains(where: { $0.id == id }) {
+                    records.insert(updated, at: 0)
+                }
+            } else {
+                entries.removeAll { $0.id == .record(id) }
+                records.removeAll { $0.id == id }
+            }
+        }
     }
 
     /// Optimistic favorite flip on a stack card (grid + allStacks for menus).
     func setStackFavoriteLocally(id: UUID, isFavorite: Bool) {
-        if let index = stacks.firstIndex(where: { $0.id == id }) {
-            stacks[index] = stacks[index].withFavorite(isFavorite)
+        let patched: (StackCard) -> StackCard = { $0.id == id ? $0.withFavorite(isFavorite) : $0 }
+        stacks = stacks.map(patched)
+        allStacks = allStacks.map(patched)
+        if scope == .favorites {
+            if isFavorite, let stack = (stacks + allStacks).first(where: { $0.id == id }) {
+                entries.removeAll { $0.id == .stack(id) }
+                entries.insert(.stack(stack.withFavorite(true)), at: 0)
+                if !stacks.contains(where: { $0.id == id }) {
+                    stacks.insert(stack.withFavorite(true), at: 0)
+                }
+            } else if !isFavorite {
+                entries.removeAll { $0.id == .stack(id) }
+                stacks.removeAll { $0.id == id }
+            }
+        } else if case .stack = scope {
+            entries = records.map { .record($0) }
+        } else if !scope.isPinboard {
+            entries = Self.mergeEntries(records: records, stacks: stacks)
+        } else {
+            refreshEntriesAfterStackPatch()
         }
-        if let index = allStacks.firstIndex(where: { $0.id == id }) {
-            allStacks[index] = allStacks[index].withFavorite(isFavorite)
-        }
+    }
+
+    private func rebuildEntriesPreservingPinboardOrder(removingRecordIDs ids: Set<UUID> = []) {
         if case .stack = scope {
             entries = records.map { .record($0) }
+        } else if scope.isPinboard {
+            entries = entries.compactMap { entry in
+                switch entry {
+                case .record(let card):
+                    guard !ids.contains(card.id),
+                          let updated = records.first(where: { $0.id == card.id }) else { return nil }
+                    return .record(updated)
+                case .stack(let stack):
+                    guard let updated = stacks.first(where: { $0.id == stack.id }) else { return .stack(stack) }
+                    return .stack(updated)
+                }
+            }
         } else {
             entries = Self.mergeEntries(records: records, stacks: stacks)
+        }
+    }
+
+    /// Apply a pinboard reorder optimistically, then persist. No animation — grid cells stay put.
+    func applyPinboardOrderLocally(_ order: [HistoryEntry.ID]) {
+        guard scope.isPinboard else { return }
+        let byID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
+        let next = order.compactMap { byID[$0] }
+        guard next.count == entries.count else { return }
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            entries = next
+            records = next.compactMap {
+                if case .record(let card) = $0 { return card }
+                return nil
+            }
+            stacks = next.compactMap {
+                if case .stack(let card) = $0 { return card }
+                return nil
+            }
         }
     }
 

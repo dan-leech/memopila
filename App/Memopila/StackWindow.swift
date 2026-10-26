@@ -507,7 +507,7 @@ private struct StackEditorView: View {
                         ) {
                             ForEach(Array(state.visibleMembers.enumerated()), id: \.element.id) { index, card in
                                 if case .before(let targetID) = model.stackDrag.reorderGap,
-                                   targetID == card.id {
+                                   targetID == .record(card.id) {
                                     reorderPhantom(
                                         height: cardHeight,
                                         accessibility: String(localized: "Insert before this card"),
@@ -522,7 +522,7 @@ private struct StackEditorView: View {
                                 memberCard(card, index: index, cardHeight: cardHeight)
                             }
                             if state.canReorder,
-                               let dragID = model.stackDrag.reorderDragID,
+                               case .record(let dragID) = model.stackDrag.reorderDragID,
                                state.order.last != dragID {
                                 let endActive = model.stackDrag.reorderGap == .end
                                 dropPlaceholder(
@@ -611,7 +611,7 @@ private struct StackEditorView: View {
     @ViewBuilder
     private func memberCard(_ card: HistoryCard, index: Int, cardHeight: CGFloat) -> some View {
         let selected = state.selectedID == card.id
-        let dragging = model.stackDrag.reorderDragID == card.id
+        let dragging = model.stackDrag.reorderDragID == .record(card.id)
         CardView(
             card: card,
             index: index,
@@ -734,7 +734,7 @@ private struct StackEditorMemberDropDelegate: DropDelegate {
     func dropUpdated(info: DropInfo) -> DropProposal? {
         if canReorderHere {
             model.stackDrag.setAppendHighlight(nil)
-            model.stackDrag.setReorderGap(.before(targetID))
+            model.stackDrag.setReorderGap(.before(.record(targetID)))
             return DropProposal(operation: .move)
         }
         if canAppendHere {
@@ -750,7 +750,7 @@ private struct StackEditorMemberDropDelegate: DropDelegate {
         if model.stackDrag.appendHighlight == .editor {
             model.stackDrag.setAppendHighlight(nil)
         }
-        if model.stackDrag.reorderGap == .before(targetID) {
+        if model.stackDrag.reorderGap == .before(.record(targetID)) {
             model.stackDrag.setReorderGap(nil)
         }
     }

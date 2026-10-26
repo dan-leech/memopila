@@ -285,33 +285,35 @@ private struct FilterBar: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             PanelStatus(model: model)
-            Menu {
-                ForEach(PeriodFilter.allCases, id: \.self) { period in
-                    Button {
-                        history.periodFilter = period
-                    } label: {
-                        if period == history.periodFilter {
-                            Label(period.title, systemImage: "checkmark")
-                        } else {
-                            Text(period.title)
+            if !history.scope.isPinboard {
+                Menu {
+                    ForEach(PeriodFilter.allCases, id: \.self) { period in
+                        Button {
+                            history.periodFilter = period
+                        } label: {
+                            if period == history.periodFilter {
+                                Label(period.title, systemImage: "checkmark")
+                            } else {
+                                Text(period.title)
+                            }
                         }
                     }
+                } label: {
+                    Label(history.periodFilter.title, systemImage: "calendar")
+                        .font(.system(size: 12, weight: history.periodFilter == .anyTime ? .regular : .semibold))
+                        .foregroundStyle(history.periodFilter == .anyTime ? Color.secondary : Color.accentColor)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .contentShape(Rectangle())
                 }
-            } label: {
-                Label(history.periodFilter.title, systemImage: "calendar")
-                    .font(.system(size: 12, weight: history.periodFilter == .anyTime ? .regular : .semibold))
-                    .foregroundStyle(history.periodFilter == .anyTime ? Color.secondary : Color.accentColor)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .contentShape(Rectangle())
+                .menuStyle(.button)
+                .menuIndicator(.hidden)
+                .buttonStyle(ToolbarIconStyle(recolorsLabel: false))
+                .fixedSize()
+                .floatingHelp(String(localized: "Only items copied in this period"))
+                .accessibilityLabel(Text("Only items copied in this period"))
+                .accessibilityValue(Text(history.periodFilter.title))
             }
-            .menuStyle(.button)
-            .menuIndicator(.hidden)
-            .buttonStyle(ToolbarIconStyle(recolorsLabel: false))
-            .fixedSize()
-            .floatingHelp(String(localized: "Only items copied in this period"))
-            .accessibilityLabel(Text("Only items copied in this period"))
-            .accessibilityValue(Text(history.periodFilter.title))
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 4)
@@ -695,7 +697,20 @@ private struct HistoryGrid: View {
                         ForEach(Array(model.history.entries.enumerated()), id: \.element.id) { index, entry in
                             entryCell(entry, index: index, cardHeight: cardHeight)
                         }
+                        // Reserve End while pinboard-dragging so the grid does not jump each hover.
+                        if model.history.canReorderPinboard,
+                           model.stackDrag.isPinboardReorder,
+                           model.stackDrag.reorderDragID != nil {
+                            let endActive = model.stackDrag.reorderGap == .end
+                            pinboardEndSlot(height: cardHeight, emphasized: endActive)
+                                .opacity(endActive ? 1 : 0.35)
+                                .onDrop(
+                                    of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
+                                    delegate: PinboardEndDropDelegate(model: model)
+                                )
+                        }
                     }
+                    // No layout animation on reorderGap — inserting/removing cells made cards fly.
                     .padding(Self.spacing)
                 }
                 .onChange(of: model.history.selectedID) { _, id in
@@ -709,6 +724,9 @@ private struct HistoryGrid: View {
 
     @ViewBuilder
     private func entryCell(_ entry: HistoryEntry, index: Int, cardHeight: CGFloat) -> some View {
+        let dragging = model.stackDrag.reorderDragID == entry.id
+        let insertBefore = model.history.canReorderPinboard
+            && model.stackDrag.reorderGap == .before(entry.id)
         switch entry {
         case .record(let card):
             CardView(
@@ -720,7 +738,9 @@ private struct HistoryGrid: View {
                     model.restore(card.id, paste: NSEvent.modifierFlags.contains(.option) ? true : nil)
                 }
             )
+            .opacity(dragging ? 0.35 : 1)
             .frame(height: cardHeight)
+            .overlay { pinboardInsertOverlay(active: insertBefore) }
             .simultaneousGesture(TapGesture().onEnded {
                 model.history.click(entry.id, modifiers: NSEvent.modifierFlags)
                 model.focusGrid()
@@ -730,11 +750,11 @@ private struct HistoryGrid: View {
                 model.beginCardDrag(card.id)
                 return DragSupport.provider(for: card, store: model.store)
             }
+            .onDrop(
+                of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
+                delegate: PinboardReorderDropDelegate(targetID: entry.id, model: model)
+            )
             .id(entry.id)
-            .transition(.asymmetric(
-                insertion: .scale(scale: 0.85).combined(with: .opacity),
-                removal: .opacity
-            ))
             .accessibilityAction(named: Text("Choose for Clipboard")) { model.restore(card.id) }
             .accessibilityAction(named: Text("Choose and Paste")) { model.restore(card.id, paste: true) }
             .accessibilityAction(named: Text("Edit Record")) { model.openRecord(card.id) }
@@ -749,7 +769,9 @@ private struct HistoryGrid: View {
                     model.chooseStack(stack.id, paste: NSEvent.modifierFlags.contains(.option) ? true : nil)
                 }
             )
+                .opacity(dragging ? 0.35 : 1)
                 .frame(height: cardHeight)
+                .overlay { pinboardInsertOverlay(active: insertBefore) }
                 .id(entry.id)
                 .simultaneousGesture(TapGesture().onEnded {
                     model.history.click(entry.id, modifiers: NSEvent.modifierFlags)
@@ -759,22 +781,57 @@ private struct HistoryGrid: View {
                     ActionMenuItems(items: ActionRegistry.stackActions(stack, model: model))
                 }
                 .onDrag {
-                    guard stack.memberCount > 0 else { return NSItemProvider() }
                     model.beginStackDrag(stack.id)
                     return DragSupport.provider(for: stack, store: model.store, armedMemberID: model.stackSession.currentMemberID)
                 }
                 .onDrop(
                     of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
-                    delegate: PanelStackAppendDropDelegate(stackID: stack.id, model: model)
+                    delegate: PinboardOrStackDropDelegate(entryID: entry.id, stackID: stack.id, model: model)
                 )
-                .floatingHelp(String(localized: "Drop a history card here to add it to this stack"))
-                .transition(.asymmetric(
-                    insertion: .scale(scale: 0.85).combined(with: .opacity),
-                    removal: .opacity
-                ))
+                .floatingHelp(
+                    model.history.canReorderPinboard
+                        ? String(localized: "Drop on the left edge to reorder; on the card to add to this stack")
+                        : String(localized: "Drop a history card here to add it to this stack")
+                )
                 .accessibilityAction(named: Text("Choose Stack")) { model.chooseStack(stack.id) }
                 .accessibilityAction(named: Text("Choose and Paste")) { model.chooseStack(stack.id, paste: true) }
         }
+    }
+
+    /// Insert-before marker in the column gutter (no card frame, no grid reflow).
+    @ViewBuilder
+    private func pinboardInsertOverlay(active: Bool) -> some View {
+        if active {
+            GeometryReader { geo in
+                Capsule()
+                    .fill(Color.accentColor)
+                    .frame(width: 3, height: max(24, geo.size.height - 16))
+                    // Sit in the LazyVGrid column gap, not on the card face.
+                    .position(x: -Self.spacing / 2, y: geo.size.height / 2)
+            }
+            .allowsHitTesting(false)
+            .accessibilityLabel(Text("Insert before this card"))
+        }
+    }
+
+    private func pinboardEndSlot(height: CGFloat, emphasized: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 9, style: .continuous)
+            .fill(Color.accentColor.opacity(emphasized ? 0.10 : 0.04))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(
+                        Color.accentColor.opacity(emphasized ? 1 : 0.55),
+                        style: StrokeStyle(lineWidth: emphasized ? 3 : 1.5, dash: emphasized ? [] : [6, 4])
+                    )
+            }
+            .overlay {
+                Label(String(localized: "End"), systemImage: "arrow.down.to.line")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(Color.accentColor.opacity(emphasized ? 1 : 0.7))
+            }
+            .frame(height: height)
+            .accessibilityLabel(Text("Move to end"))
+            .floatingHelp(String(localized: "Drop here to move the card to the end"))
     }
 
     @ViewBuilder
@@ -815,7 +872,7 @@ private struct HistoryGrid: View {
         if history.kindFilter == .stacks {
             return String(localized: "No stacks yet. Choose New Stack… on a card, then drag more onto it.")
         }
-        if history.kindFilter != .all || history.periodFilter != .anyTime {
+        if history.kindFilter != .all || (!history.scope.isPinboard && history.periodFilter != .anyTime) {
             return String(localized: "Nothing matches the filters.")
         }
         switch history.scope {
@@ -1273,5 +1330,135 @@ private struct PanelStackAppendDropDelegate: DropDelegate {
 
     func performDrop(info: DropInfo) -> Bool {
         model.dropDraggedCard(onStack: stackID)
+    }
+}
+
+/// Pinboard gap before a target entry (Favorites / Collection).
+private struct PinboardReorderDropDelegate: DropDelegate {
+    let targetID: HistoryEntry.ID
+    let model: AppModel
+
+    private var canReorderHere: Bool {
+        guard model.history.canReorderPinboard,
+              model.stackDrag.isPinboardReorder,
+              let from = model.stackDrag.reorderDragID,
+              from != targetID else { return false }
+        return true
+    }
+
+    func validateDrop(info: DropInfo) -> Bool { canReorderHere }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard canReorderHere else { return DropProposal(operation: .cancel) }
+        model.stackDrag.setAppendHighlight(nil)
+        model.stackDrag.setReorderGap(.before(targetID))
+        model.noteStackDragChrome()
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        if model.stackDrag.reorderGap == .before(targetID) {
+            model.stackDrag.setReorderGap(nil)
+            model.noteStackDragChrome()
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        model.dropPinboardReorder(before: targetID, atEnd: false)
+    }
+}
+
+private struct PinboardEndDropDelegate: DropDelegate {
+    let model: AppModel
+
+    private var canReorder: Bool {
+        model.history.canReorderPinboard && model.stackDrag.isPinboardReorder
+    }
+
+    func validateDrop(info: DropInfo) -> Bool { canReorder }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        guard canReorder else { return DropProposal(operation: .cancel) }
+        model.stackDrag.setReorderGap(.end)
+        model.noteStackDragChrome()
+        return DropProposal(operation: .move)
+    }
+
+    func dropExited(info: DropInfo) {
+        if model.stackDrag.reorderGap == .end {
+            model.stackDrag.setReorderGap(nil)
+            model.noteStackDragChrome()
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        model.dropPinboardReorder(before: nil, atEnd: true)
+    }
+}
+
+/// Stack card on a pinboard: one surface, two intents (spatial SSOT — StackDragSession contract).
+/// Leading strip → insert-before (reorder); card body → membership append.
+private struct PinboardOrStackDropDelegate: DropDelegate {
+    let entryID: HistoryEntry.ID
+    let stackID: UUID
+    let model: AppModel
+
+    /// ~leading edge of the card — wide enough to hit, narrow enough to leave body for append.
+    private static let reorderStripWidth: CGFloat = 44
+
+    private var canAppend: Bool { model.stackDrag.canMembershipAppend }
+
+    private var canReorderHere: Bool {
+        guard model.history.canReorderPinboard,
+              model.stackDrag.isPinboardReorder,
+              let from = model.stackDrag.reorderDragID,
+              from != entryID else { return false }
+        return true
+    }
+
+    /// Append when a record is over the card body; leading strip (or stack-on-stack) stays reorder.
+    private func wantsAppend(_ info: DropInfo) -> Bool {
+        guard canAppend else { return false }
+        guard canReorderHere else { return true }
+        return info.location.x >= Self.reorderStripWidth
+    }
+
+    func validateDrop(info: DropInfo) -> Bool { canAppend || canReorderHere }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        if wantsAppend(info) {
+            model.stackDrag.setReorderGap(nil)
+            model.stackDrag.setAppendHighlight(.stack(stackID))
+            model.noteStackDragChrome()
+            return DropProposal(operation: .copy)
+        }
+        if canReorderHere {
+            model.stackDrag.setAppendHighlight(nil)
+            model.stackDrag.setReorderGap(.before(entryID))
+            model.noteStackDragChrome()
+            return DropProposal(operation: .move)
+        }
+        return DropProposal(operation: .cancel)
+    }
+
+    func dropExited(info: DropInfo) {
+        if model.stackDrag.appendHighlight == .stack(stackID) {
+            model.stackDrag.setAppendHighlight(nil)
+            model.noteStackDragChrome()
+        }
+        if model.stackDrag.reorderGap == .before(entryID) {
+            model.stackDrag.setReorderGap(nil)
+            model.noteStackDragChrome()
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        if wantsAppend(info) {
+            return model.dropDraggedCard(onStack: stackID)
+        }
+        if canReorderHere {
+            return model.dropPinboardReorder(before: entryID, atEnd: false)
+        }
+        return false
     }
 }

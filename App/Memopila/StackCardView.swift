@@ -72,14 +72,8 @@ struct StackCardView: View {
             }
         }
         .overlay(alignment: .topTrailing) {
-            if isAppendTarget {
-                Image(systemName: "rectangle.stack.badge.plus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
-                    .padding(8)
-                    .transition(.scale(scale: 0.6).combined(with: .opacity))
-                    .allowsHitTesting(false)
-            } else if showsBadge {
+            // Append affordance is the title-strip icon (`badge.plus`) — no second + in the corner.
+            if showsBadge, !isAppendTarget {
                 ChooseBadge(pasted: model.chooseBadgeWasPasted)
                     .padding(6)
                     .transition(.scale(scale: 0.6).combined(with: .opacity))

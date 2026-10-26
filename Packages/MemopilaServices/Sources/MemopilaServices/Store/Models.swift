@@ -149,6 +149,43 @@ final class RecordTag {
     }
 }
 
+/// Favorites pinboard order for a record or stack. Membership stays `isFavorite`.
+@Model
+final class FavoriteSlot {
+    #Unique<FavoriteSlot>([\.entryKindRaw, \.entryID])
+
+    /// `record` or `stack` — mirrors `HistoryEntry.ID`.
+    var entryKindRaw: String
+    var entryID: UUID
+    /// 0 = top-left of the Favorites grid.
+    var position: Int
+
+    init(entryKindRaw: String, entryID: UUID, position: Int) {
+        self.entryKindRaw = entryKindRaw
+        self.entryID = entryID
+        self.position = position
+    }
+}
+
+/// Collection pinboard order (records ∪ stacks). Membership stays `RecordTag` / `StackTag`.
+/// Separate entity so V2→V3 stays additive lightweight (no alter of existing tag tables).
+@Model
+final class CollectionSlot {
+    #Unique<CollectionSlot>([\.collectionID, \.entryKindRaw, \.entryID])
+
+    var collectionID: UUID
+    var entryKindRaw: String
+    var entryID: UUID
+    var position: Int
+
+    init(collectionID: UUID, entryKindRaw: String, entryID: UUID, position: Int) {
+        self.collectionID = collectionID
+        self.entryKindRaw = entryKindRaw
+        self.entryID = entryID
+        self.position = position
+    }
+}
+
 /// A paste stack: reusable playlist of linked history records (PLAN §3.11).
 @Model
 final class StackModel {
@@ -213,7 +250,7 @@ final class StackTag {
 }
 
 enum StoreSchema {
-    static var models: [any PersistentModel.Type] { StoreSchemaV2.models }
+    static var models: [any PersistentModel.Type] { StoreSchemaV3.models }
 }
 
 /// The first released history schema (PLAN §7.2).
@@ -238,10 +275,28 @@ enum StoreSchemaV2: VersionedSchema {
     }
 }
 
+/// Pinboard order: `FavoriteSlot` + `CollectionSlot` (additive — safe V2 lightweight migrate).
+enum StoreSchemaV3: VersionedSchema {
+    static var versionIdentifier: Schema.Version { Schema.Version(3, 0, 0) }
+
+    static var models: [any PersistentModel.Type] {
+        [
+            ClipboardRecord.self, PayloadRepresentation.self, RecordThumbnail.self,
+            CollectionModel.self, RecordTag.self, FavoriteSlot.self, CollectionSlot.self,
+            StackModel.self, StackMember.self, StackTag.self,
+        ]
+    }
+}
+
 enum StoreMigrationPlan: SchemaMigrationPlan {
-    static var schemas: [any VersionedSchema.Type] { [StoreSchemaV1.self, StoreSchemaV2.self] }
+    static var schemas: [any VersionedSchema.Type] {
+        [StoreSchemaV1.self, StoreSchemaV2.self, StoreSchemaV3.self]
+    }
 
     static var stages: [MigrationStage] {
-        [MigrationStage.lightweight(fromVersion: StoreSchemaV1.self, toVersion: StoreSchemaV2.self)]
+        [
+            MigrationStage.lightweight(fromVersion: StoreSchemaV1.self, toVersion: StoreSchemaV2.self),
+            MigrationStage.lightweight(fromVersion: StoreSchemaV2.self, toVersion: StoreSchemaV3.self),
+        ]
     }
 }

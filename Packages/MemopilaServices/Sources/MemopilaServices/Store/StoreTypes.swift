@@ -237,6 +237,14 @@ public enum HistoryScope: Sendable, Hashable {
     case collection(UUID)
     /// Members of a paste stack in UI/`StackMember.position` order (not `lastCopiedAt`).
     case stack(UUID)
+
+    /// Favorites / Collections: ordered pinboards (slot positions), not History recency.
+    public var isPinboard: Bool {
+        switch self {
+        case .favorites, .collection: true
+        default: false
+        }
+    }
 }
 
 public struct HistoryQuery: Sendable, Hashable {

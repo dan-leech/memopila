@@ -7,24 +7,31 @@ import UniformTypeIdentifiers
 /// target asks for a type; file cards drag as their file.
 enum DragSupport {
     /// Stack drag-out: current dealt while armed (clipboard), else first UI member. Card face stays first.
+    /// Empty stacks still register plain text (title) so in-app pinboard reorder can start a drag session.
     static func provider(for stack: StackCard, store: ClipboardStore, armedMemberID: UUID?) -> NSItemProvider {
         let memberID = (armedMemberID.flatMap { id in stack.memberIDs.contains(id) ? id : nil })
             ?? stack.previewRecordID
             ?? stack.memberIDs.first
-        guard let memberID else { return NSItemProvider() }
-        // Resolve via a lightweight HistoryCard shell for type registration.
         let provider = NSItemProvider()
-        provider.registerDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier, visibility: .all) { completion in
-            let reply = Transfer(value: completion)
-            Task {
-                do {
-                    let payload = try await store.payload(for: memberID)
-                    reply.value(payload.text.map { Data($0.utf8) }, nil)
-                } catch {
-                    reply.value(nil, error)
+        let title = stack.title.isEmpty ? "Stack" : stack.title
+        if let memberID {
+            provider.registerDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier, visibility: .all) { completion in
+                let reply = Transfer(value: completion)
+                Task {
+                    do {
+                        let payload = try await store.payload(for: memberID)
+                        reply.value(payload.text.map { Data($0.utf8) }, nil)
+                    } catch {
+                        reply.value(Data(title.utf8), nil)
+                    }
                 }
+                return nil
             }
-            return nil
+        } else {
+            provider.registerDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier, visibility: .all) { completion in
+                completion(Data(title.utf8), nil)
+                return nil
+            }
         }
         return provider
     }
