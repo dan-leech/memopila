@@ -87,8 +87,8 @@ final class AppModel {
     private(set) var chooseBadgeStackID: UUID?
     /// The badge on that card says Pasted rather than On Clipboard.
     private(set) var chooseBadgeWasPasted = false
-    /// Armed paste-stack session (§3.11).
-    @ObservationIgnored private(set) var stackSession: StackSessionController!
+    /// Armed paste-stack session (§3.11). Observable: stack cards read `isArmed` / progress live.
+    private(set) var stackSession: StackSessionController!
     /// Panel card-drag SSOT (§3.11 drop contract). Not ObservationIgnored: Favorites/Collections
     /// chrome (`reorderGap` / End slot) must invalidate the History grid while dragging.
     private(set) var stackDrag = StackDragSession()
@@ -251,8 +251,10 @@ final class AppModel {
 
     /// *Edit Record* (Space, ⌘E, the pencil): the record opens in its own window, which replaces the
     /// panel as Settings does and can be moved and resized. `focusText` puts the cursor in the text (⌘E).
-    func openRecord(_ id: UUID, focusText: Bool = false) {
+    /// `closeAfterSave`: Stack Window *Duplicate & Edit* — Save / ⌘S closes back to the stack.
+    func openRecord(_ id: UUID, focusText: Bool = false, closeAfterSave: Bool = false) {
         if let itemState, itemState.id == id {
+            itemState.closesAfterSave = closeAfterSave
             hidePanelForWindow()
             windows.showRecord(focusText: false)
             if focusText, itemState.isEditable { itemState.focus() }
@@ -263,12 +265,14 @@ final class AppModel {
         if let itemState, itemState.isDirty {
             hidePanelForWindow()
             windows.showRecord(focusText: false)
-            return resolveUnsavedChanges { [weak self] in self?.openRecord(id, focusText: focusText) }
+            return resolveUnsavedChanges { [weak self] in
+                self?.openRecord(id, focusText: focusText, closeAfterSave: closeAfterSave)
+            }
         }
-        Task { await openRecordAsync(id, focusText: focusText) }
+        Task { await openRecordAsync(id, focusText: focusText, closeAfterSave: closeAfterSave) }
     }
 
-    private func openRecordAsync(_ id: UUID, focusText: Bool) async {
+    private func openRecordAsync(_ id: UUID, focusText: Bool, closeAfterSave: Bool = false) async {
         let card: HistoryCard
         if let local = history.cards.first(where: { $0.id == id })
             ?? stackEditor?.members.first(where: { $0.id == id }) {
@@ -280,6 +284,7 @@ final class AppModel {
         }
         itemState?.loadTask?.cancel()
         let state = ItemState(card: card, focusOnLoad: focusText && Self.isEditable(card), maxBytes: settings.maxItemBytes)
+        state.closesAfterSave = closeAfterSave
         itemState = state
         if history.selectedID != .record(id) { history.selectedID = .record(id) }
         hidePanelForWindow()
@@ -412,9 +417,14 @@ final class AppModel {
         itemState = nil
     }
 
-    /// Save (⌘S): the text is saved and the window stays open — only Choose for Clipboard and Esc close it.
+    /// Save (⌘S): normally keeps the window open. With `closesAfterSave` (Duplicate & Edit) closes after save.
     func saveItem() {
-        Task { await saveText() }
+        Task {
+            guard await saveText() else { return }
+            if itemState?.closesAfterSave == true {
+                closeRecord()
+            }
+        }
     }
 
     /// The title, then the text if it changed. `true` when nothing is left unsaved. A merge into an
@@ -703,9 +713,9 @@ final class AppModel {
         stackSession.stop()
     }
 
-    func chooseStack(_ id: UUID, paste: Bool? = nil) {
+    func chooseStack(_ id: UUID, paste: Bool? = nil, uiOrder: [UUID]? = nil) {
         resolveUnsavedChanges { [weak self] in
-            self?.stackSession.chooseStack(id, paste: paste)
+            self?.stackSession.chooseStack(id, paste: paste, uiOrder: uiOrder)
         }
     }
 
@@ -1243,9 +1253,12 @@ final class AppModel {
     }
 
     func chooseStackFromEditor(paste: Bool) {
-        guard let id = stackEditor?.stackID else { return }
+        guard let state = stackEditor else { return }
+        let id = state.stackID
+        // Capture playlist before close — Choose must not race a pending reorder persist.
+        let order = state.isTruncated || state.order.isEmpty ? nil : state.order
         closeStackEditor(returningToPanel: false)
-        chooseStack(id, paste: paste)
+        chooseStack(id, paste: paste, uiOrder: order)
     }
 
     func presentStackRename() {
@@ -1729,6 +1742,26 @@ final class AppModel {
                 }
             } else {
                 addRecord(recordID, toStack: stackID, toast: true)
+            }
+        }
+    }
+
+    /// Clone a stack member after itself, then open Edit on the copy (PLAN §3.11 — playlist links
+    /// cannot repeat an id; the copy is a new history card).
+    func duplicateInStack(_ recordID: UUID, stackID: UUID) {
+        Task {
+            do {
+                let newID = try await store.duplicateInStack(recordID: recordID, stackID: stackID)
+                history.storeDidChange()
+                if stackEditor?.stackID == stackID {
+                    stackEditor?.reload(selecting: newID)
+                    windows.updateStackTitle(stackEditor?.title ?? "")
+                }
+                openRecord(newID, focusText: true, closeAfterSave: true)
+            } catch {
+                history.storeDidChange()
+                reloadStackEditorIfNeeded()
+                toasts.error(error.localizedDescription)
             }
         }
     }

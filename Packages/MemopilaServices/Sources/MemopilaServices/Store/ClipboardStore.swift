@@ -885,6 +885,84 @@ public actor ClipboardStore {
         try context.save()
     }
 
+    /// Independent copy of a stack member (same payload / MCS1 hash) inserted **after** it.
+    /// Same hash keeps Restore integrity; editing the copy diverges the hash. Dedup on a later
+    /// capture may merge siblings — intentional until the copy is edited.
+    @discardableResult
+    public func duplicateInStack(recordID: UUID, stackID: UUID, now: Date = Date()) throws -> UUID {
+        let context = makeContext()
+        guard try fetchStack(stackID, in: context) != nil else { throw StoreError.notFound }
+        guard let source = try fetchRecord(recordID, in: context) else { throw StoreError.notFound }
+        let members = try context.fetch(FetchDescriptor<StackMember>(
+            predicate: #Predicate { $0.stackID == stackID },
+            sortBy: [SortDescriptor(\.position)]
+        ))
+        guard let index = members.firstIndex(where: { $0.recordID == recordID }) else {
+            throw StoreError.notFound
+        }
+
+        let copy = ClipboardRecord(
+            displayTypeRaw: source.displayTypeRaw,
+            firstCopiedAt: now,
+            lastCopiedAt: now,
+            copyCount: 1,
+            contentHash: source.contentHash,
+            hashSchemeVersion: source.hashSchemeVersion,
+            storageFormatVersion: source.storageFormatVersion,
+            payloadSizeBytes: source.payloadSizeBytes
+        )
+        copy.cardPreview = source.cardPreview
+        copy.textIndex = source.textIndex
+        copy.textLength = source.textLength
+        copy.lineCount = source.lineCount
+        copy.sensitiveKind = source.sensitiveKind
+        copy.searchText = source.searchText
+        copy.customTitle = source.customTitle
+        copy.ocrText = source.ocrText
+        copy.ocrStateRaw = source.ocrStateRaw
+        copy.sourceURL = source.sourceURL
+        copy.sourceWindowTitle = source.sourceWindowTitle
+        copy.codeLanguage = source.codeLanguage
+        copy.pixelWidth = source.pixelWidth
+        copy.pixelHeight = source.pixelHeight
+        copy.colorHex = source.colorHex
+        copy.filePaths = source.filePaths
+        copy.storedTypes = source.storedTypes
+        copy.skippedTypes = source.skippedTypes
+        copy.lastSourceAppBundleID = source.lastSourceAppBundleID
+        copy.lastSourceAppName = source.lastSourceAppName
+        copy.editedAt = source.editedAt
+        context.insert(copy)
+
+        for row in source.representations {
+            let rep = PayloadRepresentation(
+                itemIndex: row.itemIndex,
+                repIndex: row.repIndex,
+                uti: row.uti,
+                kindRaw: row.kindRaw,
+                bytes: row.bytes,
+                paths: row.paths,
+                byteCount: row.byteCount
+            )
+            context.insert(rep)
+            rep.record = copy
+        }
+        if let thumb = source.thumbnail {
+            let model = RecordThumbnail(data: thumb.data)
+            context.insert(model)
+            model.record = copy
+            copy.hasThumbnail = true
+        }
+
+        let insertAt = index + 1
+        for member in members where member.position >= insertAt {
+            member.position += 1
+        }
+        context.insert(StackMember(stackID: stackID, recordID: copy.id, position: insertAt))
+        try context.save()
+        return copy.id
+    }
+
     /// Drop one member; compact UI positions. Does not restore `expiresAt` (§6 / P36).
     public func removeStackMember(_ stackID: UUID, recordID: UUID) throws {
         let context = makeContext()

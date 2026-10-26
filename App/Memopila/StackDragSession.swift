@@ -10,12 +10,13 @@ import Observation
 /// - Stack Window positional: `isPositionalReorder` (search clear, not truncated) — membership off.
 /// - Pinboard positional: `isPinboardReorder` (Favorites / Collection).
 ///   On a **stack card**, both intents share one drop surface (spatial SSOT):
-///   - leading strip → insert-before (reorder gap / phantom);
+///   - leading strip → insert-before (gutter line / End slot);
 ///   - card body → membership append (`appendHighlight`).
-///   Record cards / End / phantoms are reorder-only. Dragging a stack is reorder-only.
+///   Record cards / End are reorder-only. Dragging a stack is reorder-only.
 /// - History (non-pinboard): record drag is membership (append onto stack card / editor / collection).
 /// - Reorder chrome (`reorderDragID` / `reorderGap`) lives here — not on `HistoryModel`.
-///   Gap is a **phantom slot** (insert-before or trailing End), never a highlight on an existing card.
+///   Insert-before is a **gutter capsule** on the target card (no LazyVGrid reflow); End is a
+///   reserved trailing slot while dragging. Never an accent ring on a real card for reorder.
 /// - Membership chrome (`appendHighlight`) highlights the panel stack card or the editor Add / empty state.
 /// - SwiftUI `onDrag` has no end callback → mouse-up ends the session after `performDrop`.
 @MainActor

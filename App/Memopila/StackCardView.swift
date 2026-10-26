@@ -16,7 +16,11 @@ struct StackCardView: View {
     /// Equal Δx/Δy → ~45°. Tiny stair — front face owns the body.
     private static let step: CGFloat = 3.5
 
-    private var isArmed: Bool { model.stackSession.armedStackID == stack.id }
+    private var isArmed: Bool {
+        // Also watch the status bump — LazyVGrid cells can miss nested session publishes.
+        _ = model.stackStatusRevision
+        return model.stackSession.armedStackID == stack.id
+    }
     private var isOnClipboard: Bool { model.monitor.clipboardStackID == stack.id }
     private var showsBadge: Bool { model.chooseBadgeStackID == stack.id }
     /// Membership append hover (panel drop onto this stack card — PLAN §3.11).

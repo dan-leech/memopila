@@ -14,6 +14,8 @@ struct CardView: View {
     let model: AppModel
     /// Double-click on title/content only — not the footer buttons (avoids stealing heart clicks).
     var onDoubleClick: () -> Void = {}
+    /// Stack Window replaces the History ⋯ menu with member actions (SSOT — do not fork in hover icons).
+    var moreMenu: AnyView? = nil
     @State private var image: NSImage?
     @State private var richPreview: RichPreview?
     @Environment(\.colorScheme) private var colorScheme
@@ -187,7 +189,11 @@ struct CardView: View {
                 height: 20,
                 font: .system(size: 11, weight: .semibold)
             ) {
-                CardContextMenu(card: card, model: model)
+                if let moreMenu {
+                    moreMenu
+                } else {
+                    CardContextMenu(card: card, model: model)
+                }
             }
         }
     }

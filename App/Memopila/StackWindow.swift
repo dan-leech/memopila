@@ -39,8 +39,14 @@ enum StackKeys {
         guard let state = model.stackEditor else { return false }
         let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
         let key = KeyPress(event)
+        let editingField = window.firstResponder is NSText
 
         if key.code == kVK_Escape {
+            // Title / filter field editor: first Esc only leaves the field (spaces must type).
+            if let field = window.firstResponder as? NSTextView, field.isFieldEditor {
+                window.makeFirstResponder(nil)
+                return true
+            }
             if !state.search.isEmpty {
                 state.search = ""
                 return true
@@ -48,6 +54,9 @@ enum StackKeys {
             model.closeStackEditor()
             return true
         }
+
+        // While the title or filter has focus, Space / ↩ type or commit the field — not Edit / Choose.
+        if editingField { return false }
 
         if flags == [.option, .command], key.letter == "i" {
             NotificationCenter.default.post(name: .stackEditorToggleInspector, object: nil)
@@ -133,14 +142,15 @@ private struct StackEditorView: View {
     // MARK: Toolbar
 
     private var toolbar: some View {
-        HStack(spacing: 4) {
+        let _ = model.stackStatusRevision
+        return HStack(spacing: 4) {
             Text(state.title)
                 .font(.headline)
                 .lineLimit(1)
                 .padding(.leading, 4)
 
-            if let progress = model.stackSession.progressLabel,
-               model.stackSession.armedStackID == state.stackID {
+            if model.stackSession.armedStackID == state.stackID,
+               let progress = model.stackSession.progressLabel {
                 Label(String(localized: "Armed \(progress)"), systemImage: "bolt.fill")
                     .font(.caption.monospacedDigit().weight(.semibold))
                     .foregroundStyle(.orange)
@@ -408,39 +418,42 @@ private struct StackEditorView: View {
 
     @ViewBuilder
     private func selectedMemberActions(_ card: HistoryCard) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
             Text(card.customTitle ?? card.preview)
                 .lineLimit(3)
                 .font(.callout)
             if let pos = state.position(of: card.id) {
-                Label(String(localized: "Position \(pos)"), systemImage: "number")
+                Text(String(localized: "Position \(pos) · first is pasted first"))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .floatingHelp(String(localized: "Place in the stack order (1 is first)"))
             }
+
+            // Primary job: independent copy in this playlist, then edit it.
+            Button {
+                model.duplicateInStack(card.id, stackID: state.stackID)
+            } label: {
+                Label(String(localized: "Duplicate & Edit"), systemImage: "plus.square.on.square")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .floatingHelp(String(localized: "Insert a copy after this card and open it to edit. The original stays."))
+
             Button {
                 model.openRecord(card.id)
             } label: {
-                Label(String(localized: "Edit Record"), systemImage: "doc.richtext")
+                Label(String(localized: "Edit Original"), systemImage: "pencil")
+                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderless)
-            .floatingHelp(String(localized: "Open this card in the Record window (Space)"))
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .floatingHelp(String(localized: "Edit this shared history card (Space). Changes apply everywhere it appears."))
 
             Menu {
-                Button { model.moveStackEditorMember(card.id, toStart: true) } label: {
-                    Label(String(localized: "Move to Top"), systemImage: "arrow.up.to.line")
-                }
-                Button { model.moveStackEditorMember(card.id, by: -1) } label: {
-                    Label(String(localized: "Move Up"), systemImage: "arrow.up")
-                }
-                Button { model.moveStackEditorMember(card.id, by: 1) } label: {
-                    Label(String(localized: "Move Down"), systemImage: "arrow.down")
-                }
-                Button { model.moveStackEditorMember(card.id, toStart: false) } label: {
-                    Label(String(localized: "Move to Bottom"), systemImage: "arrow.down.to.line")
-                }
+                StackMemberMoveMenu(cardID: card.id, model: model)
             } label: {
-                Label(String(localized: "Move in Stack"), systemImage: "arrow.up.arrow.down")
+                Label(String(localized: "Move"), systemImage: "arrow.up.arrow.down")
+                    .frame(maxWidth: .infinity)
             }
             .floatingHelp(String(localized: "Change this card’s place in the order"))
 
@@ -448,6 +461,7 @@ private struct StackEditorView: View {
                 model.removeRecord(card.id, fromStack: state.stackID)
             } label: {
                 Label(String(localized: "Remove from Stack"), systemImage: "minus.circle")
+                    .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderless)
             .floatingHelp(String(localized: "Take this card out of the stack; it stays in History"))
@@ -506,24 +520,12 @@ private struct StackEditorView: View {
                             spacing: Self.spacing
                         ) {
                             ForEach(Array(state.visibleMembers.enumerated()), id: \.element.id) { index, card in
-                                if case .before(let targetID) = model.stackDrag.reorderGap,
-                                   targetID == .record(card.id) {
-                                    reorderPhantom(
-                                        height: cardHeight,
-                                        accessibility: String(localized: "Insert before this card"),
-                                        help: String(localized: "Drop here to place the card before this one")
-                                    )
-                                    .onDrop(
-                                        of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
-                                        delegate: StackEditorMemberDropDelegate(targetID: card.id, model: model)
-                                    )
-                                    .transition(.opacity.combined(with: .scale(scale: 0.92)))
-                                }
                                 memberCard(card, index: index, cardHeight: cardHeight)
                             }
+                            // Reserve End while reordering so the grid does not jump each hover.
                             if state.canReorder,
-                               case .record(let dragID) = model.stackDrag.reorderDragID,
-                               state.order.last != dragID {
+                               model.stackDrag.isPositionalReorder,
+                               model.stackDrag.reorderDragID != nil {
                                 let endActive = model.stackDrag.reorderGap == .end
                                 dropPlaceholder(
                                     title: String(localized: "End"),
@@ -533,7 +535,7 @@ private struct StackEditorView: View {
                                     emphasized: endActive
                                 )
                                 .frame(height: cardHeight)
-                                .opacity(endActive ? 1 : 0.45)
+                                .opacity(endActive ? 1 : 0.35)
                                 .onDrop(
                                     of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
                                     delegate: StackEditorEndDropDelegate(model: model)
@@ -552,7 +554,7 @@ private struct StackEditorView: View {
                                 )
                             }
                         }
-                        .animation(.easeOut(duration: 0.12), value: model.stackDrag.reorderGap)
+                        // No layout animation on reorderGap — phantom cells made cards fly.
                         .padding(Self.spacing)
                         .onDrop(
                             of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
@@ -578,17 +580,19 @@ private struct StackEditorView: View {
             }
     }
 
-    /// Empty accent slot — the insert gap itself (not a highlight on a real card).
-    private func reorderPhantom(height: CGFloat, accessibility: String, help: String) -> some View {
-        dropPlaceholderChrome(emphasized: true)
-            .overlay {
-                Image(systemName: "rectangle.dashed")
-                    .font(.title2.weight(.medium))
-                    .foregroundStyle(Color.accentColor.opacity(0.85))
+    /// Insert-before marker in the column gutter (same as Favorites pinboard — no grid reflow).
+    @ViewBuilder
+    private func reorderInsertOverlay(active: Bool) -> some View {
+        if active {
+            GeometryReader { geo in
+                Capsule()
+                    .fill(Color.accentColor)
+                    .frame(width: 3, height: max(24, geo.size.height - 16))
+                    .position(x: -Self.spacing / 2, y: geo.size.height / 2)
             }
-            .frame(height: height)
-            .accessibilityLabel(Text(accessibility))
-            .floatingHelp(help)
+            .allowsHitTesting(false)
+            .accessibilityLabel(Text("Insert before this card"))
+        }
     }
 
     private func dropPlaceholder(
@@ -612,17 +616,23 @@ private struct StackEditorView: View {
     private func memberCard(_ card: HistoryCard, index: Int, cardHeight: CGFloat) -> some View {
         let selected = state.selectedID == card.id
         let dragging = model.stackDrag.reorderDragID == .record(card.id)
+        let insertBefore = model.stackDrag.reorderGap == .before(.record(card.id))
+        let memberMenu = StackMemberContextMenu(cardID: card.id, stackID: state.stackID, model: model)
         CardView(
             card: card,
             index: index,
             hasCursor: selected,
             model: model,
-            onDoubleClick: { model.openRecord(card.id) }
+            onDoubleClick: { model.openRecord(card.id) },
+            moreMenu: AnyView(memberMenu)
         )
         .opacity(dragging ? 0.35 : 1)
         .frame(height: cardHeight)
+        .overlay { reorderInsertOverlay(active: insertBefore) }
         .simultaneousGesture(TapGesture().onEnded {
             state.select(card.id)
+            // Surface the Selected inspector so Duplicate & Edit is one click away.
+            if !inspectorVisible { toggleInspector() }
         })
         .onDrag {
             if state.canReorder {
@@ -636,31 +646,7 @@ private struct StackEditorView: View {
             of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],
             delegate: StackEditorMemberDropDelegate(targetID: card.id, model: model)
         )
-        .contextMenu {
-            Button { model.openRecord(card.id) } label: {
-                Label(String(localized: "Edit Record"), systemImage: "doc.richtext")
-            }
-            Menu {
-                Button { model.moveStackEditorMember(card.id, toStart: true) } label: {
-                    Label(String(localized: "Move to Top"), systemImage: "arrow.up.to.line")
-                }
-                Button { model.moveStackEditorMember(card.id, by: -1) } label: {
-                    Label(String(localized: "Move Up"), systemImage: "arrow.up")
-                }
-                Button { model.moveStackEditorMember(card.id, by: 1) } label: {
-                    Label(String(localized: "Move Down"), systemImage: "arrow.down")
-                }
-                Button { model.moveStackEditorMember(card.id, toStart: false) } label: {
-                    Label(String(localized: "Move to Bottom"), systemImage: "arrow.down.to.line")
-                }
-            } label: {
-                Label(String(localized: "Move in Stack"), systemImage: "arrow.up.arrow.down")
-            }
-            Divider()
-            Button(String(localized: "Remove from Stack"), role: .destructive) {
-                model.removeRecord(card.id, fromStack: state.stackID)
-            }
-        }
+        .contextMenu { memberMenu }
     }
 
     private var statusBar: some View {
@@ -702,6 +688,55 @@ private struct ShortcutLabel: View {
             Text(shortcut)
                 .foregroundStyle(.secondary)
                 .font(.caption.monospaced())
+        }
+    }
+}
+
+/// Stack Window member actions SSOT — ⋯ menu, right-click, and Selected inspector share this.
+private struct StackMemberContextMenu: View {
+    let cardID: UUID
+    let stackID: UUID
+    let model: AppModel
+
+    var body: some View {
+        Button {
+            model.duplicateInStack(cardID, stackID: stackID)
+        } label: {
+            Label(String(localized: "Duplicate & Edit"), systemImage: "plus.square.on.square")
+        }
+        Button {
+            model.openRecord(cardID)
+        } label: {
+            Label(String(localized: "Edit Original"), systemImage: "pencil")
+        }
+        Menu {
+            StackMemberMoveMenu(cardID: cardID, model: model)
+        } label: {
+            Label(String(localized: "Move"), systemImage: "arrow.up.arrow.down")
+        }
+        Divider()
+        Button(String(localized: "Remove from Stack"), role: .destructive) {
+            model.removeRecord(cardID, fromStack: stackID)
+        }
+    }
+}
+
+private struct StackMemberMoveMenu: View {
+    let cardID: UUID
+    let model: AppModel
+
+    var body: some View {
+        Button { model.moveStackEditorMember(cardID, toStart: true) } label: {
+            Label(String(localized: "Move to Top"), systemImage: "arrow.up.to.line")
+        }
+        Button { model.moveStackEditorMember(cardID, by: -1) } label: {
+            Label(String(localized: "Move Up"), systemImage: "arrow.up")
+        }
+        Button { model.moveStackEditorMember(cardID, by: 1) } label: {
+            Label(String(localized: "Move Down"), systemImage: "arrow.down")
+        }
+        Button { model.moveStackEditorMember(cardID, toStart: false) } label: {
+            Label(String(localized: "Move to Bottom"), systemImage: "arrow.down.to.line")
         }
     }
 }

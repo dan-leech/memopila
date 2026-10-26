@@ -788,10 +788,19 @@ struct RecordView: View {
                     Label("Revert", systemImage: "arrow.uturn.backward")
                 }
                 .floatingHelp(String(localized: "Go back to the saved text (⌘Z undoes this)"))
-                Button { model.saveItem() } label: { ShortcutLabel(title: String(localized: "Save"), shortcut: "⌘S") }
+                Button { model.saveItem() } label: {
+                    ShortcutLabel(
+                        title: state.closesAfterSave
+                            ? String(localized: "Save & Close")
+                            : String(localized: "Save"),
+                        shortcut: "⌘S"
+                    )
+                }
                     .buttonStyle(.borderedProminent)
                     .disabled(cannotSaveReason != nil)
-                    .floatingHelp(cannotSaveReason ?? String(localized: "Save the changes; the window stays open (⌘S)"))
+                    .floatingHelp(cannotSaveReason ?? (state.closesAfterSave
+                        ? String(localized: "Save and return to the stack (⌘S)")
+                        : String(localized: "Save the changes; the window stays open (⌘S)")))
             }
         }
         .controlSize(.small)
@@ -848,7 +857,9 @@ struct RecordView: View {
     /// What the keys do right now.
     private var hint: String {
         if state.isDirty {
-            return String(localized: "⌘S saves · ⌘↩ Save and Choose · Esc asks to save")
+            return state.closesAfterSave
+                ? String(localized: "⌘S Save & Close · ⌘↩ Save and Choose · Esc asks to save")
+                : String(localized: "⌘S saves · ⌘↩ Save and Choose · Esc asks to save")
         }
         if state.isEditingText {
             return String(localized: "Editing · Esc stops editing")

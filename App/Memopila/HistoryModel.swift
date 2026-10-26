@@ -241,6 +241,12 @@ final class HistoryModel {
         return nil
     }
 
+    /// Visible grid card first, then sidebar/cache — for Choose before a store round-trip.
+    func stackCard(id: UUID) -> StackCard? {
+        if let stack = stacks.first(where: { $0.id == id }) { return stack }
+        return allStacks.first(where: { $0.id == id })
+    }
+
     var selectedIndex: Int? {
         selectedID.flatMap { id in entries.firstIndex { $0.id == id } }
     }

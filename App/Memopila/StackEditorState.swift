@@ -67,10 +67,11 @@ final class StackEditorState {
         order.firstIndex(of: id).map { $0 + 1 }
     }
 
-    func reload() {
+    func reload(selecting id: UUID? = nil) {
         generation += 1
         let generation = generation
         let stackID = stackID
+        let preferSelection = id
         Task {
             do {
                 let card = try await store.stack(stackID)
@@ -92,7 +93,9 @@ final class StackEditorState {
                 self.order = limited
                 self.members = limited.compactMap { byID[$0] }
                 self.loadError = nil
-                if let selectedID, !limited.contains(selectedID) {
+                if let preferSelection, limited.contains(preferSelection) {
+                    self.selectedID = preferSelection
+                } else if let selectedID, !limited.contains(selectedID) {
                     self.selectedID = nil
                 }
             } catch {

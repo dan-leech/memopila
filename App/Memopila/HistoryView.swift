@@ -430,6 +430,7 @@ private struct PanelStatus: View {
     }
 
     private var countText: String {
+        _ = model.stackStatusRevision
         let history = model.history
         var parts: [String] = []
         if !history.markedIDs.isEmpty {
@@ -449,7 +450,8 @@ private struct PanelStatus: View {
     }
 
     private var captureStatus: (symbol: String, tint: Color, help: String) {
-        CaptureChrome.panelStatus(
+        _ = model.stackStatusRevision
+        return CaptureChrome.panelStatus(
             monitor: model.monitor,
             stackArmed: model.stackSession.isArmed,
             progressLabel: model.stackSession.progressLabel

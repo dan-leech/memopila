@@ -112,6 +112,8 @@ final class ItemState {
     var isEditingText = false
     /// The text view takes the focus once loaded (⌘E, Edit) instead of leaving the arrows to the grid.
     @ObservationIgnored var focusOnLoad: Bool
+    /// Duplicate & Edit from the Stack Window: ⌘S / Save closes after a successful save (back to stack).
+    var closesAfterSave = false
     @ObservationIgnored weak var textView: NSTextView?
     @ObservationIgnored private var highlightTask: Task<Void, Never>?
     /// Fit, Actual Size and zoom of an image or PDF record.

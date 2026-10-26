@@ -2,9 +2,12 @@ import AppKit
 import Carbon.HIToolbox
 import MemopilaCore
 import MemopilaServices
+import Observation
 
 /// Armed paste-stack session: DealEngine + single-flight writes + ⌘V/Esc (PLAN §3.11).
+/// `@Observable` so panel stack cards / status refresh on arm, advance, and stop (not only the menu bar).
 @MainActor
+@Observable
 final class StackSessionController {
     private(set) var session: DealEngine.Session?
     private(set) var isArmed = false
@@ -38,18 +41,30 @@ final class StackSessionController {
     /// Single definition lives on `AppModel` (P23).
     var memopilaUIKey: Bool { model?.memopilaUIKey ?? false }
 
-    func chooseStack(_ stackID: UUID, paste: Bool? = nil) {
-        Task { await chooseStackAsync(stackID, paste: paste) }
+    func chooseStack(_ stackID: UUID, paste: Bool? = nil, uiOrder: [UUID]? = nil) {
+        Task { await chooseStackAsync(stackID, paste: paste, uiOrder: uiOrder) }
     }
 
-    func chooseStackAsync(_ stackID: UUID, paste: Bool? = nil) async {
+    func chooseStackAsync(_ stackID: UUID, paste: Bool? = nil, uiOrder: [UUID]? = nil) async {
         guard let model else { return }
         if paste == true, !AccessibilityBridge.isTrusted {
             AccessibilityBridge.requestTrust()
             model.toasts.error(String(localized: "To paste, allow Memopila in System Settings → Privacy & Security → Accessibility, then try again."))
             return
         }
-        let members = (try? await model.store.stackMemberIDs(stackID)) ?? []
+        // Prefer an in-memory playlist (editor / optimistic history) so a Choose right after
+        // reorder does not race a still-in-flight `setStackMembers` and start from the old order.
+        let members: [UUID]
+        if let uiOrder, !uiOrder.isEmpty {
+            members = uiOrder
+        } else if let editor = model.stackEditor, editor.stackID == stackID,
+                  !editor.isTruncated, !editor.order.isEmpty {
+            members = editor.order
+        } else if let local = model.history.stackCard(id: stackID), !local.memberIDs.isEmpty {
+            members = local.memberIDs
+        } else {
+            members = (try? await model.store.stackMemberIDs(stackID)) ?? []
+        }
         guard !members.isEmpty else {
             model.toasts.show(String(localized: "This stack is empty."))
             return
@@ -60,6 +75,9 @@ final class StackSessionController {
         if let editor = model.stackEditor, editor.stackID == stackID {
             dealMode = editor.stack.dealMode
             loops = editor.stack.loops
+        } else if let local = model.history.stackCard(id: stackID) {
+            dealMode = local.dealMode
+            loops = local.loops
         } else if let card = try? await model.store.stack(stackID) {
             dealMode = card.dealMode
             loops = card.loops

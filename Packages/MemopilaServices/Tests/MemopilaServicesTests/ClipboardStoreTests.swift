@@ -436,6 +436,21 @@ struct ClipboardStoreTests {
         #expect(try await store.stackMemberIDs(stackID) == [b])
     }
 
+    @Test func should_duplicate_stack_member_after_source_as_independent_record() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let a) = await ingest(store, snapshot("alpha", at: 1)),
+              case .committed(let b) = await ingest(store, snapshot("beta", at: 2)) else { return }
+        let stackID = try await store.createStack(title: "S", recordIDs: [a, b])
+        let copy = try await store.duplicateInStack(recordID: a, stackID: stackID)
+        #expect(copy != a)
+        #expect(try await store.stackMemberIDs(stackID) == [a, copy, b])
+        #expect(try await store.payload(for: a).text == "alpha")
+        #expect(try await store.payload(for: copy).text == "alpha")
+        _ = try await store.editText(copy, text: "alpha-edited", opSeq: 1, maxBytes: 1_000)
+        #expect(try await store.payload(for: a).text == "alpha")
+        #expect(try await store.payload(for: copy).text == "alpha-edited")
+    }
+
     @Test func stackScopePagesInPositionOrder() async throws {
         let store = try ClipboardStore(url: nil)
         guard case .committed(let a) = await ingest(store, snapshot("first", at: 3_000)) else { Issue.record("a"); return }
