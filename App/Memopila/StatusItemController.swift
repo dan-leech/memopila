@@ -47,7 +47,8 @@ final class StatusItemController: NSObject {
     /// Re-renders the icon whenever the capture state behind it changes.
     private func trackIcon() {
         let symbol = withObservationTracking {
-            model.monitor.statusSymbol
+            _ = model.stackStatusRevision
+            return model.monitor.statusSymbol
         } onChange: {
             // The controller lives as long as the app, so a strong capture is fine.
             Task { @MainActor in self.trackIcon() }
@@ -55,6 +56,11 @@ final class StatusItemController: NSObject {
         let image = NSImage(systemSymbolName: symbol, accessibilityDescription: String(localized: "Memopila"))
         image?.isTemplate = true
         item.button?.image = image
+        if model.stackSession.isArmed, let progress = model.stackSession.progressLabel {
+            item.button?.toolTip = String(localized: "Stack \(progress) — Esc or right-click to stop")
+        } else {
+            item.button?.toolTip = String(localized: "Memopila: click to open, right-click for the menu")
+        }
     }
 
     private func showMenu() {
@@ -68,6 +74,11 @@ final class StatusItemController: NSObject {
         }
         if monitor.storageError != nil {
             menu.addItem(ClosureMenuItem(String(localized: "Resume After Storage Error")) { monitor.resumeAfterStorageError() })
+        }
+        if model.stackSession.isArmed {
+            let title = model.stackSession.progressLabel.map { String(localized: "Stop Stack (\($0))") }
+                ?? String(localized: "Stop Stack")
+            menu.addItem(ClosureMenuItem(title) { [model] in model.stopStackSession() })
         }
         menu.addItem(.separator())
         if monitor.isPaused {

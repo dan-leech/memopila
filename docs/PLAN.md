@@ -22,6 +22,7 @@
 - **Source page**: *Copied from example.com* for browser copies (§5.2).
 - **Text actions** (§3.9) and **syntax-highlighted code preview** (§8.5).
 - Organize with **Favorites** and **Collections** (UI name for tags, many-to-many); search; filter by source app, type, collection.
+- **Paste stacks** (§3.11): reusable ordered playlists of history records; Choose resets the deal; each ⌘V advances; optional loop / shuffle / random.
 - **Low memory footprint**: history lives on disk; RAM stays within explicit budgets (§7.3).
 - Respect privacy: local-only data, per-app *Don't save*, pause, skip transient/concealed/auto-generated markers, follow the macOS pasteboard access policy (**Capture paused**).
 - Deduplicate by canonical content hash; retain by **age** and by **`maxCount` on non-favorites only** (favorites outside the count cap).
@@ -31,7 +32,8 @@
 - Auto-rules (conditional transforms, auto-tagging), snippets. Per-app settings and format rules (§5.1, §3.2.2) are not auto-rules: they only decide what is stored and for how long.
 - Image editing, edit history / versions. (Formatted text is edited with its formatting, §3.6.)
 - Eyedropper-from-image, lock, export/import, iCloud sync.
-- System Quick Look panel (an in-app preview instead, §8.5), text actions beyond the fixed set (§3.9), paste stack.
+- System Quick Look panel (an in-app preview instead, §8.5), text actions beyond the fixed set (§3.9).
+- Ephemeral collect-on-copy paste queues (Paste.app style); stacks are saved playlists (§3.11).
 - Mac App Store distribution; **App Sandbox off**. Releases are built by CI (`release.yml`): signed ad hoc, or with Developer ID and notarized once the owner adds the signing secrets.
 - Persisting file contents from disk (never — §3.3). Display-only QuickLook thumbnails of copied files are allowed.
 - Claiming complete automatic protection against secrets (absence of markers ≠ safe content): the secret detection of §3.10 is pattern-based and says so.
@@ -52,7 +54,7 @@
 | **Memory** | History lives on disk. No in-memory mirror of history. RAM budgets (§7.3) are phase acceptance criteria |
 | **App presentation** | Menu-bar only (`NSApplication.ActivationPolicy.accessory` / `LSUIElement`). No Dock icon and no Dock toggle in v1 (§8.7) |
 | **Window** | Non-activating `NSPanel` **(spike)**; fallback: activating window + remembered previous app (§8.1) |
-| **Hotkey** | Default **⌥⌘V** (same as Pasta), rebindable in Settings. Carbon `RegisterEventHotKey` (no global key monitor / Accessibility). While registered it overrides Finder's ⌥⌘V *Move Item Here* — accepted. Only one app can hold a combination: if registration fails (`eventHotKeyExistsErr`, e.g. Pasta is still running), keep the previous binding and show a Settings error that names the likely cause. Rebind order: (1) if new equals current, no-op; (2) register **new** while **old remains active**; (3) on success unregister old; (4) on failure keep old active and show the error. If an API path requires unregistering old first, **re-register old** on new-register failure. Optional hotkeys for Pause and Skip next copy (§3.7) follow the same rules, unset by default |
+| **Hotkey** | Default **⌥⌘V** (same as Pasta), rebindable in Settings. Carbon `RegisterEventHotKey` (no standing global key monitor / Accessibility). While registered it overrides Finder's ⌥⌘V *Move Item Here* — accepted. Only one app can hold a combination: if registration fails (`eventHotKeyExistsErr`, e.g. Pasta is still running), keep the previous binding and show a Settings error that names the likely cause. Rebind order: (1) if new equals current, no-op; (2) register **new** while **old remains active**; (3) on success unregister old; (4) on failure keep old active and show the error. If an API path requires unregistering old first, **re-register old** on new-register failure. Optional hotkeys for Pause and Skip next copy (§3.7) follow the same rules, unset by default. **Armed-session exception (§3.11):** while a paste stack is armed, an ephemeral global observer may watch ⌘V (keyUp + delay) to advance the deal; torn down on disarm. Escape may be registered as a session-scoped Carbon hotkey for Stop while armed and Memopila UI is not key |
 
 ---
 
@@ -565,6 +567,28 @@ Terminals, browsers and editors do not mark credentials as concealed (password m
 - **Card:** masked — kind and the first characters only; the preview shows the full text. Favoriting (⌘D) clears the expiry as for any record (§6). A dedup hit keeps the mask.
 - **Tests:** each kind detected; SHAs, UUIDs, prose, Luhn-invalid and long-text numbers ignored; disabled kinds ignored; *Don't save* skips; *Delete after* sets expiry and the mask; shorter app retention wins.
 
+### 3.11 Paste stacks
+
+Reusable **playlists** of linked `ClipboardRecord`s (not ephemeral collect-on-copy queues). Members stay normal history cards. The stack is a separate card in the grid.
+
+**Entities** (`StoreSchemaV2`): `StackModel` (`title`, `isFavorite`, `loops`, `dealMode`, `lastUsedAt`); `StackMember` (`stackID`, `recordID`, `position` — UI order only); `StackTag` (stack ↔ collection). Session cursor / deal queue is **not** persisted.
+
+**Deal modes:** `sequential` | `shuffleBag` | `shuffleRandom`. Separate `loops` (on only for sequential / shuffleBag). Random never exhausts while `n ≥ 1`; `loops` disabled for Random. UI order is drag-edited; shuffle builds a **session** queue only (`DealEngine`).
+
+**Choose** always resets the deal, writes the first/current member, arms the session, bumps `StackModel.lastUsedAt` (not member `markUsed`). Each **⌘V** (keyCode of Latin “v”, ⌘ only, keyUp + delay) while armed and not `memopilaUIKey` advances after paste. Auto-paste / ⌥↩ advances once via the same path. Menu/toolbar Paste and Secure Event Input do not advance. **Exhausted** (bag modes, Loop off, last member pasted): disarm and **clear the clipboard** (owned write + suppression token) so further ⌘V does not keep pasting the last member; toast *Stack finished*. **Stop:** session Carbon Escape when not `memopilaUIKey`, or status-item Stop; disarm on sleep, external pasteboard change, Choose elsewhere (clipboard kept).
+
+**`memopilaUIKey`:** `panel.isKey` ∨ secondary window key ∨ (`NSApp.isActive` ∧ keyWindow) — not frontmost alone (nonactivating panel).
+
+**Pin:** membership pins like favorite (§6); join clears `expiresAt`; while pinned, ingest/edit must not re-set it. Bulk delete keep-buckets use the same pin (`ClipboardStore.ids`, `deleteRecords(fromApp:)`).
+
+**Grid:** `HistoryEntry = record | stack`; paging keeps record offsets separate; stacks merge-sorted by `lastUsedAt`; ⌘1…9 indexes `entries`. Armed bag badge `k/n` with `k = dealt+1`, `n = dealt+remaining+1`.
+
+**Stack Window (edit):** *Edit Stack…* (hover / menu / Space / ⌘E on a stack card; after New Stack) opens a floating window like Edit Record — replaces the panel. Same **CardView** grid as History; right **inspector** (⌥⌘I) holds title, Deal, Loop, Favorite, selected-member actions, Delete. Append members by dropping onto the **stack card** in the panel (window hides the panel). `HistoryScope.stack` remains a **store query** only. Choose in the window arms then closes without returning the panel unless pinned.
+
+**Drag contract (SSOT `StackDragSession`, host = Stack Window):** When the editor search is clear and the playlist is non-empty, dragging a member is **positional** (insert before / trailing **End**). Move Top/Up/Down/Bottom always use full order even while filtered. Panel grid has no stack-member reorder.
+
+**Tests:** `DealEngine` matrix (empty, n=1, sequential±loop, bag±loop, random, rebuild); retention/Clear/`ids` pin; cascade `StackMember` on record delete; stack-scope page order / empty / filter.
+
 ---
 
 ## 4. Dedup semantics
@@ -728,10 +752,10 @@ Cards also get a top-level **Delete and Don't Save from <App>**. Every settings 
 
 ### Rules
 
-- **Favorites:** excluded from `maxCount`, age eviction, short retention and storage victim planning. Never auto-evicted. Collections do not pin.
-- Non-favorites are the only automatic eviction candidates.
-- **Short retention:** at ingest, `expiresAt = observedAt + retention` when the app's capture mode is *Delete after*; on a dedup hit the newest observation decides (its app's retention, or `nil`). Favoriting clears `expiresAt`; unfavoriting does not restore it.
-- **Cascade on every delete path** (manual Delete, retention, expiry, Clear, ingest victims, edit merge, *Also delete existing*): representations, thumbnail and `RecordTag` rows go in the **same** transaction. External data goes with the record.
+- **Pinned records** (`isFavorite` **or** member of any paste stack, §3.11): excluded from `maxCount`, age eviction, short retention, storage victim planning, Clear `.nonFavorites`, and bulk deletes that spare favorites (*Delete N Shown…*, *Delete All from App…*). Never auto-evicted. Collections do not pin.
+- Non-pinned records are the only automatic eviction candidates.
+- **Short retention:** at ingest, `expiresAt = observedAt + retention` when the app's capture mode is *Delete after*; on a dedup hit the newest observation decides (its app's retention, or `nil`). Favoriting or joining a stack clears `expiresAt`; while pinned, ingest/edit must not re-set it. Unfavoriting / leaving the last stack does not restore `expiresAt`.
+- **Cascade on every delete path** (manual Delete, retention, expiry, Clear, ingest victims, edit merge, *Also delete existing*): representations, thumbnail, `RecordTag` and `StackMember` rows go in the **same** transaction. External data goes with the record.
 - Deleting a **Collection** deletes its `RecordTag` rows; records stay.
 - `RecordTag` uniqueness `(recordId, tagId)` via `#Unique` (upsert on duplicate is harmless here).
 
@@ -924,7 +948,7 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 - Non-activating `NSPanel` that can become key, so the previous app stays frontmost and keyboard input still reaches search and grid **(spike: text input, Esc, focus, full-screen spaces, multi-display; fallback: activating window + remembered previous app)**.
 - Floating level; `collectionBehavior` `.canJoinAllSpaces` + `.fullScreenAuxiliary` (shows over full-screen apps). The record window, Settings and Diagnostics too (owner feedback: with `.moveToActiveSpace` a link opened in a browser on another Space left the record window behind, and it vanished on the way back to it).
 - Opens on the screen with the mouse pointer; size and position remembered per display (default 720 × 490 pt, min 520 × 360). Search is focused and empty on every open; selection on the first card.
-- Closes on: Esc (empty search), hotkey again, and — unless **pinned** — Restore and focus loss. Opening another Memopila window (Settings, Diagnostics) always hides it first, pinned or not, so the floating panel never covers that window (as in Pasta).
+- Closes on: Esc (empty search), hotkey again, and — unless **pinned** — Restore and focus loss. Opening another Memopila window (Settings, Diagnostics, record, **stack editor**) always hides it first, pinned or not, so the floating panel never covers that window (as in Pasta). While a secondary window is visible, the window hotkey / status-item click **focuses that window** instead of opening the panel underneath (dual-UI would break Esc / armed ⌘V).
 - **Pin** (⚓ button, as in Pasta): the window stays on screen when focus moves to another app and after Restore, until unpinned or closed with Esc / hotkey.
 - Follows system appearance; standard materials (Liquid Glass on 26+ comes from the SDK; 15.x gets the classic look from the same controls).
 
@@ -933,7 +957,7 @@ Reference: Pasta's window (dark theme, ~720 × 490 pt): sidebar on the left, sea
 ### 8.2 Layout
 
 - **Sidebar** (toggle button, ⌥⌘S as in Pasta; ⌃⌘S also works): **History**, **Favorites**; **Apps** — source apps with icons, most recent first (right-click → **<App> ▸** quick actions, §5.1); **Collections** — drop a card on one to add it; *Delete Collection…* asks first and keeps the records; **+ New Collection** pinned at the bottom. No item counts (as in Pasta). A selection filters the grid; search applies inside it. The choice also shows as a chip in the search field (✕ goes back to History), so a filter stays visible with the sidebar hidden.
-- **Filter bar** above the grid: kind — All · Text · Links · Images (with PDF) · Files · Colors (when any) — and period — Any Time · Today · Last 7 Days · Last 30 Days. Combined with the sidebar and the search (`HistoryQuery.kinds`, `.since`). An empty result says why and offers *Show All of History*. At its right end the **status**: a green dot while capture runs, orange pause while it does not (paused, not allowed, storage error — each also has a banner) or the next copy is skipped, and the count — *1 234 items*, *12 found* with a search or filter, *3 selected · 120 items* with several selected (first-run feedback: the panel showed neither); a narrow panel keeps the number, then only the dot.
+- **Filter bar** above the grid: kind — All · Text · Links · Images (with PDF) · Files · Colors (when any) · Stacks — and period — Any Time · Today · Last 7 Days · Last 30 Days. Combined with the sidebar and the search (`HistoryQuery.kinds`, `.since`). An empty result says why and offers *Show All of History*. At its right end the **status**: a green dot while capture runs, orange pause while it does not (paused, not allowed, storage error — each also has a banner) or the next copy is skipped, and the count — *1 234 items*, *12 found* with a search or filter, *3 selected · 120 items* with several selected (first-run feedback: the panel showed neither); a narrow panel keeps the number, then only the dot. Status may show *Armed k/n* while a paste stack (§3.11) is armed. Stack editing is the Stack Window, not a panel drill-down.
 - **Top bar** at the window's top edge (transparent title bar, no traffic lights): search field (with the sidebar chip and a clear button), then sidebar toggle, pin and a gear menu as in Pasta — Pause / Resume (⌘.), Skip Next Copy, Clear History…, Keyboard Shortcuts (⌘/), Pin Window (⌘P), Hide Sidebar (⌥⌘S), Settings… (⌘,), About, Diagnostics… (with ⌥ held), Quit.
 - **Grid:** a fixed **columns × rows** grid that fills the visible area, as in Pasta — 3 × 3 by default, presets 2 × 2 … 6 × 5 in Settings → General and with ⌘+ / ⌘−; cards resize with the window; new and removed cards scale and fade in and out (store changes only, not searches); cards on a solid text-background color (darker than the panel in dark mode). The selection has an accent border; the card the clipboard holds has a thin green line, drawn over the inner side of that border (at the edge when the card is not selected) — a double frame when both are on one card (first-run feedback: a green *In Clipboard* label was clutter). When the panel opens the selection is on the card the clipboard holds (none when the clipboard holds something else) and follows clipboard changes until the user moves it. A custom title sits in its own tinted strip so it never reads as clipboard content. Hovering a card shows ♥ (favorite), ✎ (Edit Record) and ⋯ (menu) in its footer, so they never cover the content; narrow cards drop the size from the footer first, then the collection name. A search marks its words on the cards and, when a card does not show the match, says where it was (app name, page address, file name, text in the image, further in the text). **Several cards** can be selected (⌘-click, ⇧-click, ⇧-arrows): ⌘⌫, ⌘D and the card menu act on all; *Select* says the clipboard holds one record. after a copy with the window pinned the card shows a checkmark and the trackpad gives haptic feedback.
 - **Card content:**
@@ -1141,7 +1165,7 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 
 - Rich-text editing, image editing, edit history
 - Auto-rules (conditional transforms, auto-tagging), snippets
-- Paste stack (sequential paste), drag-out, undo-delete, multi-select batch actions
+- Drag-out, undo-delete, multi-select batch actions beyond New Stack from selection (§3.11)
 - Lazy TIFF data provider (unless Phase 4 shows it is needed)
 - System Quick Look panel, text actions beyond the fixed set
 - Security-scoped bookmarks / App Sandbox

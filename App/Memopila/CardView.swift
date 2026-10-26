@@ -28,7 +28,10 @@ struct CardView: View {
     /// The clipboard holds this record now (§8.2): a thin green line drawn over the inner side of the
     /// selection border (blue outside, green next to the content), or at the edge without it. Selecting another record changes it; no card
     /// has it when the clipboard holds something that is not in history.
-    private var isOnClipboard: Bool { model.monitor.clipboardRecordID == card.id }
+    /// Green chrome stays on the stack card while a stack session owns the pasteboard (§3.11 / §5).
+    private var isOnClipboard: Bool {
+        model.monitor.clipboardStackID == nil && model.monitor.clipboardRecordID == card.id
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -70,6 +73,7 @@ struct CardView: View {
             }
         }
         .overlay(alignment: .topTrailing) { cornerControls }
+        .overlay(alignment: .topLeading) { stackPositionBadge }
         .overlay {
             if model.chooseBadgeCardID == card.id {
                 ChooseBadge(pasted: model.chooseBadgeWasPasted).transition(.scale(scale: 0.6).combined(with: .opacity))
@@ -130,6 +134,29 @@ struct CardView: View {
                 .background(.thickMaterial, in: Capsule())
                 .padding(6)
                 .accessibilityHidden(true)
+        }
+    }
+
+    /// Full-playlist position in the Stack Window (or legacy panel scope).
+    @ViewBuilder
+    private var stackPositionBadge: some View {
+        let position = model.stackEditor?.position(of: card.id)
+            ?? model.history.stackPosition(of: card.id)
+        if let position {
+            let showGrip = model.stackEditor?.canReorder == true || model.history.isReorderingStack
+            HStack(spacing: 2) {
+                if showGrip {
+                    Image(systemName: "line.3.horizontal")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+                Text("\(position)")
+                    .font(.caption.monospacedDigit().weight(.semibold))
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(.thickMaterial, in: Capsule())
+            .padding(6)
+            .accessibilityLabel(Text("Position \(position) in stack"))
         }
     }
 
@@ -357,6 +384,7 @@ struct CardView: View {
     /// The collections this card is in, by name (first-run feedback: membership was visible only
     /// from inside each collection).
     private var collectionNames: [String] { model.history.collectionNames(of: card.id) }
+    private var stackNames: [String] { model.history.stackNames(of: card.id) }
 
     @ViewBuilder
     private func collectionsBadge(naming: Bool) -> some View {
@@ -377,7 +405,29 @@ struct CardView: View {
     }
 
     @ViewBuilder
+    private func stacksBadge(naming: Bool) -> some View {
+        let names = stackNames
+        if let first = names.first {
+            HStack(spacing: 2) {
+                Image(systemName: "rectangle.stack.fill")
+                    .foregroundStyle(Color.accentColor)
+                if naming {
+                    Text(names.count > 1 ? "\(first) +\(names.count - 1)" : first)
+                        .lineLimit(1)
+                        .foregroundStyle(Color.accentColor)
+                } else if names.count > 1 {
+                    Text("\(names.count)").foregroundStyle(Color.accentColor)
+                }
+            }
+            .frame(maxWidth: 90, alignment: .leading)
+            .fixedSize()
+            .floatingHelp(String(localized: "In stacks: \(names.joined(separator: ", "))"))
+        }
+    }
+
+    @ViewBuilder
     private func badges(namingCollections: Bool) -> some View {
+        stacksBadge(naming: namingCollections)
         collectionsBadge(naming: namingCollections)
         if card.isFavorite {
             Image(systemName: "heart.fill").foregroundStyle(.pink).floatingHelp(String(localized: "Favorite"))
@@ -427,6 +477,8 @@ struct CardView: View {
         parts.append(metric)
         if let name = card.sourceAppName { parts.append(String(localized: "from \(name)")) }
         if card.isFavorite { parts.append(String(localized: "Favorite")) }
+        let stacks = stackNames
+        if !stacks.isEmpty { parts.append(String(localized: "In stacks: \(stacks.joined(separator: ", "))")) }
         let collections = collectionNames
         if !collections.isEmpty { parts.append(String(localized: "In collections: \(collections.joined(separator: ", "))")) }
         if isOnClipboard { parts.append(String(localized: "In Clipboard")) }
@@ -437,7 +489,7 @@ struct CardView: View {
 
 
 /// Shown on a card for a moment after Choose for Clipboard while the window is pinned.
-private struct ChooseBadge: View {
+struct ChooseBadge: View {
     let pasted: Bool
 
     var body: some View {

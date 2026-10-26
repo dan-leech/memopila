@@ -10,6 +10,142 @@ public enum RecognitionState: String, Sendable, Codable {
     case off
 }
 
+/// Grid entry: a history record or a paste stack (§3.11). Selection/drag use this ID, never a bare UUID (P15).
+public enum HistoryEntry: Sendable, Identifiable, Equatable {
+    case record(HistoryCard)
+    case stack(StackCard)
+
+    public enum ID: Hashable, Sendable {
+        case record(UUID)
+        case stack(UUID)
+    }
+
+    public var id: ID {
+        switch self {
+        case .record(let card): .record(card.id)
+        case .stack(let card): .stack(card.id)
+        }
+    }
+
+    public var sortDate: Date {
+        switch self {
+        case .record(let card): card.lastCopiedAt
+        case .stack(let card): card.lastUsedAt
+        }
+    }
+}
+
+/// Paste-stack card DTO (§3.11 / §7.1).
+public struct StackCard: Sendable, Identifiable, Equatable {
+    public let id: UUID
+    public let title: String
+    public let isFavorite: Bool
+    public let loops: Bool
+    public let dealMode: StackDealMode
+    public let createdAt: Date
+    public let lastUsedAt: Date
+    /// UI-order member record ids.
+    public let memberIDs: [UUID]
+    /// First UI member (or current while armed is applied in the UI).
+    public let previewRecordID: UUID?
+    public let memberCount: Int
+    public let collectionIDs: Set<UUID>
+    /// Preview member's sensitive kind, if any — mask the stack card.
+    public let sensitiveKind: String?
+    public let preview: String
+
+    public init(
+        id: UUID,
+        title: String,
+        isFavorite: Bool,
+        loops: Bool,
+        dealMode: StackDealMode,
+        createdAt: Date,
+        lastUsedAt: Date,
+        memberIDs: [UUID],
+        previewRecordID: UUID?,
+        memberCount: Int,
+        collectionIDs: Set<UUID> = [],
+        sensitiveKind: String? = nil,
+        preview: String = ""
+    ) {
+        self.id = id
+        self.title = title
+        self.isFavorite = isFavorite
+        self.loops = loops
+        self.dealMode = dealMode
+        self.createdAt = createdAt
+        self.lastUsedAt = lastUsedAt
+        self.memberIDs = memberIDs
+        self.previewRecordID = previewRecordID
+        self.memberCount = memberCount
+        self.collectionIDs = collectionIDs
+        self.sensitiveKind = sensitiveKind
+        self.preview = preview
+    }
+
+    /// Optimistic grid patch — same fields, flipped favorite flag.
+    public func withFavorite(_ isFavorite: Bool) -> StackCard {
+        StackCard(
+            id: id,
+            title: title,
+            isFavorite: isFavorite,
+            loops: loops,
+            dealMode: dealMode,
+            createdAt: createdAt,
+            lastUsedAt: lastUsedAt,
+            memberIDs: memberIDs,
+            previewRecordID: previewRecordID,
+            memberCount: memberCount,
+            collectionIDs: collectionIDs,
+            sensitiveKind: sensitiveKind,
+            preview: preview
+        )
+    }
+
+    /// Optimistic playlist order patch after drag / Move in Stack (preview = first UI member).
+    public func withMemberIDs(
+        _ memberIDs: [UUID],
+        preview: String? = nil,
+        sensitiveKind: String? = nil
+    ) -> StackCard {
+        StackCard(
+            id: id,
+            title: title,
+            isFavorite: isFavorite,
+            loops: loops,
+            dealMode: dealMode,
+            createdAt: createdAt,
+            lastUsedAt: lastUsedAt,
+            memberIDs: memberIDs,
+            previewRecordID: memberIDs.first,
+            memberCount: memberIDs.count,
+            collectionIDs: collectionIDs,
+            sensitiveKind: sensitiveKind ?? self.sensitiveKind,
+            preview: preview ?? self.preview
+        )
+    }
+
+    /// Optimistic Deal / Loop chrome patch (toolbar reads `scopedStack` from `allStacks`).
+    public func withDeal(mode: StackDealMode, loops: Bool) -> StackCard {
+        StackCard(
+            id: id,
+            title: title,
+            isFavorite: isFavorite,
+            loops: loops,
+            dealMode: mode,
+            createdAt: createdAt,
+            lastUsedAt: lastUsedAt,
+            memberIDs: memberIDs,
+            previewRecordID: previewRecordID,
+            memberCount: memberCount,
+            collectionIDs: collectionIDs,
+            sensitiveKind: sensitiveKind,
+            preview: preview
+        )
+    }
+}
+
 /// What a card shows; no payload bytes, no thumbnail data (§7.1 read models).
 public struct HistoryCard: Sendable, Identifiable, Equatable {
     public let id: UUID
@@ -90,13 +226,15 @@ public struct RecordDetails: Sendable, Equatable {
     public let linkTitle: String?
 }
 
-/// Sidebar scopes (§8.2).
+/// Sidebar scopes (§8.2) and stack drill-down (§3.11).
 public enum HistoryScope: Sendable, Hashable {
     case all
     case favorites
     case app(String)
     case type(DisplayType)
     case collection(UUID)
+    /// Members of a paste stack in UI/`StackMember.position` order (not `lastCopiedAt`).
+    case stack(UUID)
 }
 
 public struct HistoryQuery: Sendable, Hashable {

@@ -14,7 +14,13 @@ final class ClipboardMonitor {
     /// The record the clipboard holds now (§8.2, *In Clipboard* on its card): set by a save or a
     /// restore of exactly that change, cleared as soon as the clipboard holds anything else.
     private(set) var clipboardRecordID: UUID?
+    /// When a paste stack wrote the clipboard: green chrome on the stack card (§3.11 / §5).
+    private(set) var clipboardStackID: UUID?
     @ObservationIgnored private var clipboardRecordChangeCount: Int?
+    /// Fired when identity clears because of an external pasteboard change (disarm stacks).
+    @ObservationIgnored var onExternalClipboardChange: (() -> Void)?
+    /// Fired when a Memopila write replaces an armed stack identity (P27 Diagnostics / other writes).
+    @ObservationIgnored var onStackIdentitySuperseded: (() -> Void)?
     private(set) var access: PasteboardAccess.State = .needsEnable
     private(set) var coordinator: CaptureCoordinator
     private(set) var log: [DiagnosticsEvent] = []
@@ -117,8 +123,10 @@ final class ClipboardMonitor {
         if let current, changeCount != current.changeCount {
             self.current = nil
         }
-        if clipboardRecordID != nil, changeCount != clipboardRecordChangeCount {
-            setClipboardRecord(nil, changeCount: nil)
+        if clipboardRecordID != nil || clipboardStackID != nil, changeCount != clipboardRecordChangeCount {
+            let hadStack = clipboardStackID != nil
+            setClipboardIdentity(recordID: nil, stackID: nil, changeCount: nil)
+            if hadStack { onExternalClipboardChange?() }
         }
         // Tick a copy: writing back an unchanged coordinator would still notify every observer
         // four times a second (menu bar icon, banners) through the @Observable accessor.
@@ -315,12 +323,37 @@ final class ClipboardMonitor {
 
     /// The record no longer matches the clipboard (its text was edited).
     func recordChanged(_ id: UUID) {
-        if clipboardRecordID == id { setClipboardRecord(nil, changeCount: nil) }
+        guard clipboardRecordID == id else { return }
+        let hadStack = clipboardStackID != nil
+        setClipboardIdentity(recordID: nil, stackID: nil, changeCount: nil)
+        // Editing the dealt member while a stack is armed: disarm (pasteboard no longer matches).
+        if hadStack { onExternalClipboardChange?() }
+    }
+
+    func clearStackIdentity() {
+        if clipboardStackID != nil {
+            setClipboardIdentity(recordID: clipboardRecordID, stackID: nil, changeCount: clipboardRecordChangeCount)
+        }
+    }
+
+    /// Empty the pasteboard as our own write (suppression token). Used when a paste stack
+    /// exhausts so ⌘V does not keep pasting the last member (PLAN §3.11).
+    func clearOwnedClipboard() {
+        let ownedCount = NSPasteboard.general.clearContents()
+        coordinator.publishToken(ownedCount)
+        if current != nil { current = nil }
+        setClipboardIdentity(recordID: nil, stackID: nil, changeCount: nil)
+        record("clipboard cleared as own change \(ownedCount)")
     }
 
     private func setClipboardRecord(_ id: UUID?, changeCount: Int?) {
-        clipboardRecordChangeCount = id == nil ? nil : changeCount
-        if clipboardRecordID != id { clipboardRecordID = id }
+        setClipboardIdentity(recordID: id, stackID: nil, changeCount: changeCount)
+    }
+
+    private func setClipboardIdentity(recordID: UUID?, stackID: UUID?, changeCount: Int?) {
+        clipboardRecordChangeCount = (recordID == nil && stackID == nil) ? nil : changeCount
+        if clipboardRecordID != recordID { clipboardRecordID = recordID }
+        if clipboardStackID != stackID { clipboardStackID = stackID }
     }
 
     func resumeAfterStorageError() {
@@ -338,20 +371,31 @@ final class ClipboardMonitor {
 
     /// Synchronous clear → write → confirm on the main actor; publishes the token only when confirmed.
     /// `recordID`: the record whose content this is, marked *In Clipboard*.
-    func write(_ items: [CanonicalItem], sourceBundleID: String?, recordID: UUID?) -> WriteOutcome {
+    /// `stackID`: when set, green chrome tracks the stack card (§3.11).
+    func write(
+        _ items: [CanonicalItem],
+        sourceBundleID: String?,
+        recordID: UUID?,
+        stackID: UUID? = nil
+    ) -> WriteOutcome {
         let result = autoreleasepool { PasteboardWriter.write(items, sourceBundleID: sourceBundleID) }
         switch result {
         case .written(let ownedCount):
+            let supersededStack = clipboardStackID != nil && stackID == nil
             coordinator.publishToken(ownedCount)
             if current != nil { current = nil }
-            setClipboardRecord(recordID, changeCount: ownedCount)
+            setClipboardIdentity(recordID: recordID, stackID: stackID, changeCount: ownedCount)
             record("restored as change \(ownedCount)")
+            if supersededStack { onStackIdentitySuperseded?() }
             return .written
         case .unconfirmed:
-            // Not confirmed as ours: the current change may be another app's.
-            setClipboardRecord(nil, changeCount: nil)
+            // Written bytes may be on the pasteboard, but without a confirmed changeCount we
+            // must not claim Restore/stack identity (suppression token + green chrome).
+            let hadStack = clipboardStackID != nil
+            setClipboardIdentity(recordID: nil, stackID: nil, changeCount: nil)
             record("restore written but not confirmed: no suppression token")
-            return .written
+            if hadStack { onStackIdentitySuperseded?() }
+            return .failed(String(localized: "Could not put this on the clipboard."))
         case .aborted:
             record("restore aborted: another app changed the clipboard")
             return .failed(String(localized: "Another app changed the clipboard. Try again."))

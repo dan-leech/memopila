@@ -1,4 +1,5 @@
 import Foundation
+import MemopilaCore
 import SwiftData
 
 /// One history card: metadata only; payload bytes live in `PayloadRepresentation` rows (PLAN §3.5, §7.2).
@@ -148,17 +149,99 @@ final class RecordTag {
     }
 }
 
-enum StoreSchema {
-    static var models: [any PersistentModel.Type] { StoreSchemaV1.models }
+/// A paste stack: reusable playlist of linked history records (PLAN §3.11).
+@Model
+final class StackModel {
+    #Unique<StackModel>([\.id])
+
+    var id: UUID
+    var title: String
+    var isFavorite: Bool
+    var loops: Bool
+    /// `StackDealMode.rawValue`.
+    var dealModeRaw: String
+    var createdAt: Date
+    var lastUsedAt: Date
+
+    init(
+        id: UUID = UUID(),
+        title: String,
+        isFavorite: Bool = false,
+        loops: Bool = false,
+        dealModeRaw: String = StackDealMode.sequential.rawValue,
+        createdAt: Date = Date(),
+        lastUsedAt: Date = Date()
+    ) {
+        self.id = id
+        self.title = title
+        self.isFavorite = isFavorite
+        self.loops = loops
+        self.dealModeRaw = dealModeRaw
+        self.createdAt = createdAt
+        self.lastUsedAt = lastUsedAt
+    }
 }
 
-/// The first released history schema. Additive changes up to now migrate automatically
-/// (lightweight); the first change after a release freezes these models in this namespace, adds
-/// `StoreSchemaV2` and a `SchemaMigrationPlan` listing both (PLAN §7.2).
+/// UI order of a stack member. Session deal order is not persisted (§3.11).
+@Model
+final class StackMember {
+    #Unique<StackMember>([\.stackID, \.recordID])
+
+    var stackID: UUID
+    var recordID: UUID
+    var position: Int
+
+    init(stackID: UUID, recordID: UUID, position: Int) {
+        self.stackID = stackID
+        self.recordID = recordID
+        self.position = position
+    }
+}
+
+/// Stack ↔ collection membership (separate from `RecordTag`, §3.11).
+@Model
+final class StackTag {
+    #Unique<StackTag>([\.stackID, \.collectionID])
+
+    var stackID: UUID
+    var collectionID: UUID
+
+    init(stackID: UUID, collectionID: UUID) {
+        self.stackID = stackID
+        self.collectionID = collectionID
+    }
+}
+
+enum StoreSchema {
+    static var models: [any PersistentModel.Type] { StoreSchemaV2.models }
+}
+
+/// The first released history schema (PLAN §7.2).
 enum StoreSchemaV1: VersionedSchema {
     static var versionIdentifier: Schema.Version { Schema.Version(1, 0, 0) }
 
     static var models: [any PersistentModel.Type] {
         [ClipboardRecord.self, PayloadRepresentation.self, RecordThumbnail.self, CollectionModel.self, RecordTag.self]
+    }
+}
+
+/// Adds paste stacks (§3.11).
+enum StoreSchemaV2: VersionedSchema {
+    static var versionIdentifier: Schema.Version { Schema.Version(2, 0, 0) }
+
+    static var models: [any PersistentModel.Type] {
+        [
+            ClipboardRecord.self, PayloadRepresentation.self, RecordThumbnail.self,
+            CollectionModel.self, RecordTag.self,
+            StackModel.self, StackMember.self, StackTag.self,
+        ]
+    }
+}
+
+enum StoreMigrationPlan: SchemaMigrationPlan {
+    static var schemas: [any VersionedSchema.Type] { [StoreSchemaV1.self, StoreSchemaV2.self] }
+
+    static var stages: [MigrationStage] {
+        [MigrationStage.lightweight(fromVersion: StoreSchemaV1.self, toVersion: StoreSchemaV2.self)]
     }
 }

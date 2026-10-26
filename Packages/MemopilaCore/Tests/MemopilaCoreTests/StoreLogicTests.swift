@@ -67,6 +67,21 @@ struct RetentionTests {
         #expect(RetentionPlanner.planExpired(existing: existing, now: now) == [candidate(96).id])
         #expect(RetentionPlanner.nextExpiry(existing: existing) == Date(timeIntervalSince1970: 99))
     }
+
+    @Test func stackPinnedIsNeverAVictim() {
+        let pinned = RetentionCandidate(
+            id: candidate(1).id,
+            isFavorite: false,
+            lastCopiedAt: Date(timeIntervalSince1970: 1),
+            payloadSizeBytes: 10,
+            expiresAt: Date(timeIntervalSince1970: 50),
+            isPinned: true
+        )
+        let free = candidate(2)
+        #expect(RetentionPlanner.planIngest(existing: [pinned, free], newPayloadBytes: 1, maxCount: 1, maxStorageBytes: 1_000)
+            == .accept(victims: [free.id]))
+        #expect(RetentionPlanner.planExpired(existing: [pinned], now: Date(timeIntervalSince1970: 100)).isEmpty)
+    }
 }
 
 @Suite("Dedup metadata merge (§4)")

@@ -6,6 +6,8 @@ public struct RecordMetadata: Sendable, Equatable {
     public var lastCopiedAt: Date
     public var copyCount: Int
     public var isFavorite: Bool
+    /// Favorite or stack member — blocks `expiresAt` re-arm (P36).
+    public var isPinned: Bool
     public var lastSourceAppBundleID: String?
     public var lastSourceAppName: String?
     public var sourceURL: String?
@@ -17,6 +19,7 @@ public struct RecordMetadata: Sendable, Equatable {
         lastCopiedAt: Date,
         copyCount: Int,
         isFavorite: Bool = false,
+        isPinned: Bool? = nil,
         lastSourceAppBundleID: String? = nil,
         lastSourceAppName: String? = nil,
         sourceURL: String? = nil,
@@ -27,12 +30,15 @@ public struct RecordMetadata: Sendable, Equatable {
         self.lastCopiedAt = lastCopiedAt
         self.copyCount = copyCount
         self.isFavorite = isFavorite
+        self.isPinned = isPinned ?? isFavorite
         self.lastSourceAppBundleID = lastSourceAppBundleID
         self.lastSourceAppName = lastSourceAppName
         self.sourceURL = sourceURL
         self.sourceWindowTitle = sourceWindowTitle
         self.expiresAt = expiresAt
     }
+
+    public var blocksExpiry: Bool { isFavorite || isPinned }
 }
 
 /// One observation of content, with its frozen `observedAt` (never the retry wall-clock).
@@ -96,7 +102,7 @@ public enum DedupMerge {
             merged.lastSourceAppName = observation.sourceAppName
             merged.sourceURL = observation.sourceURL
             merged.sourceWindowTitle = observation.sourceWindowTitle
-            merged.expiresAt = existing.isFavorite ? nil : observation.expiresAt
+            merged.expiresAt = existing.blocksExpiry ? nil : observation.expiresAt
         }
         return merged
     }
@@ -108,7 +114,8 @@ public enum DedupMerge {
         merged.lastCopiedAt = max(survivor.lastCopiedAt, edited.lastCopiedAt)
         merged.copyCount = survivor.copyCount + edited.copyCount
         merged.isFavorite = survivor.isFavorite || edited.isFavorite
-        if merged.isFavorite { merged.expiresAt = nil }
+        merged.isPinned = survivor.isPinned || edited.isPinned || merged.isFavorite
+        if merged.blocksExpiry { merged.expiresAt = nil }
         return merged
     }
 }

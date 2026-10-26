@@ -38,7 +38,7 @@ Memopila lives in the menu bar and keeps a history of what you copy: text, rich 
 - **Current — not saved** card: when a copy is too large, unsupported or failed, a red card says why and offers *Save Anyway* and per-app quick fixes.
 - **Per-app settings:** *Don't save*, *Delete after*, size limit, text recognition, source page, and format rules (keep or skip types per app, e.g. for Photoshop). Each is two clicks away from any card. A clipboard inspector shows what an app actually puts on the clipboard.
 - **Pause capture** (5 min, 15 min, 1 hour or until you resume) and **Skip next copy**, from the menu or optional hotkeys.
-- **Sensible retention:** by default 500 items, 30 days and 512 MB of stored data. Favorites are never deleted automatically.
+- **Sensible retention:** by default 500 items, 30 days and 512 MB of stored data. Favorites and paste-stack members are never deleted automatically.
 
 ### Edit Record
 - One window to view and edit any record:
@@ -53,13 +53,14 @@ Memopila lives in the menu bar and keeps a history of what you copy: text, rich 
 
 ### Organize and transform
 - **Favorites**, **Collections** and custom **titles**.
+- **Paste stacks:** reusable playlists of history records (not a one-shot collect-on-copy queue). Choose resets the deal; each **⌘V** advances; Esc or the status menu stops. Deal modes: in order, shuffle, or random; optional loop for the first two.
 - **⌘K actions panel** with every action for the selected card.
 - **Duplicate As:** plain text, text from an image, or a text action (trim, change case, sort lines, remove duplicate lines, format or minify JSON, URL and Base64 encode or decode). The result becomes a new card.
-- **Select several cards** to favorite or delete them together. *Undo* is available after a delete.
+- **Select several cards** to make a stack, favorite or delete them together. *Undo* is available after a delete.
 
 ### Everyday comfort
-- **Choose for Clipboard** (double-click, ↩ or ⌘1…⌘9) puts a record on the clipboard and takes you back to your app.
-- Optional **auto-paste** after choosing (needs Accessibility).
+- **Choose for Clipboard** (double-click, ↩ or ⌘1…⌘9) puts a record or stack on the clipboard and takes you back to your app.
+- Optional **auto-paste** after choosing (needs Accessibility). Stack advance also needs Accessibility / Input Monitoring for the armed ⌘V observer; menu Paste and Secure Input do not advance.
 - Launch at login, tooltips on every control, and a full keyboard map.
 - English and Russian.
 
@@ -76,7 +77,7 @@ Memopila lives in the menu bar and keeps a history of what you copy: text, rich 
      ```
 
 4. **Allow clipboard access.** Choose **Enable Capture** in the panel banner or the menu bar menu. When macOS asks whether Memopila may read the clipboard, choose **Always Allow**. If capture stays paused, open **System Settings → Privacy & Security** and set Memopila to *Always Allow*.
-5. **Optional: Accessibility.** This is needed only for *Settings → General → Auto-Paste After Choosing → Paste into the app you were in* and for ⌥↩. Memopila asks for it when you turn the option on. You can also add it in **System Settings → Privacy & Security → Accessibility**.
+5. **Optional: Accessibility.** Needed for *Settings → General → Auto-Paste After Choosing*, for ⌥↩, and for paste-stack ⌘V advance while a stack is armed. Memopila asks for it when you turn auto-paste on. You can also add it in **System Settings → Privacy & Security → Accessibility**. Esc stops an armed stack without Accessibility.
 
 > [!IMPORTANT]
 > macOS ties clipboard access and Accessibility to the app's signature, and an unsigned (ad-hoc signed) build gets a new one with every release. After an update you may need to choose **Always Allow** again. If you use auto-paste, remove Memopila from the Accessibility list and add it back.
@@ -122,9 +123,10 @@ CI (`.github/workflows/ci.yml`) runs the core tests on Linux and macOS and the s
 |------|--------|
 | **⌥⌘V** | Open or close the panel (can be changed in Settings) |
 | Typing / **⌘F** | Search |
-| **↩** / double-click | Choose for Clipboard — go back to your app |
-| **⌥↩** | Choose and Paste (Accessibility) |
-| **⌘1 … ⌘9** | Choose for Clipboard: the first nine cards |
+| **↩** / double-click | Choose for Clipboard — go back to your app (stack: arm / reset deal) |
+| **⌥↩** | Choose and Paste (Accessibility); stack advances once after paste |
+| **Esc** | Clear search / close; while a stack is armed and Memopila UI is not key: stop stack |
+| **⌘1 … ⌘9** | Choose for Clipboard: the first nine grid entries (records or stacks) |
 | **Space** / **⌘E** | Edit Record |
 | **⌘K** | All actions for the card |
 | **⌘D** | Add to or remove from Favorites |

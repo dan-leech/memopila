@@ -1,6 +1,7 @@
 import MemopilaCore
 import MemopilaServices
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Pasta-style panel: sidebar, search on top, grid of cards (PLAN §8.2).
 struct HistoryView: View {
@@ -48,7 +49,7 @@ struct HistoryView: View {
             if history.scope != .all {
                 ScopeChip(model: model)
             }
-            TextField("Search", text: $history.search)
+            TextField(String(localized: "Search"), text: $history.search)
                 .textFieldStyle(.plain)
                 .font(.title3)
                 .focused($searchFocused)
@@ -193,11 +194,19 @@ private struct ScopeChip: View {
 
     private func title(_ scope: HistoryScope) -> String {
         switch scope {
-        case .all: String(localized: "History")
-        case .favorites: String(localized: "Favorites")
-        case .app(let bundleID): AppInfo.displayName(for: bundleID, fallback: model.history.apps.first { $0.bundleID == bundleID }?.name)
-        case .type(let type): type.title
-        case .collection(let id): model.history.collections.first { $0.id == id }?.name ?? String(localized: "Collection")
+        case .all:
+            return String(localized: "History")
+        case .favorites:
+            return String(localized: "Favorites")
+        case .app(let bundleID):
+            return AppInfo.displayName(for: bundleID, fallback: model.history.apps.first { $0.bundleID == bundleID }?.name)
+        case .type(let type):
+            return type.title
+        case .collection(let id):
+            return model.history.collections.first { $0.id == id }?.name ?? String(localized: "Collection")
+        case .stack(let id):
+            let name = model.history.allStacks.first { $0.id == id }?.title ?? ""
+            return name.isEmpty ? String(localized: "Stack") : name
         }
     }
 
@@ -208,6 +217,7 @@ private struct ScopeChip: View {
         case .app: "app"
         case .type(let type): type.systemImage
         case .collection: "folder"
+        case .stack: "rectangle.stack"
         }
     }
 }
@@ -238,8 +248,8 @@ private struct FilterBar: View {
                     }
                     .buttonStyle(.plain)
                     .fixedSize()
-                    .floatingHelp(kind == .all ? String(localized: "Every kind of item") : String(localized: "Only \(kind.title.lowercased())"))
-                    .accessibilityLabel(Text(kind == .all ? String(localized: "Every kind of item") : String(localized: "Only \(kind.title.lowercased())")))
+                    .floatingHelp(kindHelp(kind))
+                    .accessibilityLabel(Text(kindHelp(kind)))
                     .accessibilityAddTraits(isOn ? .isSelected : [])
                 }
             }
@@ -277,9 +287,19 @@ private struct FilterBar: View {
         .padding(.bottom, 4)
     }
 
-    /// Colours only when there are any; the rest always, so the bar does not jump.
+    /// Colours only when there are any.
     private var visibleKinds: [KindFilter] {
-        KindFilter.allCases.filter { $0 != .colors || history.types.contains(.color) || history.kindFilter == .colors }
+        KindFilter.allCases.filter { kind in
+            kind != .colors || history.types.contains(.color) || history.kindFilter == .colors
+        }
+    }
+
+    private func kindHelp(_ kind: KindFilter) -> String {
+        switch kind {
+        case .all: String(localized: "Every kind of item")
+        case .stacks: String(localized: "Only paste stacks")
+        default: String(localized: "Only \(kind.title.lowercased())")
+        }
     }
 }
 
@@ -366,14 +386,21 @@ private struct PanelStatus: View {
 
     private var countText: String {
         let history = model.history
-        let count = String(localized: "\(history.totalCount) items")
+        var parts: [String] = []
         if !history.markedIDs.isEmpty {
-            return String(localized: "\(history.selection.count) selected") + " · " + count
+            parts.append(String(localized: "\(history.selection.count) selected"))
+        }
+        if let armed = model.stackSession.armedStackID,
+           history.stacks.contains(where: { $0.id == armed }) || history.allStacks.contains(where: { $0.id == armed }),
+           let progress = model.stackSession.progressLabel {
+            parts.append(String(localized: "Armed \(progress)"))
         }
         if !history.search.isEmpty || history.isFiltered {
-            return String(localized: "\(history.totalCount) found")
+            parts.append(String(localized: "\(history.totalCount) found"))
+        } else {
+            parts.append(String(localized: "\(history.totalCount) items"))
         }
-        return count
+        return parts.joined(separator: " · ")
     }
 
     private var captureStatus: (symbol: String, tint: Color, help: String) {
@@ -625,35 +652,8 @@ private struct HistoryGrid: View {
                                     .frame(height: cardHeight)
                             }
                         }
-                        ForEach(Array(model.history.cards.enumerated()), id: \.element.id) { index, card in
-                            CardView(
-                                card: card,
-                                index: index,
-                                hasCursor: model.history.isSelected(card.id),
-                                model: model,
-                                onDoubleClick: {
-                                    model.restore(card.id, paste: NSEvent.modifierFlags.contains(.option) ? true : nil)
-                                }
-                            )
-                            .frame(height: cardHeight)
-                            .id(card.id)
-                            .simultaneousGesture(TapGesture().onEnded {
-                                model.history.click(card.id, modifiers: NSEvent.modifierFlags)
-                                model.focusGrid()
-                            })
-                            .contextMenu { CardContextMenu(card: card, model: model) }
-                            .onDrag {
-                                model.cardDragStarted(card.id)
-                                return DragSupport.provider(for: card, store: model.store)
-                            }
-                            .transition(.asymmetric(
-                                insertion: .scale(scale: 0.85).combined(with: .opacity),
-                                removal: .opacity
-                            ))
-                            .accessibilityAction(named: Text("Choose for Clipboard")) { model.restore(card.id) }
-                            .accessibilityAction(named: Text("Choose and Paste")) { model.restore(card.id, paste: true) }
-                            .accessibilityAction(named: Text("Edit Record")) { model.openRecord(card.id) }
-                            .onAppear { model.history.cardAppeared(card) }
+                        ForEach(Array(model.history.entries.enumerated()), id: \.element.id) { index, entry in
+                            entryCell(entry, index: index, cardHeight: cardHeight)
                         }
                     }
                     .padding(Self.spacing)
@@ -668,9 +668,77 @@ private struct HistoryGrid: View {
     }
 
     @ViewBuilder
+    private func entryCell(_ entry: HistoryEntry, index: Int, cardHeight: CGFloat) -> some View {
+        switch entry {
+        case .record(let card):
+            CardView(
+                card: card,
+                index: index,
+                hasCursor: model.history.isSelected(entry.id),
+                model: model,
+                onDoubleClick: {
+                    model.restore(card.id, paste: NSEvent.modifierFlags.contains(.option) ? true : nil)
+                }
+            )
+            .frame(height: cardHeight)
+            .simultaneousGesture(TapGesture().onEnded {
+                model.history.click(entry.id, modifiers: NSEvent.modifierFlags)
+                model.focusGrid()
+            })
+            .contextMenu { CardContextMenu(card: card, model: model) }
+            .onDrag {
+                model.beginCardDrag(card.id)
+                return DragSupport.provider(for: card, store: model.store)
+            }
+            .id(entry.id)
+            .transition(.asymmetric(
+                insertion: .scale(scale: 0.85).combined(with: .opacity),
+                removal: .opacity
+            ))
+            .accessibilityAction(named: Text("Choose for Clipboard")) { model.restore(card.id) }
+            .accessibilityAction(named: Text("Choose and Paste")) { model.restore(card.id, paste: true) }
+            .accessibilityAction(named: Text("Edit Record")) { model.openRecord(card.id) }
+            .onAppear { model.history.entryAppeared(entry) }
+        case .stack(let stack):
+            StackCardView(
+                stack: stack,
+                index: index,
+                hasCursor: model.history.isSelected(entry.id),
+                model: model,
+                onDoubleClick: {
+                    model.chooseStack(stack.id, paste: NSEvent.modifierFlags.contains(.option) ? true : nil)
+                }
+            )
+                .frame(height: cardHeight)
+                .id(entry.id)
+                .simultaneousGesture(TapGesture().onEnded {
+                    model.history.click(entry.id, modifiers: NSEvent.modifierFlags)
+                    model.focusGrid()
+                })
+                .contextMenu {
+                    ActionMenuItems(items: ActionRegistry.stackActions(stack, model: model))
+                }
+                .onDrag {
+                    guard stack.memberCount > 0 else { return NSItemProvider() }
+                    model.beginStackDrag(stack.id)
+                    return DragSupport.provider(for: stack, store: model.store, armedMemberID: model.stackSession.currentMemberID)
+                }
+                .onDrop(of: [.item], isTargeted: nil) { _ in
+                    model.dropDraggedCard(onStack: stack.id)
+                }
+                .transition(.asymmetric(
+                    insertion: .scale(scale: 0.85).combined(with: .opacity),
+                    removal: .opacity
+                ))
+                .accessibilityAction(named: Text("Choose Stack")) { model.chooseStack(stack.id) }
+                .accessibilityAction(named: Text("Choose and Paste")) { model.chooseStack(stack.id, paste: true) }
+        }
+    }
+
+    @ViewBuilder
     private var emptyState: some View {
         let history = model.history
-        if history.cards.isEmpty, model.monitor.current == nil, history.loadError == nil {
+        if history.entries.isEmpty, model.monitor.current == nil, history.loadError == nil {
             VStack(spacing: 6) {
                 Image(systemName: history.search.isEmpty ? "list.clipboard" : "magnifyingglass")
                     .font(.largeTitle)
@@ -690,6 +758,9 @@ private struct HistoryGrid: View {
         if !history.search.isEmpty {
             return history.isFiltered ? String(localized: "No matches with these filters.") : String(localized: "No matches.")
         }
+        if history.kindFilter == .stacks {
+            return String(localized: "No stacks yet. Choose New Stack… on a card, then drag more onto it.")
+        }
         if history.kindFilter != .all || history.periodFilter != .anyTime {
             return String(localized: "Nothing matches the filters.")
         }
@@ -697,6 +768,10 @@ private struct HistoryGrid: View {
         case .all: return String(localized: "Copy something to start your history.")
         case .favorites: return String(localized: "No favorites yet. Press ⌘D on a card to add one.")
         case .collection: return String(localized: "This collection is empty. Drop a card on it in the sidebar, or use Collections in a card's menu.")
+        case .stack(let id):
+            let name = history.allStacks.first { $0.id == id }?.title
+            let title = (name?.isEmpty == false) ? name! : String(localized: "Stack")
+            return String(localized: "“\(title)” is empty. Drop cards here to add them.")
         case .app, .type: return String(localized: "Nothing here.")
         }
     }
@@ -726,15 +801,35 @@ private struct OverlayHost: View {
     @ViewBuilder
     private func content(for overlay: PanelOverlay) -> some View {
         switch overlay {
-        case .rename(let id):
-            let card = model.history.cards.first { $0.id == id }
+        case .rename(let entryID):
+            switch entryID {
+            case .record(let id):
+                let card = model.history.cards.first { $0.id == id }
+                NameOverlay(
+                    title: String(localized: "Rename"),
+                    prompt: String(localized: "Title (empty removes it)"),
+                    initial: card?.customTitle ?? "",
+                    confirm: String(localized: "Rename"),
+                    allowsEmpty: true
+                ) { model.rename(id, title: $0) } cancel: { model.present(nil) }
+            case .stack(let id):
+                let stack = model.history.stacks.first { $0.id == id }
+                NameOverlay(
+                    title: String(localized: "Rename Stack"),
+                    prompt: String(localized: "Title"),
+                    initial: stack?.title ?? "",
+                    confirm: String(localized: "Rename"),
+                    allowsEmpty: false
+                ) { model.renameStack(id, title: $0); model.present(nil) } cancel: { model.present(nil) }
+            }
+        case .newStack:
             NameOverlay(
-                title: String(localized: "Rename"),
-                prompt: String(localized: "Title (empty removes it)"),
-                initial: card?.customTitle ?? "",
-                confirm: String(localized: "Rename"),
-                allowsEmpty: true
-            ) { model.rename(id, title: $0) } cancel: { model.present(nil) }
+                title: String(localized: "New Stack"),
+                prompt: String(localized: "Title"),
+                initial: String(localized: "Stack"),
+                confirm: String(localized: "Create"),
+                allowsEmpty: false
+            ) { model.createStackFromSelection(title: $0); model.present(nil) } cancel: { model.present(nil) }
         case .actions:
             if let state = model.actionsState { ActionsPanel(state: state, model: model) }
         case .newCollection(let recordID):
@@ -857,7 +952,7 @@ private struct ConfirmClearOverlay: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Delete all items except favorites?").font(.headline)
+            Text("Delete all items except favorites and stack members?").font(.headline)
             Text("This can't be undone.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -899,7 +994,7 @@ private struct ShortcutsOverlay: View {
             Row(keys: "↑ ↓ ← →", action: String(localized: "Move between cards")),
             Row(keys: "⇧ ↑ ↓ ← →, ⌘-" + String(localized: "click") + ", ⇧-" + String(localized: "click"), action: String(localized: "Select several cards")),
             Row(keys: "⌘F", action: String(localized: "Search")),
-            Row(keys: "Esc", action: String(localized: "Clear the search, then close")),
+            Row(keys: "Esc", action: String(localized: "Clear the search, then close; stop an armed stack")),
         ]),
         Group(title: String(localized: "Records"), rows: [
             Row(keys: String(localized: "Space") + " / ⌘E", action: String(localized: "Edit Record")),
@@ -982,7 +1077,7 @@ private struct ConfirmDeleteManyOverlay: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(question).font(.headline)
             if favorites > 0 {
-                Text(String(localized: "Favorites among them: \(favorites). They are kept unless you delete them too."))
+                Text(String(localized: "Favorites or stack members among them: \(favorites). They are kept unless you delete them too."))
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }

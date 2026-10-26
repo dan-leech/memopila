@@ -6,6 +6,29 @@ import UniformTypeIdentifiers
 /// Dragging a card into another app, as in Pasta. Data is loaded from the store only when the drop
 /// target asks for a type; file cards drag as their file.
 enum DragSupport {
+    /// Stack drag-out uses the preview member (current dealt if armed, else first UI). Empty → empty provider.
+    static func provider(for stack: StackCard, store: ClipboardStore, armedMemberID: UUID?) -> NSItemProvider {
+        let memberID = (armedMemberID.flatMap { id in stack.memberIDs.contains(id) ? id : nil })
+            ?? stack.previewRecordID
+            ?? stack.memberIDs.first
+        guard let memberID else { return NSItemProvider() }
+        // Resolve via a lightweight HistoryCard shell for type registration.
+        let provider = NSItemProvider()
+        provider.registerDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier, visibility: .all) { completion in
+            let reply = Transfer(value: completion)
+            Task {
+                do {
+                    let payload = try await store.payload(for: memberID)
+                    reply.value(payload.text.map { Data($0.utf8) }, nil)
+                } catch {
+                    reply.value(nil, error)
+                }
+            }
+            return nil
+        }
+        return provider
+    }
+
     static func provider(for card: HistoryCard, store: ClipboardStore) -> NSItemProvider {
         if card.displayType == .file, let path = card.filePaths.first {
             let url = URL(fileURLWithPath: path)

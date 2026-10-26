@@ -12,6 +12,7 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
     private var settings: (window: NSWindow, tabs: NSTabViewController)?
     private var diagnostics: NSWindow?
     private var record: RecordWindow?
+    private var stack: StackWindow?
     /// The app that had the focus before the first window opened; it gets it back after the last closes.
     private var returnApp: NSRunningApplication?
     /// The record went to the clipboard: the window closes without bringing the panel back.
@@ -33,7 +34,7 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
 
     private func setFloating(_ floating: Bool) {
         let level: NSWindow.Level = floating ? .floating : .normal
-        for window in [settings?.window, diagnostics, record].compactMap({ $0 }) where window.level != level {
+        for window in [settings?.window, diagnostics, record, stack].compactMap({ $0 }) where window.level != level {
             window.level = level
         }
     }
@@ -42,7 +43,26 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
     static let settingsIdentifier = NSUserInterfaceItemIdentifier("MemopilaSettingsWindow")
 
     var isAnyVisible: Bool {
-        settings?.window.isVisible == true || diagnostics?.isVisible == true || record?.isVisible == true
+        settings?.window.isVisible == true
+            || diagnostics?.isVisible == true
+            || record?.isVisible == true
+            || stack?.isVisible == true
+    }
+
+    /// Any Settings / Diagnostics / record / stack window is key (memopilaUIKey, P23).
+    var anySecondaryIsKey: Bool {
+        [settings?.window, diagnostics, record, stack].compactMap { $0 }.contains { $0.isKeyWindow }
+    }
+
+    /// Focus the frontmost secondary window (hotkey gate — do not open the panel underneath).
+    @discardableResult
+    func focusFrontSecondary() -> Bool {
+        let candidates = [stack as NSWindow?, record, diagnostics, settings?.window].compactMap { $0 }
+        guard let window = candidates.first(where: \.isVisible) else { return false }
+        NSApp.activate()
+        window.makeKeyAndOrderFront(nil)
+        model.stackSession.refreshEscapeGate()
+        return true
     }
 
     /// Builds the Settings window without showing it (a second after launch).
@@ -156,6 +176,54 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
 
     private static let recordSize = NSSize(width: 860, height: 560)
 
+    // MARK: Stack editor (§3.11)
+
+    func showStack() {
+        let window = stack ?? makeStack()
+        stack = window
+        if let state = model.stackEditor {
+            window.title = state.title
+        } else {
+            window.title = String(localized: "Edit Stack")
+        }
+        present(window)
+    }
+
+    func updateStackTitle(_ title: String) {
+        stack?.title = title
+    }
+
+    func closeStack(returningToPanel: Bool) {
+        guard let stack, stack.isVisible else { return }
+        keepsPanelClosed = !returningToPanel
+        stack.close()
+    }
+
+    private func makeStack() -> StackWindow {
+        let host = NSHostingController(rootView: StackWindowContent(model: model))
+        host.sizingOptions = []
+        let window = StackWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 860, height: 560),
+            styleMask: [.titled, .closable, .resizable, .miniaturizable],
+            backing: .buffered,
+            defer: true
+        )
+        window.contentViewController = host
+        window.setContentSize(Self.stackSize)
+        window.title = String(localized: "Edit Stack")
+        window.minSize = NSSize(width: 640, height: 400)
+        window.keyHandler = { [weak self, weak window] event in
+            MainActor.assumeIsolated {
+                guard let self, let window else { return false }
+                return StackKeys.handle(event, in: window, model: self.model)
+            }
+        }
+        configure(window, frameName: "MemopilaStackWindow", defaultSize: Self.stackSize)
+        return window
+    }
+
+    private static let stackSize = NSSize(width: 860, height: 560)
+
     // MARK: Settings and Diagnostics (§8.7)
 
     /// `nil` keeps the tab that was open last.
@@ -215,6 +283,7 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
         }
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
+        model.stackSession.refreshEscapeGate()
     }
 
     /// Floating, kept after closing, and back where the user left it — unless that frame is too
@@ -252,12 +321,15 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         guard let window = notification.object as? NSWindow else { return }
         if window === record { model.recordWindowDidClose() }
+        if window === stack { model.stackWindowDidClose() }
         if window === settings?.window { model.monitor.record("Settings window closed") }
         let returningToPanel = !keepsPanelClosed
         keepsPanelClosed = false
         // After AppKit has finished closing the window, so it no longer counts as visible.
         Task { @MainActor [weak self] in
-            guard let self, !isAnyVisible else { return }
+            guard let self else { return }
+            model.stackSession.refreshEscapeGate()
+            guard !isAnyVisible else { return }
             if !model.secondaryWindowDidClose(returningToPanel: returningToPanel), NSApp.isActive {
                 // Nothing of Memopila is left on screen: the keyboard goes back to where it was.
                 _ = returnApp?.activate()

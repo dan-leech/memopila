@@ -342,22 +342,16 @@ struct ClipboardStoreTests {
         #expect(try await store.card(old) == nil)
     }
 
-    @Test func withFavoriteClearsExpiresAtOnDTO() async throws {
+    @Test func unfavoritingAnOldStackMemberKeepsIt() async throws {
+        // Stack membership pins (§6) — confirmUnfavorite must not count these as "will delete".
         let store = try ClipboardStore(url: nil)
-        let settings = ResolvedAppSettings(captureMode: .deleteAfter(minutes: 60))
-        guard case .committed(let id) = await ingest(store, snapshot("secret-ish", settings: settings)) else {
-            Issue.record("not committed")
-            return
-        }
-        let card = try #require(try await store.card(id))
-        #expect(card.expiresAt != nil)
-        #expect(card.isFavorite == false)
-        let favored = card.withFavorite(true)
-        #expect(favored.isFavorite)
-        #expect(favored.expiresAt == nil, "favor-on clears expiry like ClipboardStore.setFavorite")
-        let unfavored = favored.withFavorite(false)
-        #expect(!unfavored.isFavorite)
-        #expect(unfavored.expiresAt == nil, "unfavorite does not restore expiresAt (§6)")
+        let limits = RetentionLimits(maxAge: 100)
+        guard case .committed(let old) = await ingest(store, snapshot("old", at: 1), limits: limits) else { return }
+        try await store.setFavorite(old, true, limits: limits, now: Date(timeIntervalSince1970: 2))
+        _ = try await store.createStack(title: "Pin", recordIDs: [old])
+        try await store.setFavorite(old, false, limits: limits, now: Date(timeIntervalSince1970: 1_000))
+        #expect(try await store.card(old) != nil)
+        #expect(try await store.card(old)?.isFavorite == false)
     }
 
     @Test func unfavoriteEnforcesTheCountCapAndKeepsTheRecord() async throws {
@@ -382,6 +376,100 @@ struct ClipboardStoreTests {
         try await store.setRecognizedText(id, text: "Invoice 42", state: .done)
         #expect(try await store.recognitionCandidates(limit: 10).isEmpty)
         #expect(try await store.page(HistoryQuery(search: "invoice"), offset: 0, limit: 10).map(\.id) == [id])
+    }
+
+    @Test func withFavoriteClearsExpiresAtOnDTO() async throws {
+        let store = try ClipboardStore(url: nil)
+        let settings = ResolvedAppSettings(captureMode: .deleteAfter(minutes: 60))
+        guard case .committed(let id) = await ingest(store, snapshot("secret-ish", settings: settings)) else {
+            Issue.record("not committed")
+            return
+        }
+        let card = try #require(try await store.card(id))
+        #expect(card.expiresAt != nil)
+        #expect(card.isFavorite == false)
+        let favored = card.withFavorite(true)
+        #expect(favored.isFavorite)
+        #expect(favored.expiresAt == nil, "favor-on clears expiry like ClipboardStore.setFavorite")
+        let unfavored = favored.withFavorite(false)
+        #expect(!unfavored.isFavorite)
+        #expect(unfavored.expiresAt == nil, "unfavorite does not restore expiresAt (§6)")
+    }
+
+    @Test func stackPinsAndClearsExpiresAt() async throws {
+        let store = try ClipboardStore(url: nil)
+        let settings = ResolvedAppSettings(captureMode: .deleteAfter(minutes: 60))
+        guard case .committed(let a) = await ingest(store, snapshot("a", settings: settings)) else { Issue.record("a"); return }
+        guard case .committed(let b) = await ingest(store, snapshot("b", at: 2_000, settings: settings)) else { Issue.record("b"); return }
+        #expect(try await store.card(a)?.expiresAt != nil)
+        let stackID = try await store.createStack(title: "Demo", recordIDs: [a, b])
+        #expect(try await store.card(a)?.expiresAt == nil)
+        #expect(try await store.card(b)?.expiresAt == nil)
+        let card = try #require(try await store.stack(stackID))
+        #expect(card.memberIDs == [a, b])
+        #expect(card.title == "Demo")
+
+        let (others, kept) = try await store.ids(HistoryQuery())
+        #expect(others.isEmpty)
+        #expect(Set(kept) == Set([a, b]))
+
+        try await store.clear(.nonFavorites, opSeq: 1)
+        #expect(try await store.count(HistoryQuery()) == 2, "stack members survive Clear non-favorites")
+
+        try await store.delete([a], opSeq: 2)
+        #expect(try await store.stackMemberIDs(stackID) == [b], "delete cascades StackMember")
+
+        try await store.removeStackMember(stackID, recordID: b)
+        #expect(try await store.stackMemberIDs(stackID).isEmpty)
+        // Leaving the last stack does not restore expiresAt (§6).
+        #expect(try await store.card(b)?.expiresAt == nil)
+    }
+
+    @Test func mergeRetargetsStackMembers() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let a) = await ingest(store, snapshot("one")) else { Issue.record("a"); return }
+        guard case .committed(let b) = await ingest(store, snapshot("two", at: 2_000)) else { Issue.record("b"); return }
+        let stackID = try await store.createStack(title: "S", recordIDs: [a, b])
+        // Edit a into the same text as b → merge into b, retarget membership.
+        let result = try await store.editText(a, text: "two", opSeq: 1, maxBytes: 1_000_000)
+        #expect(result == .merged(into: b))
+        #expect(try await store.stackMemberIDs(stackID) == [b])
+    }
+
+    @Test func stackScopePagesInPositionOrder() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let a) = await ingest(store, snapshot("first", at: 3_000)) else { Issue.record("a"); return }
+        guard case .committed(let b) = await ingest(store, snapshot("second", at: 2_000)) else { Issue.record("b"); return }
+        guard case .committed(let c) = await ingest(store, snapshot("third", at: 1_000)) else { Issue.record("c"); return }
+        // UI order a→b→c despite lastCopiedAt ranking c, b, a.
+        let stackID = try await store.createStack(title: "Ordered", recordIDs: [a, b, c])
+        let query = HistoryQuery(scope: .stack(stackID))
+        #expect(try await store.page(query, offset: 0, limit: 10).map(\.id) == [a, b, c])
+        #expect(try await store.page(query, offset: 1, limit: 1).map(\.id) == [b])
+        #expect(try await store.count(query) == 3)
+        #expect(try await store.stacks(query).isEmpty, "stack drill-down never nests stack cards")
+        try await store.setStackMembers(stackID, recordIDs: [c, a, b])
+        #expect(try await store.page(query, offset: 0, limit: 10).map(\.id) == [c, a, b])
+    }
+
+    @Test func stackScopeEmptyAndFiltered() async throws {
+        let store = try ClipboardStore(url: nil)
+        let stackID = try await store.createStack(title: "Empty", recordIDs: [])
+        let empty = HistoryQuery(scope: .stack(stackID))
+        #expect(try await store.page(empty, offset: 0, limit: 10).isEmpty)
+        #expect(try await store.count(empty) == 0)
+
+        guard case .committed(let text) = await ingest(store, snapshot("hello")) else { Issue.record("text"); return }
+        let png = try #require(TestImages.png(width: 8, height: 8))
+        guard case .committed(let image) = await ingest(
+            store,
+            snapshot("", at: 2_000, items: [CanonicalItem([.bytes(.png, png)])])
+        ) else { Issue.record("image"); return }
+        let filled = try await store.createStack(title: "Mixed", recordIDs: [text, image])
+        var onlyText = HistoryQuery(scope: .stack(filled), kinds: [.text])
+        #expect(try await store.page(onlyText, offset: 0, limit: 10).map(\.id) == [text])
+        onlyText.search = "nope"
+        #expect(try await store.count(onlyText) == 0)
     }
 
     @Test func persistentStoreWithLargeExternalPayload() async throws {

@@ -69,10 +69,16 @@ final class PanelController: NSObject, NSWindowDelegate {
         guard let panel, panel.isKeyWindow else { return }
         panel.orderOut(nil)
         panel.orderFrontRegardless()
+        model.stackSession.refreshEscapeGate()
     }
 
     /// Hotkey: closes a focused panel; brings a pinned panel that lost focus back to the front.
     func toggle() {
+        // Do not open the panel underneath a record/stack/Settings window (dual-UI breaks Esc/⌘V).
+        if model.windows.isAnyVisible {
+            _ = model.windows.focusFrontSecondary()
+            return
+        }
         if isVisible, isKey {
             close()
         } else if isVisible, let panel {
@@ -90,6 +96,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         model.panelWillShow(keepingState: keepingState)
         position(panel)
         panel.makeKeyAndOrderFront(nil)
+        model.stackSession.refreshEscapeGate()
     }
 
     /// Memopila is the active app after a launch by hand or after Settings: closing the panel then
@@ -98,6 +105,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         guard let panel, panel.isVisible else { return }
         panel.orderOut(nil)
         model.panelDidClose()
+        model.stackSession.refreshEscapeGate()
         if returningFocus, NSApp.isActive, !model.windows.isAnyVisible {
             _ = model.previousApp?.activate()
         }
@@ -122,6 +130,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         let flags = NSEvent.modifierFlags.intersection([.command, .option, .control, .shift])
         model.isCommandHeld = flags == .command
         model.isOptionHeld = flags.contains(.option)
+        // Panel key → tear down session Esc so search/overlays keep Escape (P23).
+        model.stackSession.refreshEscapeGate()
     }
 
     func windowDidResignKey(_ notification: Notification) {
@@ -131,6 +141,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         model.isOptionHeld = false
         // Pin keeps the window on screen when focus moves to another app (§8.1).
         if !model.isPinned { close() }
+        // Not key anymore → Esc can Stop an armed stack again.
+        model.stackSession.refreshEscapeGate()
     }
 
     func windowDidMove(_ notification: Notification) { saveFrame() }
@@ -244,7 +256,7 @@ final class PanelController: NSObject, NSWindowDelegate {
                 return true
             }
             return false
-        case .rename, .newCollection, .renameCollection:
+        case .rename, .newCollection, .renameCollection, .newStack:
             if key.code == kVK_Escape { model.present(nil); return true }
             return false
         case .shortcuts:
@@ -325,7 +337,12 @@ final class PanelController: NSObject, NSWindowDelegate {
         case "y": openSelected()
         case "e": openSelected(focusText: true)
         case "r": if let id = history.selectedID { model.present(.rename(id)) }
-        case "d": model.toggleFavorites(history.selection)
+        case "d":
+            if let stack = history.selectedStack {
+                model.toggleStackFavorite(stack.id)
+            } else {
+                model.toggleFavorites(history.selectionRecordIDs)
+            }
         case "/": model.present(model.overlay == .shortcuts ? nil : .shortcuts)
         case "f": model.focusSearch()
         case ",": model.openSettings()
@@ -367,9 +384,16 @@ final class PanelController: NSObject, NSWindowDelegate {
         }
     }
 
-    /// Space, ⌘Y, ⌘E (with the cursor in the text) and the pencil: the record window (§8.5).
+    /// Space, ⌘Y, ⌘E: record window for records; Stack Window for stacks (§8.5 / §3.11).
     private func openSelected(focusText: Bool = false) {
-        if let id = model.history.selectedID { model.openRecord(id, focusText: focusText) }
+        switch model.history.selectedID {
+        case .record(let id)?:
+            model.openRecord(id, focusText: focusText)
+        case .stack(let id)?:
+            model.openStackEditor(id)
+        case nil:
+            break
+        }
     }
 
     /// Cut / copy / paste / select all / undo in text fields. A non-activating panel does not get

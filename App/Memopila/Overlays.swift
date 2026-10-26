@@ -1386,7 +1386,7 @@ struct ActionsPanel: View {
 
     private func row(_ item: ActionItem, isHighlighted: Bool) -> some View {
         HStack(spacing: 8) {
-            Image(systemName: item.systemImage ?? "circle.dashed")
+            Image(systemName: rowSymbol(for: item))
                 .frame(width: 18)
                 .foregroundStyle(item.isDestructive ? Color.red : Color.secondary)
             VStack(alignment: .leading, spacing: 1) {
@@ -1396,6 +1396,11 @@ struct ActionsPanel: View {
                 }
             }
             Spacer()
+            if item.isChecked == true {
+                Image(systemName: "checkmark")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+            }
             if let shortcut = item.shortcut {
                 Text(shortcut).font(.caption.monospaced()).foregroundStyle(.secondary)
             }
@@ -1404,5 +1409,10 @@ struct ActionsPanel: View {
         .padding(.vertical, 6)
         .opacity(item.isEnabled ? 1 : 0.5)
         .background(isHighlighted ? Color.accentColor.opacity(0.2) : .clear, in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func rowSymbol(for item: ActionItem) -> String {
+        if item.isChecked != nil { return item.systemImage ?? "checkmark.circle" }
+        return item.systemImage ?? "circle.dashed"
     }
 }

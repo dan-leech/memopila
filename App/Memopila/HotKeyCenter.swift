@@ -19,6 +19,9 @@ final class HotKeyCenter {
         }
 
         @MainActor
+        /// Escape with no modifiers: session Stop while a paste stack is armed (§3.11 / P14).
+        static let escapeStop = Shortcut(keyCode: UInt32(kVK_Escape), carbonModifiers: 0)
+
         init?(event: NSEvent) {
             let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
             var modifiers = 0

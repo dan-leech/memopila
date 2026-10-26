@@ -12,6 +12,8 @@ struct ActionItem: Identifiable {
     var shortcut: String?
     /// `nil` = enabled; otherwise shown disabled with this reason as the tooltip.
     var disabledReason: String?
+    /// When set, the menu row is a macOS checkmark toggle (membership / deal mode), not a leading icon.
+    var isChecked: Bool? = nil
     var isDestructive = false
     var children: [ActionItem] = []
     var isDivider = false
@@ -73,6 +75,9 @@ enum ActionRegistry {
         }
         items += [
             collectionsMenu(for: card, model: model),
+            stacksMenu(for: card, model: model),
+        ]
+        items += [
             .divider("view"),
             // One window to look at a record and edit its title and text (§8.5).
             ActionItem(id: "edit", title: String(localized: "Edit Record"), systemImage: "pencil", shortcut: "⌘E") {
@@ -80,7 +85,7 @@ enum ActionRegistry {
             },
         ]
         items.append(ActionItem(id: "rename", title: String(localized: "Rename…"), systemImage: "tag", shortcut: "⌘R") {
-            model.present(.rename(id))
+            model.present(.rename(.record(id)))
         })
         if let duplicate = duplicateMenu(for: card, model: model) { items.append(duplicate) }
 
@@ -132,33 +137,41 @@ enum ActionRegistry {
 
     /// Several selected cards: favorites, collections and delete for all of them. *Choose for
     /// Clipboard* stays so that it can say why it does not apply: the clipboard holds one record.
-    static func selectionActions(_ ids: [UUID], model: AppModel) -> [ActionItem] {
+    static func selectionActions(_ entryIDs: [HistoryEntry.ID], model: AppModel) -> [ActionItem] {
+        let ids = entryIDs.compactMap { if case .record(let id) = $0 { return id }; return nil }
         let cards = model.history.cards.filter { ids.contains($0.id) }
-        let count = ids.count
+        let count = entryIDs.count
         let allFavorites = !cards.isEmpty && cards.allSatisfy(\.isFavorite)
         let collections = model.history.collections.map { collection in
-            let allIn = ids.allSatisfy { model.history.memberships[$0]?.contains(collection.id) == true }
+            let allIn = !ids.isEmpty && ids.allSatisfy { model.history.memberships[$0]?.contains(collection.id) == true }
             return ActionItem(
                 id: "selection.collection." + collection.id.uuidString,
                 title: collection.name,
-                systemImage: allIn ? "checkmark" : nil
+                isChecked: allIn
             ) { model.setMembership(ids, collection: collection.id, isMember: !allIn) }
         }
         var items: [ActionItem] = [
             ActionItem(id: "selection.choose", title: String(localized: "Choose for Clipboard"), systemImage: "checkmark.circle", shortcut: "↩") {
                 model.restoreSelected()
             },
-            ActionItem(
+        ]
+        if !ids.isEmpty {
+            items.append(ActionItem(
+                id: "selection.stack",
+                title: String(localized: "New Stack…"),
+                systemImage: "rectangle.stack"
+            ) { model.presentNewStack(records: ids) })
+            items.append(ActionItem(
                 id: "selection.favorites",
-                title: allFavorites ? String(localized: "Remove \(count) from Favorites") : String(localized: "Add \(count) to Favorites"),
+                title: allFavorites ? String(localized: "Remove \(ids.count) from Favorites") : String(localized: "Add \(ids.count) to Favorites"),
                 systemImage: allFavorites ? "heart.slash" : "heart",
                 shortcut: "⌘D"
-            ) { model.toggleFavorites(ids) },
-        ]
-        if !collections.isEmpty {
+            ) { model.toggleFavorites(ids) })
+        }
+        if !collections.isEmpty, !ids.isEmpty {
             items.append(ActionItem(
                 id: "selection.collections",
-                title: String(localized: "Add \(count) to Collection"),
+                title: String(localized: "Add \(ids.count) to Collection"),
                 systemImage: "folder.badge.plus",
                 children: collections
             ))
@@ -170,8 +183,104 @@ enum ActionRegistry {
             systemImage: "trash",
             shortcut: "⌘⌫",
             isDestructive: true
-        ) { model.delete(ids) })
+        ) { model.deleteSelection() })
         return items
+    }
+
+    static func stackActions(_ stack: StackCard, model: AppModel) -> [ActionItem] {
+        let id = stack.id
+        var items: [ActionItem] = [
+            ActionItem(id: "stack.open", title: String(localized: "Edit Stack…"), systemImage: "rectangle.stack") {
+                model.openStackEditor(id)
+            },
+            ActionItem(id: "stack.choose", title: String(localized: "Choose Stack"), systemImage: "checkmark.circle", shortcut: "↩") {
+                model.chooseStack(id)
+            },
+            ActionItem(id: "stack.choose.paste", title: String(localized: "Choose and Paste"), systemImage: "doc.on.clipboard", shortcut: "⌥↩") {
+                model.chooseStack(id, paste: true)
+            },
+            ActionItem(
+                id: "stack.favorite",
+                title: stack.isFavorite ? String(localized: "Remove from Favorites") : String(localized: "Add to Favorites"),
+                systemImage: stack.isFavorite ? "heart.slash" : "heart",
+                shortcut: "⌘D"
+            ) { model.toggleStackFavorite(id) },
+            ActionItem(id: "stack.rename", title: String(localized: "Rename…"), systemImage: "tag", shortcut: "⌘R") {
+                model.present(.rename(.stack(id)))
+            },
+            stackDealMenu(for: stack, model: model),
+            stackCollectionsMenu(for: stack, model: model),
+        ]
+        items.append(.divider("stack.delete"))
+        items.append(ActionItem(
+            id: "stack.delete",
+            title: String(localized: "Delete Stack"),
+            systemImage: "trash",
+            shortcut: "⌘⌫",
+            isDestructive: true
+        ) { model.deleteStack(id) })
+        return items
+    }
+
+    /// Deal mode + Loop in one submenu. Parent shows the scalar value; rows keep checkmarks (§3.11).
+    private static func stackDealMenu(for stack: StackCard, model: AppModel) -> ActionItem {
+        let id = stack.id
+        var children: [ActionItem] = [
+            ActionItem(
+                id: "stack.deal.sequential",
+                title: String(localized: "In order"),
+                isChecked: stack.dealMode == .sequential
+            ) { model.setStackDeal(id, mode: .sequential, loops: stack.loops) },
+            ActionItem(
+                id: "stack.deal.shuffle",
+                title: String(localized: "Shuffle"),
+                isChecked: stack.dealMode == .shuffleBag
+            ) { model.setStackDeal(id, mode: .shuffleBag, loops: stack.loops) },
+            ActionItem(
+                id: "stack.deal.random",
+                title: String(localized: "Random"),
+                isChecked: stack.dealMode == .shuffleRandom
+            ) { model.setStackDeal(id, mode: .shuffleRandom, loops: false) },
+            .divider("stack.loop"),
+        ]
+        if stack.dealMode == .shuffleRandom {
+            children.append(ActionItem(
+                id: "stack.loop",
+                title: String(localized: "Loop"),
+                disabledReason: String(localized: "Not available for Random"),
+                isChecked: false
+            ))
+        } else {
+            children.append(ActionItem(
+                id: "stack.loop",
+                title: String(localized: "Loop"),
+                isChecked: stack.loops
+            ) { model.setStackDeal(id, mode: stack.dealMode, loops: !stack.loops) })
+        }
+        return ActionItem(
+            id: "stack.deal",
+            title: submenuTitle(String(localized: "Deal"), dealState(mode: stack.dealMode, loops: stack.loops)),
+            systemImage: "arrow.triangle.2.circlepath",
+            children: children
+        )
+    }
+
+    /// Compact parent cue: noun alone when empty; `Noun · state` otherwise (never a name list).
+    private static func submenuTitle(_ noun: String, _ state: String?) -> String {
+        guard let state, !state.isEmpty else { return noun }
+        return String(localized: "\(noun) · \(state)")
+    }
+
+    static func dealState(mode: StackDealMode, loops: Bool) -> String {
+        let modeName: String = switch mode {
+        case .sequential: String(localized: "In order")
+        case .shuffleBag: String(localized: "Shuffle")
+        case .shuffleRandom: String(localized: "Random")
+        }
+        if loops, mode != .shuffleRandom {
+            return String(localized: "\(modeName) · \(String(localized: "Loop"))")
+        }
+        return modeName
     }
 
     /// *Duplicate As ▸*: a new card with transformed text appears at the top; the original stays.
@@ -210,27 +319,84 @@ enum ActionRegistry {
         }
     }
 
+    /// Membership: card badges name *which*; parent shows *count*; rows keep checkmarks (§3.11).
+    private static func stacksMenu(for card: HistoryCard, model: AppModel) -> ActionItem {
+        let id = card.id
+        let stacks = model.history.allStacks
+        let memberCount = stacks.filter { $0.memberIDs.contains(id) }.count
+        var children = stacks.map { stack in
+            let isMember = stack.memberIDs.contains(id)
+            let title = stack.title.isEmpty ? String(localized: "Stack") : stack.title
+            return ActionItem(
+                id: "stack.member." + stack.id.uuidString,
+                title: title,
+                isChecked: isMember
+            ) {
+                if isMember {
+                    model.removeRecord(id, fromStack: stack.id)
+                } else {
+                    model.addRecord(id, toStack: stack.id)
+                }
+            }
+        }
+        if !children.isEmpty { children.append(.divider("newStack")) }
+        children.append(ActionItem(
+            id: "stack.new",
+            title: String(localized: "New Stack…"),
+            systemImage: "plus"
+        ) { model.presentNewStack(records: [id]) })
+        return ActionItem(
+            id: "stacks",
+            title: submenuTitle(String(localized: "Stacks"), memberCount > 0 ? "\(memberCount)" : nil),
+            systemImage: memberCount > 0 ? "rectangle.stack.fill" : "rectangle.stack.badge.plus",
+            children: children
+        )
+    }
+
     private static func collectionsMenu(for card: HistoryCard, model: AppModel) -> ActionItem {
         let id = card.id
         let members = model.history.memberships[id] ?? []
+        let memberCount = members.count
         var children = model.history.collections.map { collection in
             let isMember = members.contains(collection.id)
             return ActionItem(
                 id: "collection." + collection.id.uuidString,
                 title: collection.name,
-                systemImage: isMember ? "checkmark" : nil
+                isChecked: isMember
             ) { model.setMembership(id, collection: collection.id, isMember: !isMember) }
         }
         if !children.isEmpty { children.append(.divider("newCollection")) }
         children.append(ActionItem(id: "collection.new", title: String(localized: "New Collection…"), systemImage: "plus") {
             model.present(.newCollection(addingRecord: id))
         })
-        // The title names the collections the card is in, so the menu itself answers "where is it?".
-        let names = model.history.collectionNames(of: id)
-        let title = names.isEmpty
-            ? String(localized: "Add to Collection")
-            : String(localized: "Collections: \(names.joined(separator: ", "))")
-        return ActionItem(id: "collections", title: title, systemImage: names.isEmpty ? "folder.badge.plus" : "folder", children: children)
+        return ActionItem(
+            id: "collections",
+            title: submenuTitle(String(localized: "Collections"), memberCount > 0 ? "\(memberCount)" : nil),
+            systemImage: memberCount > 0 ? "folder.fill" : "folder.badge.plus",
+            children: children
+        )
+    }
+
+    private static func stackCollectionsMenu(for stack: StackCard, model: AppModel) -> ActionItem {
+        let id = stack.id
+        let members = stack.collectionIDs
+        let memberCount = members.count
+        var children = model.history.collections.map { collection in
+            let isMember = members.contains(collection.id)
+            return ActionItem(
+                id: "stack.collection." + collection.id.uuidString,
+                title: collection.name,
+                isChecked: isMember
+            ) { model.setStackMembership(stack: id, collection: collection.id, isMember: !isMember) }
+        }
+        return ActionItem(
+            id: "stack.collections",
+            title: submenuTitle(String(localized: "Collections"), memberCount > 0 ? "\(memberCount)" : nil),
+            systemImage: memberCount > 0 ? "folder.fill" : "folder.badge.plus",
+            children: children.isEmpty
+                ? [ActionItem(id: "stack.collection.empty", title: String(localized: "No collections yet"), disabledReason: String(localized: "Create a collection first."))]
+                : children
+        )
     }
 
     // MARK: <App> ▸ quick actions (§5.1)
@@ -277,7 +443,7 @@ enum ActionRegistry {
                     ActionItem(
                         id: "app.deleteAfter.\(minutes)",
                         title: RetentionText.duration(minutes: minutes),
-                        systemImage: settings.retentionMinutes == minutes ? "checkmark" : nil
+                        isChecked: settings.retentionMinutes == minutes
                     ) { model.setCaptureMode(.deleteAfter(minutes: minutes), for: bundleID) }
                 }
             ),
@@ -309,7 +475,7 @@ enum ActionRegistry {
         items.append(ActionItem(
             id: "app.recognize",
             title: String(localized: "Recognize Text in Images from \(name)"),
-            systemImage: settings.recognizeText ? "checkmark" : "text.viewfinder"
+            isChecked: settings.recognizeText
         ) { model.setRecognition(!settings.recognizeText, for: bundleID, name: name) })
         if let recordID {
             items.append(.divider("app.delete"))
@@ -394,6 +560,16 @@ struct ActionMenuItems: View {
                     label(for: item)
                 }
                 .disabled(!item.isEnabled)
+            } else if item.isChecked != nil {
+                // Native macOS menu checkmarks (same pattern as the record inspector).
+                Toggle(isOn: Binding(
+                    get: { item.isChecked == true },
+                    set: { _ in item.run?() }
+                )) {
+                    Text(item.title)
+                }
+                .disabled(!item.isEnabled)
+                .floatingHelp(item.disabledReason ?? "")
             } else {
                 Button(role: item.isDestructive ? .destructive : nil) {
                     item.run?()
@@ -477,7 +653,7 @@ struct CardContextMenu: View {
 
     var body: some View {
         let selection = model.history.selection
-        if selection.count > 1, model.history.isSelected(card.id) {
+        if selection.count > 1, model.history.isSelected(.record(card.id)) {
             ActionMenuItems(items: ActionRegistry.selectionActions(selection, model: model))
         } else {
             ActionMenuItems(items: ActionRegistry.cardActions(card, model: model))

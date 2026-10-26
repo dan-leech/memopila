@@ -4,13 +4,23 @@ import Foundation
 public struct RetentionCandidate: Sendable, Equatable {
     public var id: UUID
     public var isFavorite: Bool
+    /// Favorite or member of any paste stack (§3.11 / §6 pin).
+    public var isPinned: Bool
     public var lastCopiedAt: Date
     public var payloadSizeBytes: Int
     public var expiresAt: Date?
 
-    public init(id: UUID, isFavorite: Bool, lastCopiedAt: Date, payloadSizeBytes: Int, expiresAt: Date? = nil) {
+    public init(
+        id: UUID,
+        isFavorite: Bool,
+        lastCopiedAt: Date,
+        payloadSizeBytes: Int,
+        expiresAt: Date? = nil,
+        isPinned: Bool? = nil
+    ) {
         self.id = id
         self.isFavorite = isFavorite
+        self.isPinned = isPinned ?? isFavorite
         self.lastCopiedAt = lastCopiedAt
         self.payloadSizeBytes = payloadSizeBytes
         self.expiresAt = expiresAt
@@ -20,11 +30,11 @@ public struct RetentionCandidate: Sendable, Equatable {
 public enum IngestPlan: Sendable, Equatable {
     /// Insert the new record and delete `victims` in the same transaction.
     case accept(victims: [UUID])
-    /// Still over `maxStorageBytes` without touching favorites: no deletes, no insert.
+    /// Still over `maxStorageBytes` without touching pinned records: no deletes, no insert.
     case rejectQuota
 }
 
-/// Victim planning for `ClipboardStore` (PLAN §6). Favorites are never victims.
+/// Victim planning for `ClipboardStore` (PLAN §6). Pinned records are never victims.
 /// Oldest first by `lastCopiedAt`; ties broken by id for determinism.
 public enum RetentionPlanner {
     public static let defaultMaxCount = 500
@@ -34,14 +44,14 @@ public enum RetentionPlanner {
     /// The storage limit in Settings, in MiB.
     public static let maxStorageMiBRange = 64...16_384
 
-    /// Storage preflight for a new unique non-favorite (§6 steps 3–8).
+    /// Storage preflight for a new unique non-pinned (§6 steps 3–8).
     public static func planIngest(
         existing: [RetentionCandidate],
         newPayloadBytes: Int,
         maxCount: Int,
         maxStorageBytes: Int
     ) -> IngestPlan {
-        let free = oldestFirst(existing.filter { !$0.isFavorite })
+        let free = oldestFirst(existing.filter { !$0.isPinned })
         let countVictims = Array(free.prefix(max(0, free.count + 1 - maxCount)))
         let actualStoredBytes = existing.reduce(0) { $0 + $1.payloadSizeBytes }
         let countVictimBytes = countVictims.reduce(0) { $0 + $1.payloadSizeBytes }
@@ -58,48 +68,46 @@ public enum RetentionPlanner {
         return .accept(victims: victims.map(\.id))
     }
 
-    /// Settings lowered `maxCount`: oldest non-favorites until `freeCount ≤ maxCount`.
+    /// Settings lowered `maxCount`: oldest non-pinned until `freeCount ≤ maxCount`.
     public static func planCountShrink(existing: [RetentionCandidate], maxCount: Int) -> [UUID] {
-        let free = oldestFirst(existing.filter { !$0.isFavorite })
+        let free = oldestFirst(existing.filter { !$0.isPinned })
         return free.prefix(max(0, free.count - maxCount)).map(\.id)
     }
 
-    /// Settings lowered the storage limit: oldest non-favorites until everything fits. Favorites
+    /// Settings lowered the storage limit: oldest non-pinned until everything fits. Pinned
     /// count but are never deleted, so with many of them the total may stay above the limit.
     public static func planStorageShrink(existing: [RetentionCandidate], maxStorageBytes: Int) -> [UUID] {
-        // Favorites alone over the limit: deleting everything else would not reach it (review
-        // finding), so nothing goes; new copies are refused as at any full quota.
-        let favoriteBytes = existing.filter(\.isFavorite).reduce(0) { $0 + $1.payloadSizeBytes }
-        guard favoriteBytes <= maxStorageBytes else { return [] }
+        let pinnedBytes = existing.filter(\.isPinned).reduce(0) { $0 + $1.payloadSizeBytes }
+        guard pinnedBytes <= maxStorageBytes else { return [] }
         var excess = existing.reduce(0) { $0 + $1.payloadSizeBytes } - maxStorageBytes
         var victims: [UUID] = []
-        for candidate in oldestFirst(existing.filter { !$0.isFavorite }) where excess > 0 {
+        for candidate in oldestFirst(existing.filter { !$0.isPinned }) where excess > 0 {
             victims.append(candidate.id)
             excess -= candidate.payloadSizeBytes
         }
         return victims
     }
 
-    /// After unfavoriting `id` (already non-favorite in `existing`): evict oldest *other* non-favorites.
+    /// After unpinning `id` (already non-pinned in `existing`): evict oldest *other* non-pinned.
     public static func planUnfavorite(_ id: UUID, existing: [RetentionCandidate], maxCount: Int) -> [UUID] {
-        let free = existing.filter { !$0.isFavorite }
+        let free = existing.filter { !$0.isPinned }
         let excess = max(0, free.count - maxCount)
         return oldestFirst(free.filter { $0.id != id }).prefix(excess).map(\.id)
     }
 
     public static func planAge(existing: [RetentionCandidate], now: Date, maxAge: TimeInterval) -> [UUID] {
         let cutoff = now.addingTimeInterval(-maxAge)
-        return oldestFirst(existing.filter { !$0.isFavorite && $0.lastCopiedAt < cutoff }).map(\.id)
+        return oldestFirst(existing.filter { !$0.isPinned && $0.lastCopiedAt < cutoff }).map(\.id)
     }
 
     /// Short per-app retention (§5.1, §6).
     public static func planExpired(existing: [RetentionCandidate], now: Date) -> [UUID] {
-        oldestFirst(existing.filter { !$0.isFavorite && ($0.expiresAt.map { $0 <= now } ?? false) }).map(\.id)
+        oldestFirst(existing.filter { !$0.isPinned && ($0.expiresAt.map { $0 <= now } ?? false) }).map(\.id)
     }
 
     /// When the expiry timer should fire next.
     public static func nextExpiry(existing: [RetentionCandidate]) -> Date? {
-        existing.filter { !$0.isFavorite }.compactMap(\.expiresAt).min()
+        existing.filter { !$0.isPinned }.compactMap(\.expiresAt).min()
     }
 
     private static func oldestFirst(_ candidates: [RetentionCandidate]) -> [RetentionCandidate] {

@@ -335,8 +335,8 @@
         </article>
         <article class="card">
           <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/></svg></div>
-          <h3>Favorites and collections</h3>
-          <p>Keep what matters: favorites are never deleted automatically. Drop cards on a collection, give records titles, and drag cards into other apps.</p>
+          <h3>Favorites, collections and stacks</h3>
+          <p>Keep what matters: favorites and paste-stack members are never deleted automatically. Build reusable paste stacks — Choose resets, each <kbd>⌘</kbd><kbd>V</kbd> advances, <kbd>Esc</kbd> stops. Drop cards on a collection, give records titles, and drag cards into other apps.</p>
         </article>
         <article class="card">
           <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h12l-3-3M20 16H8l3 3"/></svg></div>
@@ -376,7 +376,7 @@
         <li><span>Delete, with Undo</span><span class="combo"><kbd>⌘</kbd><kbd>⌫</kbd></span></li>
         <li><span>Pin the panel</span><span class="combo"><kbd>⌘</kbd><kbd>P</kbd></span></li>
         <li><span>Pause or resume capture</span><span class="combo"><kbd>⌘</kbd><kbd>.</kbd></span></li>
-        <li><span>Clear search, then close</span><span class="combo"><kbd>Esc</kbd></span></li>
+        <li><span>Clear search, then close; stop armed stack</span><span class="combo"><kbd>Esc</kbd></span></li>
       </ul>
     </div>
   </section>
@@ -399,7 +399,7 @@
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>Password managers respected.</strong> Copies marked as concealed, transient or auto-generated are never saved.</p></li>
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>Secrets expire.</strong> Tokens, private keys, JWTs and card numbers are recognized on your Mac. By default they are masked on the card and deleted after 8 hours, or you can choose not to save them at all. Detection is pattern-based and cannot catch everything.</p></li>
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>Pause and Skip mean it.</strong> What you copy while capture is paused or skipped is never read.</p></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>Minimal permissions.</strong> Clipboard access is needed to capture. Accessibility is optional, only to paste for you. You can ignore content from your other devices.</p></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>Minimal permissions.</strong> Clipboard access is needed to capture. Accessibility is optional: auto-paste, and ⌘V advance while a paste stack is armed (Esc still stops without it). You can ignore content from your other devices.</p></li>
       </ul>
     </div>
   </section>
@@ -415,7 +415,7 @@
           <ul>
             <li><strong>macOS 15.4</strong> (Sequoia) or later.</li>
             <li><strong>Clipboard access</strong> set to <em>Always Allow</em> when macOS asks.</li>
-            <li><strong>Accessibility</strong>, optional, for auto-paste.</li>
+            <li><strong>Accessibility</strong>, optional, for auto-paste and paste-stack ⌘V advance.</li>
             <li>To build from source: <strong>Xcode 26</strong> or later (macOS 15.6 or later).</li>
           </ul>
         </div>

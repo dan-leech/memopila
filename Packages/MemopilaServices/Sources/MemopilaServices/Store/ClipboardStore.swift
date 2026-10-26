@@ -13,7 +13,7 @@ public actor ClipboardStore {
 
     /// Persistent store at `url`; `nil` keeps everything in memory (tests).
     public init(url: URL?) throws {
-        let schema = Schema(versionedSchema: StoreSchemaV1.self)
+        let schema = Schema(versionedSchema: StoreSchemaV2.self)
         let configuration: ModelConfiguration
         if let url {
             try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -21,7 +21,7 @@ public actor ClipboardStore {
         } else {
             configuration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         }
-        container = try ModelContainer(for: schema, configurations: [configuration])
+        container = try ModelContainer(for: schema, migrationPlan: StoreMigrationPlan.self, configurations: [configuration])
     }
 
     /// Opens the store at `url`. If it cannot be opened, its files move to a dated folder next to
@@ -108,7 +108,7 @@ public actor ClipboardStore {
         )
         do {
             if let existing = try fetchRecord(withHash: snapshot.contentHash, in: context) {
-                apply(DedupMerge.merge(metadata(of: existing), with: observation), to: existing)
+                apply(DedupMerge.merge(try metadata(of: existing, in: context), with: observation), to: existing)
                 if let kind = snapshot.sensitiveKind { existing.sensitiveKind = kind.rawValue }
                 existing.searchText = Self.searchText(for: existing)
                 try context.save()
@@ -171,6 +171,11 @@ public actor ClipboardStore {
 
     public func page(_ query: HistoryQuery, offset: Int, limit: Int) throws -> [HistoryCard] {
         let context = makeContext()
+        if case .stack(let stackID) = query.scope {
+            let ordered = try filteredStackMemberIDs(stackID, query: query, in: context)
+            let slice = Array(ordered.dropFirst(offset).prefix(limit))
+            return try cards(for: slice, in: context)
+        }
         var descriptor = FetchDescriptor<ClipboardRecord>(
             predicate: try predicate(for: query, in: context),
             sortBy: [SortDescriptor(\.lastCopiedAt, order: .reverse)]
@@ -181,25 +186,48 @@ public actor ClipboardStore {
         return try context.fetch(descriptor).map(Self.card)
     }
 
-    /// Everything a query finds (§8.2), favorites apart: for deleting all that is shown, from an
-    /// app or in a collection. Identifiers only.
+    /// Everything a query finds (§8.2), pinned apart: for deleting all that is shown, from an
+    /// app or in a collection. Identifiers only. Keep-bucket = favorite ∨ stack member (P32).
     public func ids(_ query: HistoryQuery) throws -> (others: [UUID], favorites: [UUID]) {
         let context = makeContext()
-        var descriptor = FetchDescriptor<ClipboardRecord>(
-            predicate: try predicate(for: query, in: context),
-            sortBy: [SortDescriptor(\.lastCopiedAt, order: .reverse)]
-        )
-        descriptor.propertiesToFetch = [\.id, \.isFavorite]
+        let stacked = try stackedRecordIDs(in: context)
+        let records: [(id: UUID, isFavorite: Bool)]
+        if case .stack(let stackID) = query.scope {
+            let ordered = try filteredStackMemberIDs(stackID, query: query, in: context)
+            var byID: [UUID: Bool] = [:]
+            if !ordered.isEmpty {
+                var descriptor = FetchDescriptor<ClipboardRecord>(predicate: #Predicate { ordered.contains($0.id) })
+                descriptor.propertiesToFetch = [\.id, \.isFavorite]
+                for record in try context.fetch(descriptor) {
+                    byID[record.id] = record.isFavorite
+                }
+            }
+            records = ordered.map { ($0, byID[$0] ?? false) }
+        } else {
+            var descriptor = FetchDescriptor<ClipboardRecord>(
+                predicate: try predicate(for: query, in: context),
+                sortBy: [SortDescriptor(\.lastCopiedAt, order: .reverse)]
+            )
+            descriptor.propertiesToFetch = [\.id, \.isFavorite]
+            records = try context.fetch(descriptor).map { ($0.id, $0.isFavorite) }
+        }
         var others: [UUID] = []
         var favorites: [UUID] = []
-        for record in try context.fetch(descriptor) {
-            if record.isFavorite { favorites.append(record.id) } else { others.append(record.id) }
+        for record in records {
+            if record.isFavorite || stacked.contains(record.id) {
+                favorites.append(record.id)
+            } else {
+                others.append(record.id)
+            }
         }
         return (others, favorites)
     }
 
     public func count(_ query: HistoryQuery) throws -> Int {
         let context = makeContext()
+        if case .stack(let stackID) = query.scope {
+            return try filteredStackMemberIDs(stackID, query: query, in: context).count
+        }
         return try context.fetchCount(FetchDescriptor(predicate: try predicate(for: query, in: context)))
     }
 
@@ -236,10 +264,13 @@ public actor ClipboardStore {
         )
     }
 
-    /// Non-favorites last copied before `date`: what a lower count or age limit would delete (§6).
+    /// Non-pinned last copied before `date`: what a lower count or age limit would delete (§6 / P32).
     public func countNonFavorites(copiedBefore date: Date = .distantFuture) throws -> Int {
         let context = makeContext()
-        return try context.fetchCount(FetchDescriptor<ClipboardRecord>(predicate: #Predicate { !$0.isFavorite && $0.lastCopiedAt < date }))
+        let stacked = try stackedRecordIDs(in: context)
+        var descriptor = FetchDescriptor<ClipboardRecord>(predicate: #Predicate { !$0.isFavorite && $0.lastCopiedAt < date })
+        descriptor.propertiesToFetch = [\.id]
+        return try context.fetch(descriptor).filter { !stacked.contains($0.id) }.count
     }
 
     /// The formatted text of a record's first item for its card (§8.2): same priority as the
@@ -380,15 +411,26 @@ public actor ClipboardStore {
 
     public func clear(_ scope: ClearScope, opSeq: Int) throws {
         let context = makeContext()
-        let descriptor: FetchDescriptor<ClipboardRecord>
+        let ids: [UUID]
         switch scope {
-        case .all: descriptor = FetchDescriptor()
-        case .nonFavorites: descriptor = FetchDescriptor(predicate: #Predicate { !$0.isFavorite })
+        case .all:
+            var descriptor = FetchDescriptor<ClipboardRecord>()
+            descriptor.propertiesToFetch = [\.id]
+            ids = try context.fetch(descriptor).map(\.id)
+        case .nonFavorites:
+            // Neither favorite nor stack member (P32).
+            let stacked = try stackedRecordIDs(in: context)
+            var descriptor = FetchDescriptor<ClipboardRecord>(predicate: #Predicate { !$0.isFavorite })
+            descriptor.propertiesToFetch = [\.id]
+            ids = try context.fetch(descriptor).map(\.id).filter { !stacked.contains($0) }
         }
-        var idsDescriptor = descriptor
-        idsDescriptor.propertiesToFetch = [\.id]
-        let ids = try context.fetch(idsDescriptor).map(\.id)
-        try saveOrRollback(context) { try deleteRecords(ids: ids, in: context) }
+        try saveOrRollback(context) {
+            try deleteRecords(ids: ids, in: context)
+            if scope == .all {
+                // Empty stack shells after Clear.all (v1).
+                try pruneEmptyStacks(in: context)
+            }
+        }
         staleGuard.recordClear(opSeq: opSeq)
     }
 
@@ -468,7 +510,7 @@ public actor ClipboardStore {
 
         if let survivor = try fetchRecord(withHash: hash, in: context), survivor.id != id {
             try saveOrRollback(context) {
-                apply(DedupMerge.mergeEdited(metadata(of: record), into: metadata(of: survivor)), to: survivor)
+                apply(DedupMerge.mergeEdited(try metadata(of: record, in: context), into: try metadata(of: survivor, in: context)), to: survivor)
                 if survivor.customTitle == nil { survivor.customTitle = record.customTitle }
                 survivor.searchText = Self.searchText(for: survivor)
                 let survivorID = survivor.id
@@ -477,6 +519,7 @@ public actor ClipboardStore {
                 for tag in tags where !existing.contains(tag.collectionID) {
                     context.insert(RecordTag(recordID: survivorID, collectionID: tag.collectionID))
                 }
+                try retargetStackMembers(from: id, to: survivorID, in: context)
                 try deleteRecords(ids: [id], in: context)
             }
             return .merged(into: survivor.id)
@@ -498,7 +541,8 @@ public actor ClipboardStore {
             // *Delete after* (review findings).
             let secret = secretPolicy == .off ? nil : SecretDetector.detect(text, kinds: secretKinds)
             record.sensitiveKind = secret?.rawValue
-            if secret != nil, case .deleteAfter(let minutes) = secretPolicy, !record.isFavorite {
+            let pinned = try record.isFavorite || stackedRecordIDs(in: context).contains(id)
+            if secret != nil, case .deleteAfter(let minutes) = secretPolicy, !pinned {
                 let expiry = now.addingTimeInterval(TimeInterval(minutes) * 60)
                 record.expiresAt = min(record.expiresAt ?? expiry, expiry)
             }
@@ -532,14 +576,15 @@ public actor ClipboardStore {
         return RetentionPlanner.nextExpiry(existing: candidates.filter { !removed.contains($0.id) })
     }
 
-    /// *Also delete N existing items from <App>* (§5.1): non-favorites only.
+    /// *Also delete N existing items from <App>* (§5.1): non-pinned only (P32).
     @discardableResult
     public func deleteRecords(fromApp bundleID: String, opSeq: Int) throws -> Int {
         let context = makeContext()
         let app: String? = bundleID
+        let stacked = try stackedRecordIDs(in: context)
         let records = try context.fetch(FetchDescriptor<ClipboardRecord>(
             predicate: #Predicate { $0.lastSourceAppBundleID == app && !$0.isFavorite }
-        ))
+        )).filter { !stacked.contains($0.id) }
         for record in records { staleGuard.recordTombstone(contentHash: record.contentHash, opSeq: opSeq) }
         let ids = records.map(\.id)
         try saveOrRollback(context) { try deleteRecords(ids: ids, in: context) }
@@ -549,9 +594,10 @@ public actor ClipboardStore {
     public func countRecords(fromApp bundleID: String) throws -> Int {
         let context = makeContext()
         let app: String? = bundleID
-        return try context.fetchCount(FetchDescriptor<ClipboardRecord>(
+        let stacked = try stackedRecordIDs(in: context)
+        return try context.fetch(FetchDescriptor<ClipboardRecord>(
             predicate: #Predicate { $0.lastSourceAppBundleID == app && !$0.isFavorite }
-        ))
+        )).filter { !stacked.contains($0.id) }.count
     }
 
     // MARK: - Collections (§8.2)
@@ -560,7 +606,9 @@ public actor ClipboardStore {
         let context = makeContext()
         let collections = try context.fetch(FetchDescriptor<CollectionModel>(sortBy: [SortDescriptor(\.sortOrder), SortDescriptor(\.name)]))
         let tags = try context.fetch(FetchDescriptor<RecordTag>())
-        let counts = Dictionary(grouping: tags, by: \.collectionID).mapValues(\.count)
+        let stackTags = try context.fetch(FetchDescriptor<StackTag>())
+        var counts: [UUID: Int] = Dictionary(grouping: tags, by: \.collectionID).mapValues(\.count)
+        for tag in stackTags { counts[tag.collectionID, default: 0] += 1 }
         return collections.map { CollectionSummary(id: $0.id, name: $0.name, count: counts[$0.id] ?? 0) }
     }
 
@@ -586,6 +634,7 @@ public actor ClipboardStore {
         let context = makeContext()
         try saveOrRollback(context) {
             try context.delete(model: RecordTag.self, where: #Predicate { $0.collectionID == id })
+            try context.delete(model: StackTag.self, where: #Predicate { $0.collectionID == id })
             try context.delete(model: CollectionModel.self, where: #Predicate { $0.id == id })
         }
     }
@@ -607,6 +656,217 @@ public actor ClipboardStore {
         ))
         if isMember, existing.isEmpty {
             context.insert(RecordTag(recordID: recordID, collectionID: collectionID))
+        } else if !isMember {
+            existing.forEach { context.delete($0) }
+        }
+        try context.save()
+    }
+
+    // MARK: - Paste stacks (§3.11)
+
+    /// Stacks matching `query`, hard-capped (P22). Not a paged record fetch.
+    public func stacks(_ query: HistoryQuery, limit: Int = 200) throws -> [StackCard] {
+        let context = makeContext()
+        var descriptor = FetchDescriptor<StackModel>(sortBy: [SortDescriptor(\.lastUsedAt, order: .reverse)])
+        descriptor.fetchLimit = limit
+        let models = try context.fetch(descriptor)
+        let members = try context.fetch(FetchDescriptor<StackMember>())
+        let tags = try context.fetch(FetchDescriptor<StackTag>())
+        let membersByStack = Dictionary(grouping: members, by: \.stackID)
+        let tagsByStack = Dictionary(grouping: tags, by: \.stackID)
+        let recordIDs = Set(members.map(\.recordID))
+        var recordMeta: [UUID: (displayType: String, app: String?, search: String, preview: String, sensitive: String?)] = [:]
+        if !recordIDs.isEmpty {
+            let ids = Array(recordIDs)
+            var recDesc = FetchDescriptor<ClipboardRecord>(predicate: #Predicate { ids.contains($0.id) })
+            recDesc.propertiesToFetch = [\.id, \.displayTypeRaw, \.lastSourceAppBundleID, \.searchText, \.cardPreview, \.sensitiveKind]
+            for record in try context.fetch(recDesc) {
+                recordMeta[record.id] = (
+                    record.displayTypeRaw,
+                    record.lastSourceAppBundleID,
+                    record.searchText,
+                    record.cardPreview,
+                    record.sensitiveKind
+                )
+            }
+        }
+
+        return models.compactMap { stack -> StackCard? in
+            let ordered = (membersByStack[stack.id] ?? []).sorted { $0.position < $1.position }
+            // Drop orphan members whose record is gone.
+            let live = ordered.filter { recordMeta[$0.recordID] != nil }
+            let memberIDs = live.map(\.recordID)
+            let collectionIDs = Set((tagsByStack[stack.id] ?? []).map(\.collectionID))
+            let card = StackCard(
+                id: stack.id,
+                title: stack.title,
+                isFavorite: stack.isFavorite,
+                loops: stack.loops,
+                dealMode: StackDealMode(rawValue: stack.dealModeRaw) ?? .sequential,
+                createdAt: stack.createdAt,
+                lastUsedAt: stack.lastUsedAt,
+                memberIDs: memberIDs,
+                previewRecordID: memberIDs.first,
+                memberCount: memberIDs.count,
+                collectionIDs: collectionIDs,
+                sensitiveKind: memberIDs.first.flatMap { recordMeta[$0]?.sensitive },
+                preview: memberIDs.first.flatMap { recordMeta[$0]?.preview } ?? ""
+            )
+            guard stackMatches(card, members: live.compactMap { recordMeta[$0.recordID] }, query: query) else { return nil }
+            return card
+        }
+    }
+
+    public func stack(_ id: UUID) throws -> StackCard? {
+        try stacks(HistoryQuery()).first { $0.id == id }
+    }
+
+    /// Member record ids in UI order; orphans pruned.
+    public func stackMemberIDs(_ stackID: UUID) throws -> [UUID] {
+        let context = makeContext()
+        let members = try context.fetch(FetchDescriptor<StackMember>(
+            predicate: #Predicate { $0.stackID == stackID },
+            sortBy: [SortDescriptor(\.position)]
+        ))
+        var result: [UUID] = []
+        for member in members {
+            if try fetchRecord(member.recordID, in: context) != nil {
+                result.append(member.recordID)
+            } else {
+                context.delete(member)
+            }
+        }
+        if context.hasChanges { try context.save() }
+        return result
+    }
+
+    @discardableResult
+    public func createStack(
+        title: String,
+        recordIDs: [UUID],
+        dealMode: StackDealMode = .sequential,
+        loops: Bool = false
+    ) throws -> UUID {
+        let context = makeContext()
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = trimmed.isEmpty ? "Stack" : trimmed
+        let now = Date()
+        let stack = StackModel(
+            title: name,
+            loops: loops && dealMode != .shuffleRandom,
+            dealModeRaw: dealMode.rawValue,
+            createdAt: now,
+            lastUsedAt: now
+        )
+        context.insert(stack)
+        var seen = Set<UUID>()
+        var position = 0
+        for recordID in recordIDs {
+            guard seen.insert(recordID).inserted else { continue }
+            guard let record = try fetchRecord(recordID, in: context) else { continue }
+            record.expiresAt = nil
+            context.insert(StackMember(stackID: stack.id, recordID: recordID, position: position))
+            position += 1
+        }
+        try context.save()
+        return stack.id
+    }
+
+    public func renameStack(_ id: UUID, title: String) throws {
+        let context = makeContext()
+        guard let stack = try fetchStack(id, in: context) else { return }
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        stack.title = trimmed.isEmpty ? "Stack" : trimmed
+        try context.save()
+    }
+
+    public func setStackFavorite(_ id: UUID, _ isFavorite: Bool) throws {
+        let context = makeContext()
+        guard let stack = try fetchStack(id, in: context) else { return }
+        stack.isFavorite = isFavorite
+        try context.save()
+    }
+
+    public func setStackDeal(_ id: UUID, dealMode: StackDealMode, loops: Bool) throws {
+        let context = makeContext()
+        guard let stack = try fetchStack(id, in: context) else { return }
+        stack.dealModeRaw = dealMode.rawValue
+        stack.loops = dealMode == .shuffleRandom ? false : loops
+        try context.save()
+    }
+
+    public func markStackUsed(_ id: UUID, at date: Date) throws {
+        let context = makeContext()
+        guard let stack = try fetchStack(id, in: context) else { return }
+        stack.lastUsedAt = max(stack.lastUsedAt, date)
+        try context.save()
+    }
+
+    public func deleteStacks(_ ids: [UUID]) throws {
+        let context = makeContext()
+        try saveOrRollback(context) {
+            try context.delete(model: StackMember.self, where: #Predicate { ids.contains($0.stackID) })
+            try context.delete(model: StackTag.self, where: #Predicate { ids.contains($0.stackID) })
+            try context.delete(model: StackModel.self, where: #Predicate { ids.contains($0.id) })
+        }
+    }
+
+    /// Replace UI order. Clears `expiresAt` on newly joined members (P36).
+    public func setStackMembers(_ stackID: UUID, recordIDs: [UUID]) throws {
+        let context = makeContext()
+        guard try fetchStack(stackID, in: context) != nil else { return }
+        let previous = Set(try context.fetch(FetchDescriptor<StackMember>(predicate: #Predicate { $0.stackID == stackID })).map(\.recordID))
+        try context.delete(model: StackMember.self, where: #Predicate { $0.stackID == stackID })
+        var seen = Set<UUID>()
+        var position = 0
+        for recordID in recordIDs {
+            guard seen.insert(recordID).inserted else { continue }
+            guard let record = try fetchRecord(recordID, in: context) else { continue }
+            if !previous.contains(recordID) { record.expiresAt = nil }
+            context.insert(StackMember(stackID: stackID, recordID: recordID, position: position))
+            position += 1
+        }
+        try context.save()
+    }
+
+    public func appendStackMember(_ stackID: UUID, recordID: UUID) throws {
+        let context = makeContext()
+        guard try fetchStack(stackID, in: context) != nil else { return }
+        guard let record = try fetchRecord(recordID, in: context) else { return }
+        let existing = try context.fetch(FetchDescriptor<StackMember>(
+            predicate: #Predicate { $0.stackID == stackID && $0.recordID == recordID }
+        ))
+        guard existing.isEmpty else { return }
+        let count = try context.fetchCount(FetchDescriptor<StackMember>(predicate: #Predicate { $0.stackID == stackID }))
+        record.expiresAt = nil
+        context.insert(StackMember(stackID: stackID, recordID: recordID, position: count))
+        try context.save()
+    }
+
+    /// Drop one member; compact UI positions. Does not restore `expiresAt` (§6 / P36).
+    public func removeStackMember(_ stackID: UUID, recordID: UUID) throws {
+        let context = makeContext()
+        let rows = try context.fetch(FetchDescriptor<StackMember>(
+            predicate: #Predicate { $0.stackID == stackID && $0.recordID == recordID }
+        ))
+        guard !rows.isEmpty else { return }
+        for row in rows { context.delete(row) }
+        let ordered = try context.fetch(FetchDescriptor<StackMember>(
+            predicate: #Predicate { $0.stackID == stackID },
+            sortBy: [SortDescriptor(\.position)]
+        ))
+        for (index, member) in ordered.enumerated() { member.position = index }
+        try context.save()
+    }
+
+    public func setStackMembership(stack stackID: UUID, collection collectionID: UUID, isMember: Bool) throws {
+        let context = makeContext()
+        guard try fetchStack(stackID, in: context) != nil else { return }
+        let existing = try context.fetch(FetchDescriptor<StackTag>(
+            predicate: #Predicate { $0.stackID == stackID && $0.collectionID == collectionID }
+        ))
+        if isMember, existing.isEmpty {
+            context.insert(StackTag(stackID: stackID, collectionID: collectionID))
         } else if !isMember {
             existing.forEach { context.delete($0) }
         }
@@ -667,6 +927,40 @@ public actor ClipboardStore {
     }
 
     // MARK: - Helpers
+
+    /// Live member IDs in UI order that also match kind/period/search (position preserved).
+    private func filteredStackMemberIDs(_ stackID: UUID, query: HistoryQuery, in context: ModelContext) throws -> [UUID] {
+        let members = try context.fetch(FetchDescriptor<StackMember>(
+            predicate: #Predicate { $0.stackID == stackID },
+            sortBy: [SortDescriptor(\.position)]
+        ))
+        var ordered: [UUID] = []
+        var orphaned = false
+        for member in members {
+            if try fetchRecord(member.recordID, in: context) != nil {
+                ordered.append(member.recordID)
+            } else {
+                context.delete(member)
+                orphaned = true
+            }
+        }
+        if orphaned { try context.save() }
+        guard !ordered.isEmpty else { return [] }
+        // Predicate includes stack membership + kinds/since/search; re-apply UI order.
+        guard let filter = try predicate(for: query, in: context) else { return ordered }
+        var descriptor = FetchDescriptor<ClipboardRecord>(predicate: filter)
+        descriptor.propertiesToFetch = [\.id]
+        let matching = Set(try context.fetch(descriptor).map(\.id))
+        return ordered.filter { matching.contains($0) }
+    }
+
+    private func cards(for ids: [UUID], in context: ModelContext) throws -> [HistoryCard] {
+        guard !ids.isEmpty else { return [] }
+        var descriptor = FetchDescriptor<ClipboardRecord>(predicate: #Predicate { ids.contains($0.id) })
+        descriptor.propertiesToFetch = Self.cardProperties
+        let byID = Dictionary(uniqueKeysWithValues: try context.fetch(descriptor).map { ($0.id, Self.card($0)) })
+        return ids.compactMap { byID[$0] }
+    }
 
     private static var cardProperties: [PartialKeyPath<ClipboardRecord>] {
         [
@@ -766,11 +1060,97 @@ public actor ClipboardStore {
     }
 
     private func retentionCandidates(in context: ModelContext) throws -> [RetentionCandidate] {
+        let stacked = try stackedRecordIDs(in: context)
         var descriptor = FetchDescriptor<ClipboardRecord>()
         descriptor.propertiesToFetch = [\.id, \.isFavorite, \.lastCopiedAt, \.payloadSizeBytes, \.expiresAt]
         return try context.fetch(descriptor).map {
-            RetentionCandidate(id: $0.id, isFavorite: $0.isFavorite, lastCopiedAt: $0.lastCopiedAt, payloadSizeBytes: $0.payloadSizeBytes, expiresAt: $0.expiresAt)
+            RetentionCandidate(
+                id: $0.id,
+                isFavorite: $0.isFavorite,
+                lastCopiedAt: $0.lastCopiedAt,
+                payloadSizeBytes: $0.payloadSizeBytes,
+                expiresAt: $0.expiresAt,
+                isPinned: $0.isFavorite || stacked.contains($0.id)
+            )
         }
+    }
+
+    private func stackedRecordIDs(in context: ModelContext) throws -> Set<UUID> {
+        var descriptor = FetchDescriptor<StackMember>()
+        descriptor.propertiesToFetch = [\.recordID]
+        return Set(try context.fetch(descriptor).map(\.recordID))
+    }
+
+    private func fetchStack(_ id: UUID, in context: ModelContext) throws -> StackModel? {
+        var descriptor = FetchDescriptor<StackModel>(predicate: #Predicate { $0.id == id })
+        descriptor.fetchLimit = 1
+        return try context.fetch(descriptor).first
+    }
+
+    /// Dedup/edit merge: retarget membership; drop duplicate rows in the same stack and compact.
+    private func retargetStackMembers(from oldID: UUID, to survivorID: UUID, in context: ModelContext) throws {
+        let members = try context.fetch(FetchDescriptor<StackMember>(predicate: #Predicate { $0.recordID == oldID }))
+        for member in members {
+            let stackID = member.stackID
+            let already = try context.fetch(FetchDescriptor<StackMember>(
+                predicate: #Predicate { $0.stackID == stackID && $0.recordID == survivorID }
+            ))
+            if already.isEmpty {
+                member.recordID = survivorID
+            } else {
+                context.delete(member)
+            }
+        }
+        let affected = Set(members.map(\.stackID))
+        for stackID in affected {
+            let ordered = try context.fetch(FetchDescriptor<StackMember>(
+                predicate: #Predicate { $0.stackID == stackID },
+                sortBy: [SortDescriptor(\.position)]
+            ))
+            for (index, member) in ordered.enumerated() { member.position = index }
+        }
+    }
+
+    private func pruneEmptyStacks(in context: ModelContext) throws {
+        let stacks = try context.fetch(FetchDescriptor<StackModel>())
+        let members = try context.fetch(FetchDescriptor<StackMember>())
+        let populated = Set(members.map(\.stackID))
+        let empty = stacks.filter { !populated.contains($0.id) }.map(\.id)
+        guard !empty.isEmpty else { return }
+        try context.delete(model: StackTag.self, where: #Predicate { empty.contains($0.stackID) })
+        try context.delete(model: StackModel.self, where: #Predicate { empty.contains($0.id) })
+    }
+
+    private func stackMatches(
+        _ card: StackCard,
+        members: [(displayType: String, app: String?, search: String, preview: String, sensitive: String?)],
+        query: HistoryQuery
+    ) -> Bool {
+        switch query.scope {
+        case .all: break
+        case .favorites:
+            guard card.isFavorite else { return false }
+        case .app(let bundleID):
+            guard members.contains(where: { $0.app == bundleID }) else { return false }
+        case .type(let type):
+            guard members.contains(where: { $0.displayType == type.rawValue }) else { return false }
+        case .collection(let collectionID):
+            guard card.collectionIDs.contains(collectionID) else { return false }
+        case .stack:
+            // Drill-down shows members only — never nest stack cards in the grid.
+            return false
+        }
+        if !query.kinds.isEmpty {
+            let raws = Set(query.kinds.map(\.rawValue))
+            guard members.contains(where: { raws.contains($0.displayType) }) else { return false }
+        }
+        if let since = query.since, card.lastUsedAt < since { return false }
+        for word in query.words {
+            let inTitle = card.title.localizedStandardContains(word)
+            let inMembers = members.contains { $0.search.localizedStandardContains(word) }
+            guard inTitle || inMembers else { return false }
+        }
+        return true
     }
 
     /// Records, their representations and thumbnails (cascade) and memberships, in the caller's transaction.
@@ -779,6 +1159,7 @@ public actor ClipboardStore {
         let records = try context.fetch(FetchDescriptor<ClipboardRecord>(predicate: #Predicate { ids.contains($0.id) }))
         records.forEach { context.delete($0) }
         try context.delete(model: RecordTag.self, where: #Predicate { ids.contains($0.recordID) })
+        try context.delete(model: StackMember.self, where: #Predicate { ids.contains($0.recordID) })
     }
 
     private func saveOrRollback(_ context: ModelContext, _ changes: () throws -> Void) throws {
@@ -814,6 +1195,10 @@ public actor ClipboardStore {
         case .collection(let collectionID):
             let ids = try context.fetch(FetchDescriptor<RecordTag>(predicate: #Predicate { $0.collectionID == collectionID })).map(\.recordID)
             and(#Predicate { ids.contains($0.id) })
+        case .stack(let stackID):
+            // Prefer `filteredStackMemberIDs` / `page` for order; predicate keeps ids()/count callers correct.
+            let ids = try context.fetch(FetchDescriptor<StackMember>(predicate: #Predicate { $0.stackID == stackID })).map(\.recordID)
+            and(#Predicate { ids.contains($0.id) })
         }
         if !query.kinds.isEmpty {
             let raws = query.kinds.map(\.rawValue)
@@ -828,12 +1213,14 @@ public actor ClipboardStore {
         return result
     }
 
-    private func metadata(of record: ClipboardRecord) -> RecordMetadata {
-        RecordMetadata(
+    private func metadata(of record: ClipboardRecord, in context: ModelContext) throws -> RecordMetadata {
+        let stacked = try stackedRecordIDs(in: context)
+        return RecordMetadata(
             firstCopiedAt: record.firstCopiedAt,
             lastCopiedAt: record.lastCopiedAt,
             copyCount: record.copyCount,
             isFavorite: record.isFavorite,
+            isPinned: record.isFavorite || stacked.contains(record.id),
             lastSourceAppBundleID: record.lastSourceAppBundleID,
             lastSourceAppName: record.lastSourceAppName,
             sourceURL: record.sourceURL,

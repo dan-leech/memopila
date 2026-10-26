@@ -6,8 +6,8 @@ import SwiftUI
 
 /// Panel overlays (§8.4). Shown inside the panel; a record opens in its own window (§8.5).
 enum PanelOverlay: Equatable {
-    case rename(UUID)
-    case actions(UUID)
+    case rename(HistoryEntry.ID)
+    case actions(HistoryEntry.ID)
     case newCollection(addingRecord: UUID?)
     case renameCollection(UUID)
     case confirmDelete([UUID])
@@ -19,6 +19,7 @@ enum PanelOverlay: Equatable {
     case confirmClear
     /// ⌘/ — every shortcut of the panel (§8.3).
     case shortcuts
+    case newStack
 }
 
 /// What *Delete All…* deletes, for its question.
@@ -82,8 +83,18 @@ final class AppModel {
     var isOptionHeld = false
     /// The card just chosen while the window is pinned; it shows a checkmark for a moment.
     private(set) var chooseBadgeCardID: UUID?
+    /// Stack card Choose badge (Choose only — not every advance, P37 chrome).
+    private(set) var chooseBadgeStackID: UUID?
     /// The badge on that card says Pasted rather than On Clipboard.
     private(set) var chooseBadgeWasPasted = false
+    /// Armed paste-stack session (§3.11).
+    @ObservationIgnored private(set) var stackSession: StackSessionController!
+    /// Panel card-drag SSOT (§3.11 drop contract).
+    @ObservationIgnored private(set) var stackDrag = StackDragSession()
+    /// Open Stack Window state (nil when closed).
+    private(set) var stackEditor: StackEditorState?
+    /// Status-item tooltip / Stop affordance bump.
+    private(set) var stackStatusRevision = 0
     /// Bumped whenever search should take focus (open, ⌘F, overlay closed).
     private(set) var focusSearchToken = 0
     /// Bumped when a click on a card takes the keyboard from the search to the cards.
@@ -140,12 +151,19 @@ final class AppModel {
         recognition = RecognitionService(store: store, settings: settings)
         panel = PanelController(model: self)
         windows = SecondaryWindows(model: self)
+        stackSession = StackSessionController(model: self)
 
         // The panel, or a window of Memopila's own while it is the active app (the record window,
         // Settings): what is copied there is Memopila's (review finding: it was Unknown).
-        monitor.panelIsKey = { [weak self] in (self?.panel.isKey ?? false) || (NSApp.isActive && NSApp.keyWindow != nil) }
+        monitor.panelIsKey = { [weak self] in self?.memopilaUIKey ?? false }
         monitor.onSaved = { [weak self] id in self?.didSave(id) }
+        monitor.onExternalClipboardChange = { [weak self] in self?.stackSession.stop(toast: true) }
+        monitor.onStackIdentitySuperseded = { [weak self] in
+            guard let self, self.stackSession.isArmed else { return }
+            self.stackSession.stop(toast: true)
+        }
         history.clipboardRecordID = { [weak monitor] in monitor?.clipboardRecordID }
+        history.clipboardStackID = { [weak monitor] in monitor?.clipboardStackID }
         recognition.onUpdate = { [weak self] id, state in
             if state == .done { self?.history.storeDidChange() }
             // The record window shows the result under the image.
@@ -174,20 +192,40 @@ final class AppModel {
 
     // MARK: Overlays
 
-    /// Shows an overlay (or `nil` to close it); search takes focus again when it closes.
-    func present(_ next: PanelOverlay?) {
+    /// Shows an overlay (or `nil` to close it). Search takes focus again when an overlay closes
+    /// while the panel stays open — not when the panel itself is closing (`refocusSearch: false`),
+    /// or FocusState can re-key an ordered-out panel and skip auto-paste.
+    func present(_ next: PanelOverlay?, refocusSearch: Bool = true) {
+        if next == nil { pendingStackRecordIDs = nil }
         switch next {
-        case .actions(let id)?:
-            guard let card = history.cards.first(where: { $0.id == id }) else { return }
-            // Several cards selected: the actions for all of them, as in the context menu.
+        case .actions(let entryID)?:
             let selection = history.selection
-            let items = selection.count > 1 ? ActionRegistry.selectionActions(selection, model: self) : ActionRegistry.cardActions(card, model: self)
+            let items: [ActionItem]
+            if selection.count > 1 {
+                items = ActionRegistry.selectionActions(selection, model: self)
+            } else if case .record(let id) = entryID, let card = history.cards.first(where: { $0.id == id }) {
+                items = ActionRegistry.cardActions(card, model: self)
+            } else if case .stack(let id) = entryID,
+                      let stack = history.stacks.first(where: { $0.id == id })
+                        ?? history.allStacks.first(where: { $0.id == id }) {
+                items = ActionRegistry.stackActions(stack, model: self)
+            } else {
+                return
+            }
             actionsState = ActionsPanelState(items: items.flatMap { $0.flattened() })
         default:
             actionsState = nil
         }
         overlay = next
-        if next == nil { focusSearch() }
+        if next == nil, refocusSearch { focusSearch() }
+    }
+
+    /// Seed members for New Stack… (one card or multi-select); cleared when the overlay closes.
+    @ObservationIgnored private var pendingStackRecordIDs: [UUID]?
+
+    func presentNewStack(records: [UUID]? = nil) {
+        pendingStackRecordIDs = records
+        present(.newStack)
     }
 
     func focusSearch() {
@@ -224,16 +262,26 @@ final class AppModel {
             windows.showRecord(focusText: false)
             return resolveUnsavedChanges { [weak self] in self?.openRecord(id, focusText: focusText) }
         }
-        guard let card = history.cards.first(where: { $0.id == id }) else { return }
+        Task { await openRecordAsync(id, focusText: focusText) }
+    }
+
+    private func openRecordAsync(_ id: UUID, focusText: Bool) async {
+        let card: HistoryCard
+        if let local = history.cards.first(where: { $0.id == id })
+            ?? stackEditor?.members.first(where: { $0.id == id }) {
+            card = local
+        } else if let loaded = try? await store.card(id) {
+            card = loaded
+        } else {
+            return
+        }
         itemState?.loadTask?.cancel()
         let state = ItemState(card: card, focusOnLoad: focusText && Self.isEditable(card), maxBytes: settings.maxItemBytes)
         itemState = state
-        if history.selectedID != id { history.selectedID = id }
+        if history.selectedID != .record(id) { history.selectedID = .record(id) }
         hidePanelForWindow()
         windows.showRecord(focusText: state.focusOnLoad)
         guard state.hasText else { return }
-        // Cancelled when another record replaces this one (review finding: loads for records
-        // already passed kept running).
         state.loadTask = Task { await loadText(into: state) }
     }
 
@@ -268,13 +316,19 @@ final class AppModel {
             return resolveUnsavedChanges { [weak self] in self?.openAdjacentRecord(offset, vertically: vertically) }
         }
         saveTitle()
-        if vertically {
-            history.moveSelectionVertically(offset)
-        } else {
-            history.moveSelection(by: offset)
+        // Record window navigates records only (skips stack entries, §8.4).
+        for _ in 0..<max(history.entries.count, 1) {
+            if vertically {
+                history.moveSelectionVertically(offset)
+            } else {
+                history.moveSelection(by: offset)
+            }
+            if let card = history.selectedCard {
+                history.cardAppeared(card)
+                if card.id != state.id { openRecord(card.id) }
+                return
+            }
         }
-        if let card = history.selectedCard { history.cardAppeared(card) }
-        if let id = history.selectedID, id != state.id { openRecord(id) }
     }
 
     /// The title saves itself when its field is left or ↩ is pressed, and before the record
@@ -491,7 +545,10 @@ final class AppModel {
     }
 
     func panelDidClose() {
-        present(nil)
+        // Do not focus search here: the panel is already ordered out, and focusing the field can
+        // make it key again — then auto-paste sees `panel.isKey` and skips ⌘V.
+        present(nil, refocusSearch: false)
+        endCardDrag()
         isCommandHeld = false
         history.deactivate()
         purgeTask?.cancel()
@@ -582,17 +639,27 @@ final class AppModel {
     func restoreSelected(paste: Bool? = nil) {
         Task {
             await history.settle()
-            guard let id = singleSelection() else { return }
-            await performRestore(id, paste: paste)
+            guard let entryID = singleSelection() else { return }
+            switch entryID {
+            case .record(let id):
+                await performRestore(id, paste: paste)
+            case .stack(let id):
+                chooseStack(id, paste: paste)
+            }
         }
     }
 
     func restoreVisible(_ index: Int) {
         Task {
             await history.settle()
-            guard let card = history.card(at: index) else { return }
-            history.selectedID = card.id
-            await performRestore(card.id)
+            guard let entry = history.entry(at: index) else { return }
+            history.selectedID = entry.id
+            switch entry {
+            case .record(let card):
+                await performRestore(card.id)
+            case .stack(let stack):
+                chooseStack(stack.id)
+            }
         }
     }
 
@@ -602,11 +669,41 @@ final class AppModel {
 
     /// *Choose for Clipboard* from a card's menu: several selected cards cannot all go to the clipboard.
     func choose(_ id: UUID, paste: Bool? = nil) {
-        if history.selection.count > 1, history.isSelected(id) {
+        if history.selection.count > 1, history.isSelected(.record(id)) {
             _ = singleSelection()
             return
         }
         restore(id, paste: paste)
+    }
+
+    var memopilaUIKey: Bool {
+        panel.isKey || windows.anySecondaryIsKey || (NSApp.isActive && NSApp.keyWindow != nil)
+    }
+
+    func statusStackDidChange() {
+        stackStatusRevision += 1
+        stackSession.refreshEscapeGate()
+    }
+
+    func showStackChooseBadge(_ stackID: UUID, pasted: Bool) {
+        chooseBadgeStackID = stackID
+        chooseBadgeCardID = nil
+        chooseBadgeWasPasted = pasted
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(900))
+            if self?.chooseBadgeStackID == stackID { self?.chooseBadgeStackID = nil }
+        }
+    }
+
+    func stopStackSession() {
+        stackSession.stop()
+    }
+
+    func chooseStack(_ id: UUID, paste: Bool? = nil) {
+        resolveUnsavedChanges { [weak self] in
+            self?.stackSession.chooseStack(id, paste: paste)
+        }
     }
 
     /// Puts the item on the clipboard, moves it to the top and gives the focus back to the app the
@@ -614,8 +711,12 @@ final class AppModel {
     /// `paste` overrides that setting. `true` when the clipboard now holds the item.
     @discardableResult
     private func performRestore(_ id: UUID, paste: Bool? = nil) async -> Bool {
-        // ⌥↩ asks for one paste: without Accessibility the item would only be copied, which is
-        // not what was asked, so say what is missing and change nothing.
+        // Choosing a member card disarms any armed stack (§8.1).
+        if stackSession.isArmed { stackSession.stop(toast: false) }
+        let wantsPaste = paste ?? settings.pasteAfterCopy
+        // ⌥↩ (and Auto-Paste when enabled): without Accessibility do not pretend paste will happen.
+        // Explicit ⌥↩ aborts before the clipboard write; the Settings toggle still chooses for
+        // clipboard, then explains why ⌘V did not run (ad-hoc rebuilds often drop the TCC grant).
         if paste == true, !AccessibilityBridge.isTrusted {
             AccessibilityBridge.requestTrust()
             toasts.error(String(localized: "To paste, allow Memopila in System Settings → Privacy & Security → Accessibility, then try again."))
@@ -627,8 +728,7 @@ final class AppModel {
             toasts.error(message)
             return false
         case .written:
-            let pastes = (paste ?? settings.pasteAfterCopy) && AccessibilityBridge.isTrusted
-            let target = previousApp
+            let pastes = wantsPaste && AccessibilityBridge.isTrusted
             // Memopila itself is active after a launch by hand or after Settings: the target app
             // needs a moment to take the focus back before ⌘V reaches it.
             let wasActive = NSApp.isActive
@@ -639,19 +739,36 @@ final class AppModel {
                     // The panel keeps the keyboard while pinned: give it back, or ⌘V would paste
                     // into the search field (review finding).
                     panel.yieldKeyFocus()
-                    _ = target?.activate()
                 }
             } else {
                 panel.close()
             }
-            if pastes, let target, !target.isTerminated {
-                try? await Task.sleep(for: .milliseconds(wasActive || isPinned ? 250 : 80))
-                if !panel.isKey { AccessibilityBridge.paste() }
+            if wantsPaste, !pastes {
+                AccessibilityBridge.requestTrust()
+                toasts.error(String(localized: "To paste, allow Memopila in System Settings → Privacy & Security → Accessibility, then try again."))
+            } else if pastes {
+                await pasteIntoPreviousApp(wasActive: wasActive)
             }
             try? await store.markUsed(id, at: Date())
             history.storeDidChange()
             return true
         }
+    }
+
+    /// Synthetic ⌘V into the app behind the panel. Re-yields if FocusState re-keyed the panel
+    /// after close, then pastes only when Memopila is not the key window.
+    func pasteIntoPreviousApp(wasActive: Bool) async {
+        let target = previousApp.flatMap { $0.isTerminated ? nil : $0 }
+            ?? monitor.lastOtherApp.flatMap { $0.isTerminated ? nil : $0 }
+        guard let target else { return }
+        _ = target.activate()
+        try? await Task.sleep(for: .milliseconds(wasActive || isPinned ? 250 : 80))
+        if panel.isKey {
+            panel.yieldKeyFocus()
+            _ = target.activate()
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+        if !panel.isKey { AccessibilityBridge.paste() }
     }
 
     /// Text that is not a record yet (text found in an image, a source link, the Diagnostics report)
@@ -743,7 +860,7 @@ final class AppModel {
             guard let content = await variantContent(id, variant: variant) else { return }
             switch await ingestDerived(content.items, from: id) {
             case .saved(let newID):
-                history.selectedID = newID
+                history.selectedID = .record(newID)
                 history.storeDidChange()
                 toasts.show(String(localized: "Duplicated as \(variant.title)"))
             case .secretNotSaved:
@@ -905,6 +1022,8 @@ final class AppModel {
                 history.forgetHidden(ids)
                 history.storeDidChange()
                 prunePreviewFiles()
+                // Rebuild after members are gone — pre-delete rebuild kept stale IDs (P24).
+                if stackSession.isArmed { stackSession.rebuildFromStore() }
                 return
             case .failure(.busy) where attempt < 3:
                 // Another delete, clear or edit is running; this one follows it.
@@ -920,7 +1039,7 @@ final class AppModel {
     // MARK: Several selected cards
 
     /// ↩ and Choose for Clipboard with several cards selected: the clipboard holds one record.
-    private func singleSelection() -> UUID? {
+    private func singleSelection() -> HistoryEntry.ID? {
         let selection = history.selection
         guard selection.count <= 1 else {
             toasts.error(String(localized: "Only one record can be on the clipboard. Select a single card."))
@@ -939,8 +1058,11 @@ final class AppModel {
         let makeFavorite = !cards.allSatisfy(\.isFavorite)
         let limits = settings.retentionLimits
         let cutoff = Date().addingTimeInterval(-limits.maxAge)
+        let deletableOld: (HistoryCard) -> Bool = { [history] card in
+            card.lastCopiedAt < cutoff && !history.isStackPinned(card.id)
+        }
         if !makeFavorite, !confirmed {
-            let old = cards.filter { $0.lastCopiedAt < cutoff }.count
+            let old = cards.filter(deletableOld).count
             if old > 0 { return present(.confirmUnfavorite(cards.map(\.id), old: old)) }
         }
         if case .confirmUnfavorite? = overlay { present(nil) }
@@ -949,9 +1071,8 @@ final class AppModel {
         guard !changing.isEmpty else { return }
         let previous = Dictionary(uniqueKeysWithValues: changing.map { ($0.id, $0) })
         let changingIDs = Set(changing.map(\.id))
-        let ageVictims = makeFavorite
-            ? Set<UUID>()
-            : Set(changing.filter { $0.lastCopiedAt < cutoff }.map(\.id))
+        // Age-delete victims only (store pin rule). Favorites-scope exit hides all changing ids.
+        let ageVictims = makeFavorite ? Set<UUID>() : Set(changing.filter(deletableOld).map(\.id))
         let hideIDs: Set<UUID> = {
             if !makeFavorite, case .favorites = history.scope { return changingIDs }
             return ageVictims
@@ -1006,7 +1127,213 @@ final class AppModel {
 
     /// Deletes what is selected: one card or several.
     func deleteSelection() {
-        delete(history.selection)
+        let recordIDs = history.selectionRecordIDs
+        let stackIDs = history.selection.compactMap { if case .stack(let id) = $0 { return id }; return nil }
+        if !recordIDs.isEmpty { delete(recordIDs) }
+        for id in stackIDs { deleteStack(id) }
+    }
+
+    func deleteStack(_ id: UUID) {
+        if stackSession.armedStackID == id { stackSession.stop(toast: false) }
+        if stackEditor?.stackID == id {
+            stackEditor = nil
+            windows.closeStack(returningToPanel: true)
+        }
+        history.removeStackLocally(id)
+        Task {
+            try? await store.deleteStacks([id])
+            history.storeDidChange()
+        }
+        toasts.show(String(localized: "Stack deleted"))
+    }
+
+    func toggleStackFavorite(_ id: UUID) {
+        guard let stack = history.allStacks.first(where: { $0.id == id })
+            ?? history.stacks.first(where: { $0.id == id })
+            ?? (stackEditor?.stackID == id ? stackEditor?.stack : nil) else { return }
+        let makeFavorite = !stack.isFavorite
+        let previous = stack
+        history.setStackFavoriteLocally(id: id, isFavorite: makeFavorite)
+        if stackEditor?.stackID == id { stackEditor?.applyFavorite(makeFavorite) }
+        let leftFavorites = !makeFavorite && history.scope == .favorites
+        if leftFavorites { history.removeStackLocally(id) }
+
+        favoriteOpGeneration += 1
+        let gen = favoriteOpGeneration
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                guard gen == self.favoriteOpGeneration else { return }
+                try await self.store.setStackFavorite(id, makeFavorite)
+            } catch {
+                guard gen == self.favoriteOpGeneration else { return }
+                self.toasts.error(error.localizedDescription)
+                self.history.setStackFavoriteLocally(id: id, isFavorite: previous.isFavorite)
+                if self.stackEditor?.stackID == id { self.stackEditor?.applyFavorite(previous.isFavorite) }
+                self.history.storeDidChange()
+                return
+            }
+            guard gen == self.favoriteOpGeneration else { return }
+            self.history.storeDidChange()
+        }
+    }
+
+    /// Open Stack / Edit Stack — Stack Window (replaces panel drill-down).
+    func openStack(_ id: UUID) {
+        openStackEditor(id)
+    }
+
+    func openStackEditor(_ id: UUID) {
+        if let itemState, itemState.isDirty {
+            hidePanelForWindow()
+            windows.showRecord(focusText: false)
+            return resolveUnsavedChanges { [weak self] in self?.openStackEditor(id) }
+        }
+        Task { await openStackEditorAsync(id) }
+    }
+
+    private func openStackEditorAsync(_ id: UUID) async {
+        // Panel no longer drills into stacks — clear a leftover scope if any.
+        if case .stack = history.scope { history.scope = .all }
+        let card: StackCard
+        if let local = history.allStacks.first(where: { $0.id == id })
+            ?? history.stacks.first(where: { $0.id == id }) {
+            card = local
+        } else if let loaded = try? await store.stack(id) {
+            card = loaded
+        } else {
+            toasts.error(String(localized: "This stack was deleted."))
+            return
+        }
+        if let existing = stackEditor, existing.stackID == id {
+            hidePanelForWindow()
+            windows.showStack()
+            existing.reload()
+            return
+        }
+        let state = StackEditorState(stack: card, store: store)
+        stackEditor = state
+        state.reload()
+        hidePanelForWindow()
+        windows.showStack()
+        windows.updateStackTitle(state.title)
+    }
+
+    func closeStackEditor(returningToPanel: Bool = true) {
+        windows.closeStack(returningToPanel: returningToPanel || isPinned)
+    }
+
+    func stackWindowDidClose() {
+        stackEditor = nil
+        endCardDrag()
+    }
+
+    func chooseStackFromEditor(paste: Bool) {
+        guard let id = stackEditor?.stackID else { return }
+        closeStackEditor(returningToPanel: false)
+        chooseStack(id, paste: paste)
+    }
+
+    func presentStackRename() {
+        guard let id = stackEditor?.stackID else { return }
+        // Rename overlay lives on the panel — keep editing title in the window field instead.
+        windows.updateStackTitle(stackEditor?.title ?? "")
+        _ = id
+    }
+
+    func beginStackEditorDrag(_ id: UUID) {
+        guard let state = stackEditor, state.canReorder else {
+            beginCardDrag(id)
+            return
+        }
+        stackDrag.beginRecord(id, positionalReorder: true, history: history)
+    }
+
+    @discardableResult
+    func dropStackEditorReorder(before targetID: UUID?, atEnd: Bool) -> Bool {
+        stackDrag.claimForDrop()
+        guard let state = stackEditor,
+              state.canReorder,
+              stackDrag.isPositionalReorder,
+              let fromID = stackDrag.recordID,
+              let order = state.reorder(from: fromID, before: targetID, atEnd: atEnd) else {
+            endCardDrag()
+            return false
+        }
+        defer { endCardDrag() }
+        persistStackMemberOrder(state.stackID, recordIDs: order)
+        windows.updateStackTitle(state.title)
+        return true
+    }
+
+    func moveStackEditorMember(_ recordID: UUID, toStart: Bool? = nil, by delta: Int = 0) {
+        guard let state = stackEditor else { return }
+        let order: [UUID]?
+        if let toStart {
+            order = state.moveMemberToEnd(recordID, toStart: toStart)
+        } else {
+            order = state.moveMember(recordID, by: delta)
+        }
+        guard let order else { return }
+        persistStackMemberOrder(state.stackID, recordIDs: order)
+    }
+
+    func reloadStackEditorIfNeeded() {
+        stackEditor?.reload()
+        if let state = stackEditor {
+            windows.updateStackTitle(state.title)
+        }
+    }
+
+    func renameStack(_ id: UUID, title: String) {
+        stackEditor?.applyTitle(title)
+        if stackEditor?.stackID == id {
+            windows.updateStackTitle(stackEditor?.title ?? title)
+        }
+        Task {
+            try? await store.renameStack(id, title: title)
+            history.storeDidChange()
+        }
+    }
+
+    func setStackDeal(_ id: UUID, mode: StackDealMode, loops: Bool) {
+        history.setStackDealLocally(id: id, mode: mode, loops: loops)
+        if stackEditor?.stackID == id {
+            stackEditor?.applyDeal(mode: mode, loops: loops)
+        }
+        Task {
+            do {
+                try await store.setStackDeal(id, dealMode: mode, loops: loops)
+                history.storeDidChange()
+                if stackSession.armedStackID == id {
+                    stackSession.applyDealSettings(dealMode: mode, loops: loops)
+                }
+            } catch {
+                history.storeDidChange()
+                reloadStackEditorIfNeeded()
+                toasts.error(error.localizedDescription)
+            }
+        }
+    }
+
+    /// New Stack… from one card or a multi-select (records only); opens the Stack Window.
+    func createStackFromSelection(title: String) {
+        let ids = pendingStackRecordIDs ?? history.selectionRecordIDs
+        pendingStackRecordIDs = nil
+        guard !ids.isEmpty else {
+            toasts.show(String(localized: "Select records to put in a stack."))
+            return
+        }
+        Task {
+            do {
+                let stackID = try await store.createStack(title: title, recordIDs: ids)
+                history.storeDidChange()
+                openStackEditor(stackID)
+                toasts.show(String(localized: "Stack created — drop cards onto the stack card to add them"))
+            } catch {
+                toasts.error(error.localizedDescription)
+            }
+        }
     }
 
     /// Everything a query finds — the panel's current list, an app, a collection — after a
@@ -1080,6 +1407,7 @@ final class AppModel {
             history.storeDidChange()
             // A secret typed in may now expire: the timer follows (§3.10).
             if case .deleteAfter = policy { runRetention() }
+            if stackSession.isArmed { stackSession.rebuildFromStore() }
             if let state = itemState, state.id == id {
                 // Saved in place: what was saved is the new starting point.
                 state.textSaved(text, rich: savedRich)
@@ -1090,8 +1418,10 @@ final class AppModel {
             monitor.recordChanged(id)
             history.removeLocally([id])
             rescueFromPendingDeletion(survivor)
-            history.selectedID = survivor
+            history.selectedID = .record(survivor)
             history.storeDidChange()
+            // Merge retargets StackMember rows — refresh the deal queue if armed.
+            if stackSession.isArmed { stackSession.rebuildFromStore() }
             toasts.show(String(localized: "Merged with an existing record"))
             await showRecord(survivor)
             return nil
@@ -1209,27 +1539,162 @@ final class AppModel {
         }
     }
 
-    // MARK: Drag a card onto a collection
+    // MARK: Card drag (StackDragSession SSOT — PLAN §3.11)
 
-    /// The card being dragged, for a drop on a sidebar collection. Its data may be text, an image or
-    /// a file, so the drop is matched by this rather than by type; a drag that ended elsewhere
-    /// goes stale after a minute.
-    @ObservationIgnored private var draggedRecord: (id: UUID, at: Date)?
-
-    func cardDragStarted(_ id: UUID) {
-        draggedRecord = (id, Date())
+    /// Begin dragging a history record. Positional reorder when the open playlist is unfiltered.
+    func beginCardDrag(_ id: UUID) {
+        let positional = history.canReorderStack
+        stackDrag.beginRecord(id, positionalReorder: positional, history: history)
     }
 
-    /// `false` when no card of this panel is being dragged (a file from Finder, say).
+    func beginStackDrag(_ id: UUID) {
+        stackDrag.beginStack(id, history: history)
+    }
+
+    func endCardDrag() {
+        stackDrag.end()
+    }
+
+    /// Insert before `targetID`, or at end when `atEnd`. Only while a positional session is live.
+    @discardableResult
+    func dropReorder(before targetID: UUID?, atEnd: Bool = false) -> Bool {
+        stackDrag.claimForDrop()
+        guard let stackID = history.scopedStackID,
+              history.canReorderStack,
+              stackDrag.isPositionalReorder,
+              let fromID = stackDrag.recordID else {
+            endCardDrag()
+            return false
+        }
+        defer { endCardDrag() }
+        var order = history.stackMemberOrder
+        guard let from = order.firstIndex(of: fromID) else { return false }
+        if atEnd {
+            if from == order.count - 1 { return true }
+            order.remove(at: from)
+            order.append(fromID)
+        } else {
+            guard let targetID, fromID != targetID,
+                  order.contains(targetID) else { return true }
+            if from + 1 == order.firstIndex(of: targetID) { return true }
+            order.remove(at: from)
+            guard let newTarget = order.firstIndex(of: targetID) else { return false }
+            order.insert(fromID, at: newTarget)
+        }
+        history.applyStackMemberOrder(order)
+        persistStackMemberOrder(stackID, recordIDs: order)
+        return true
+    }
+
+    /// Sidebar collection drop (record or stack card).
     func dropDraggedCard(on collection: UUID) -> Bool {
-        guard let dragged = draggedRecord, Date().timeIntervalSince(dragged.at) < 60 else { return false }
-        draggedRecord = nil
+        stackDrag.claimForDrop()
+        guard stackDrag.isFresh, let source = stackDrag.source else { return false }
+        defer { endCardDrag() }
         let name = history.collections.first { $0.id == collection }?.name ?? ""
-        if history.memberships[dragged.id]?.contains(collection) != true {
-            setMembership(dragged.id, collection: collection, isMember: true)
+        switch source {
+        case .stack(let stackID):
+            setStackMembership(stack: stackID, collection: collection, isMember: true)
             toasts.show(String(localized: "Added to “\(name)”"))
+        case .record(let recordID):
+            if history.memberships[recordID]?.contains(collection) != true {
+                setMembership(recordID, collection: collection, isMember: true)
+                toasts.show(String(localized: "Added to “\(name)”"))
+            }
         }
         return true
+    }
+
+    /// Drop onto a stack *card*, or onto the open playlist grid (append non-members).
+    /// Priority: positional miss → no-op; already-member on open grid → no-op; else append / move-to-end.
+    func dropDraggedCard(onStack stackID: UUID) -> Bool {
+        stackDrag.claimForDrop()
+        guard stackDrag.isFresh, let recordID = stackDrag.recordID else { return false }
+
+        if history.scopedStackID == stackID {
+            if stackDrag.isPositionalReorder || history.stackMemberOrder.contains(recordID) {
+                endCardDrag()
+                return true
+            }
+        }
+
+        endCardDrag()
+        Task {
+            let members = (try? await store.stackMemberIDs(stackID)) ?? []
+            if members.contains(recordID) {
+                var order = members.filter { $0 != recordID }
+                order.append(recordID)
+                do {
+                    try await store.setStackMembers(stackID, recordIDs: order)
+                    history.storeDidChange()
+                    if stackSession.armedStackID == stackID { stackSession.rebuildFromStore() }
+                    toasts.show(String(localized: "Moved to end of stack"))
+                } catch {
+                    history.storeDidChange()
+                    toasts.error(error.localizedDescription)
+                }
+            } else {
+                addRecord(recordID, toStack: stackID, toast: true)
+            }
+        }
+        return true
+    }
+
+    /// Playlist membership (§3.11): join clears `expiresAt`; leave does not restore it (§6).
+    func addRecord(_ recordID: UUID, toStack stackID: UUID, toast: Bool = false) {
+        Task {
+            do {
+                try await store.appendStackMember(stackID, recordID: recordID)
+                history.storeDidChange()
+                if stackEditor?.stackID == stackID { reloadStackEditorIfNeeded() }
+                if stackSession.armedStackID == stackID { stackSession.rebuildFromStore() }
+                if toast { toasts.show(String(localized: "Added to stack")) }
+            } catch {
+                history.storeDidChange()
+                toasts.error(error.localizedDescription)
+            }
+        }
+    }
+
+    func removeRecord(_ recordID: UUID, fromStack stackID: UUID) {
+        Task {
+            do {
+                try await store.removeStackMember(stackID, recordID: recordID)
+                history.storeDidChange()
+                if stackEditor?.stackID == stackID { reloadStackEditorIfNeeded() }
+                if stackSession.armedStackID == stackID { stackSession.rebuildFromStore() }
+            } catch {
+                history.storeDidChange()
+                reloadStackEditorIfNeeded()
+                toasts.error(error.localizedDescription)
+            }
+        }
+    }
+
+    /// Persist UI order after optimistic `applyStackMemberOrder`. No full reload — page already matches.
+    func setStackMemberOrder(_ stackID: UUID, recordIDs: [UUID]) {
+        persistStackMemberOrder(stackID, recordIDs: recordIDs)
+    }
+
+    private func persistStackMemberOrder(_ stackID: UUID, recordIDs: [UUID]) {
+        Task {
+            do {
+                try await store.setStackMembers(stackID, recordIDs: recordIDs)
+                history.storeDidChange()
+                if stackSession.armedStackID == stackID { stackSession.rebuildFromStore() }
+            } catch {
+                history.storeDidChange()
+                reloadStackEditorIfNeeded()
+                toasts.error(error.localizedDescription)
+            }
+        }
+    }
+
+    func setStackMembership(stack stackID: UUID, collection: UUID, isMember: Bool) {
+        Task {
+            try? await store.setStackMembership(stack: stackID, collection: collection, isMember: isMember)
+            history.storeDidChange()
+        }
     }
 
     // MARK: Per-app quick actions (§5.1)

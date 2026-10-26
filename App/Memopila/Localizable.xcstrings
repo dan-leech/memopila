@@ -61,6 +61,16 @@
         }
       }
     },
+    "%@ · %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ · %@"
+          }
+        }
+      }
+    },
     "%@: applies to %@": {
       "localizations": {
         "ru": {
@@ -811,12 +821,32 @@
         }
       }
     },
+    "Add to Stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить в стек"
+          }
+        }
+      }
+    },
     "Add to or remove from Favorites": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Добавить в избранное или убрать из него"
+          }
+        }
+      }
+    },
+    "Added to stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавлено в стек"
           }
         }
       }
@@ -1069,6 +1099,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Приложения"
+          }
+        }
+      }
+    },
+    "Armed": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Активен"
+          }
+        }
+      }
+    },
+    "Armed %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Активен %@"
           }
         }
       }
@@ -1373,6 +1423,16 @@
         }
       }
     },
+    "Choose Stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать стек"
+          }
+        }
+      }
+    },
     "Choose and Paste": {
       "localizations": {
         "ru": {
@@ -1519,6 +1579,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Очистить историю…"
+          }
+        }
+      }
+    },
+    "Clear search and filters to reorder": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сбросьте поиск и фильтры, чтобы менять порядок"
           }
         }
       }
@@ -1923,6 +1993,36 @@
         }
       }
     },
+    "Deal": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Раздача"
+          }
+        }
+      }
+    },
+    "Deal: %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Раздача: %@"
+          }
+        }
+      }
+    },
+    "Deal: %@ · Loop": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Раздача: %@ · цикл"
+          }
+        }
+      }
+    },
     "Default Text Size (⌘0)": {
       "localizations": {
         "ru": {
@@ -2095,6 +2195,16 @@
         }
       }
     },
+    "Delete Stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить стек"
+          }
+        }
+      }
+    },
     "Delete Them": {
       "localizations": {
         "ru": {
@@ -2151,6 +2261,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Удалить все элементы в «%2$@» (%1$lld)?"
+          }
+        }
+      }
+    },
+    "Delete all items except favorites and stack members?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить все элементы, кроме избранного и участников стеков?"
           }
         }
       }
@@ -2385,6 +2505,16 @@
         }
       }
     },
+    "Drag to reorder": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перетащите, чтобы изменить порядок"
+          }
+        }
+      }
+    },
     "Drop a card here to add it": {
       "localizations": {
         "ru": {
@@ -2421,6 +2551,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Правка"
+          }
+        }
+      }
+    },
+    "Edit Members": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Участники"
+          }
+        }
+      }
+    },
+    "Edit Members…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Участники…"
           }
         }
       }
@@ -2465,6 +2615,16 @@
         }
       }
     },
+    "Empty stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пустой стек"
+          }
+        }
+      }
+    },
     "Enable Capture": {
       "localizations": {
         "ru": {
@@ -2500,7 +2660,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "В избранное"
+            "value": "Избранное"
           }
         }
       }
@@ -2865,6 +3025,16 @@
         }
       }
     },
+    "Hidden": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скрыто"
+          }
+        }
+      }
+    },
     "Hide Sidebar": {
       "localizations": {
         "ru": {
@@ -3061,6 +3231,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ни в одной коллекции"
+          }
+        }
+      }
+    },
+    "In order": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "По порядку"
+          }
+        }
+      }
+    },
+    "In stacks: %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В стеках: %@"
           }
         }
       }
@@ -3445,6 +3635,36 @@
         }
       }
     },
+    "Loop": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Цикл"
+          }
+        }
+      }
+    },
+    "Loop: Off": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Цикл: выкл."
+          }
+        }
+      }
+    },
+    "Loop: On": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Цикл: вкл."
+          }
+        }
+      }
+    },
     "Lower and Delete the Oldest Items": {
       "localizations": {
         "ru": {
@@ -3545,6 +3765,16 @@
         }
       }
     },
+    "Missing item": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет элемента"
+          }
+        }
+      }
+    },
     "Mixed": {
       "localizations": {
         "ru": {
@@ -3575,6 +3805,26 @@
         }
       }
     },
+    "Move Down": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ниже"
+          }
+        }
+      }
+    },
+    "Move Up": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выше"
+          }
+        }
+      }
+    },
     "Move and select": {
       "localizations": {
         "ru": {
@@ -3591,6 +3841,46 @@
           "stringUnit": {
             "state": "translated",
             "value": "Переходить между карточками"
+          }
+        }
+      }
+    },
+    "Move in Stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переместить в стеке"
+          }
+        }
+      }
+    },
+    "Move to Bottom": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В конец"
+          }
+        }
+      }
+    },
+    "Move to Top": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В начало"
+          }
+        }
+      }
+    },
+    "Moved to end of stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перемещено в конец стека"
           }
         }
       }
@@ -3655,6 +3945,26 @@
         }
       }
     },
+    "New Stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Новый стек"
+          }
+        }
+      }
+    },
+    "New Stack…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Новый стек…"
+          }
+        }
+      }
+    },
     "Next record (→)": {
       "localizations": {
         "ru": {
@@ -3715,6 +4025,16 @@
         }
       }
     },
+    "No stacks yet. Choose New Stack… on a card, then drag more onto it.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пока нет стеков. New Stack… на карточке, затем перетащите ещё."
+          }
+        }
+      }
+    },
     "No stored formats": {
       "localizations": {
         "ru": {
@@ -3761,6 +4081,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Не больше текущего лимита"
+          }
+        }
+      }
+    },
+    "Not available for Random": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недоступно для «Случайно»"
           }
         }
       }
@@ -3955,6 +4285,16 @@
         }
       }
     },
+    "Only paste stacks": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Только стеки вставки"
+          }
+        }
+      }
+    },
     "Only the first changes are shown.": {
       "localizations": {
         "ru": {
@@ -4021,6 +4361,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Открыть исходную страницу"
+          }
+        }
+      }
+    },
+    "Open Stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть стек"
           }
         }
       }
@@ -4455,6 +4805,16 @@
         }
       }
     },
+    "Random": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Случайно"
+          }
+        }
+      }
+    },
     "Read content": {
       "localizations": {
         "ru": {
@@ -4625,6 +4985,16 @@
         }
       }
     },
+    "Remove %lld from Stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из стека: %lld"
+          }
+        }
+      }
+    },
     "Remove %lld items from Favorites?": {
       "localizations": {
         "ru": {
@@ -4715,6 +5085,16 @@
         }
       }
     },
+    "Remove from Stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из стека"
+          }
+        }
+      }
+    },
     "Remove from “%@”": {
       "localizations": {
         "ru": {
@@ -4755,12 +5135,32 @@
         }
       }
     },
+    "Rename Stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переименовать стек"
+          }
+        }
+      }
+    },
     "Rename…": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Переименовать…"
+          }
+        }
+      }
+    },
+    "Reorder members": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменить порядок"
           }
         }
       }
@@ -5125,6 +5525,16 @@
         }
       }
     },
+    "Search in Stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Поиск в стеке"
+          }
+        }
+      }
+    },
     "Secrets": {
       "localizations": {
         "ru": {
@@ -5141,6 +5551,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Выделить всё"
+          }
+        }
+      }
+    },
+    "Select records to put in a stack.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выберите записи для стека."
           }
         }
       }
@@ -5315,6 +5735,16 @@
         }
       }
     },
+    "Shuffle": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перемешать"
+          }
+        }
+      }
+    },
     "Sidebar": {
       "localizations": {
         "ru": {
@@ -5475,6 +5905,116 @@
         }
       }
     },
+    "Stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стек"
+          }
+        }
+      }
+    },
+    "Stack actions": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Действия стека"
+          }
+        }
+      }
+    },
+    "Stack armed — Esc to stop": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стек вооружён — Esc чтобы остановить"
+          }
+        }
+      }
+    },
+    "Stack armed — first item on clipboard. Allow Accessibility to advance on ⌘V. Esc to stop.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стек вооружён — первый элемент в буфере. Разрешите Универсальный доступ, чтобы ⌘V листал дальше. Esc — остановить."
+          }
+        }
+      }
+    },
+    "Stack created": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стек создан"
+          }
+        }
+      }
+    },
+    "Stack created — drag more cards onto it": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стек создан — перетащите на него ещё карточки"
+          }
+        }
+      }
+    },
+    "Stack deleted": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стек удалён"
+          }
+        }
+      }
+    },
+    "Stack stopped": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стек остановлен"
+          }
+        }
+      }
+    },
+    "Stack stopped — no members left.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стек остановлен — не осталось элементов."
+          }
+        }
+      }
+    },
+    "Stacks": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стеки"
+          }
+        }
+      }
+    },
+    "Stacks: %@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стеки: %@"
+          }
+        }
+      }
+    },
     "Standard uses the marker some apps add, else the frontmost app. Strict trusts only the marker: while any app is set to Don't Save, unmarked copies are skipped. Neither is a security boundary.": {
       "localizations": {
         "ru": {
@@ -5511,6 +6051,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Состояние"
+          }
+        }
+      }
+    },
+    "Stop Stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Остановить стек"
           }
         }
       }
@@ -5871,6 +6421,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "В этом элементе форматированный текст; при сохранении останется только простой текст."
+          }
+        }
+      }
+    },
+    "This stack is empty.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Этот стек пуст."
           }
         }
       }
@@ -6445,6 +7005,16 @@
         }
       }
     },
+    "“%@” is empty. Drop cards here to add them.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«%@» пуст. Перетащите сюда карточки."
+          }
+        }
+      }
+    },
     "← → other records · ↩ to clipboard · Esc closes": {
       "localizations": {
         "ru": {
@@ -6533,6 +7103,396 @@
           "stringUnit": {
             "state": "translated",
             "value": "⌘S сохранить · ⌘↩ Сохранить и в буфер · Esc спросит о сохранении"
+          }
+        }
+      }
+    },
+    "Show reorder grips (drag cards to reorder anytime filters are clear)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать маркеры порядка (карточки можно перетаскивать, пока сброшены поиск и фильтры)"
+          }
+        }
+      }
+    },
+    "End": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Конец"
+          }
+        }
+      }
+    },
+    "Move to end of stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В конец стека"
+          }
+        }
+      }
+    },
+    "Done reordering": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Готово"
+          }
+        }
+      }
+    },
+    "Reorder members — drag cards; double-click still chooses": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменить порядок — перетаскивайте карточки; двойной щелчок по-прежнему выбирает"
+          }
+        }
+      }
+    },
+    "Add members before reordering": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сначала добавьте участников"
+          }
+        }
+      }
+    },
+    "Hide reorder grips": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скрыть маркеры порядка"
+          }
+        }
+      }
+    },
+    "Show reorder grips — drag cards anytime filters are clear": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать маркеры порядка — карточки можно перетаскивать, пока сброшены поиск и фильтры"
+          }
+        }
+      }
+    },
+    "Edit Stack…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменить стек…"
+          }
+        }
+      }
+    },
+    "Filter members": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Фильтр участников"
+          }
+        }
+      }
+    },
+    "Search history to add": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Поиск в истории для добавления"
+          }
+        }
+      }
+    },
+    "Already in stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Уже в стеке"
+          }
+        }
+      }
+    },
+    "Stack title": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Название стека"
+          }
+        }
+      }
+    },
+    "No matching records": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет подходящих записей"
+          }
+        }
+      }
+    },
+    "↩ Choose · Space Edit Record · Esc close": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "↩ Выбрать · Space Edit Record · Esc закрыть"
+          }
+        }
+      }
+    },
+    "%lld of %lld members": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld из %lld участников"
+          }
+        }
+      }
+    },
+    "%lld members": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld участников"
+          }
+        }
+      }
+    },
+    "Hide stack details (⌥⌘I)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скрыть сведения о стеке (⌥⌘I)"
+          }
+        }
+      }
+    },
+    "Show stack details (⌥⌘I)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показать сведения о стеке (⌥⌘I)"
+          }
+        }
+      }
+    },
+    "Add members by dropping cards onto this stack in the panel.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавляйте участников, перетаскивая карточки на стек в панели."
+          }
+        }
+      }
+    },
+    "Drop cards onto this stack in the panel to add them.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перетащите карточки на стек в панели, чтобы добавить их."
+          }
+        }
+      }
+    },
+    "Start again when the round ends": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Начать снова, когда круг закончится"
+          }
+        }
+      }
+    },
+    "Selected": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрано"
+          }
+        }
+      }
+    },
+    "↩ Choose · Space Edit · ⌥⌘I Inspector · Esc close": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "↩ Выбрать · Space Edit · ⌥⌘I Inspector · Esc закрыть"
+          }
+        }
+      }
+    },
+    "Position %lld": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Позиция %lld"
+          }
+        }
+      }
+    },
+    "Stack created — drop cards onto the stack card to add them": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стек создан — перетащите карточки на стек, чтобы добавить их"
+          }
+        }
+      }
+    },
+    "Shown on the stack card and found by search": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывается на карточке стека и находится поиском"
+          }
+        }
+      }
+    },
+    "Paste members in the order shown here": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вставлять участников в порядке, показанном здесь"
+          }
+        }
+      }
+    },
+    "Shuffle once at Choose, then paste through that order": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Один раз перемешать при Choose, затем вставлять в этом порядке"
+          }
+        }
+      }
+    },
+    "Pick a random member each paste; never runs out": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Каждая вставка — случайный участник; не заканчивается"
+          }
+        }
+      }
+    },
+    "How many cards are in this stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сколько карточек в этом стеке"
+          }
+        }
+      }
+    },
+    "Close this window, then drag a history card onto the stack card": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Закройте окно и перетащите карточку истории на карточку стека"
+          }
+        }
+      }
+    },
+    "Not available for Random — each paste already picks freely": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Недоступно для Random — каждая вставка и так выбирает свободно"
+          }
+        }
+      }
+    },
+    "Delete this stack; its cards stay in History": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить стек; карточки останутся в History"
+          }
+        }
+      }
+    },
+    "Place in the stack order (1 is first)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Место в порядке стека (1 — первый)"
+          }
+        }
+      }
+    },
+    "Open this card in the Record window (Space)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть карточку в окне Record (Space)"
+          }
+        }
+      }
+    },
+    "Change this card’s place in the order": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Изменить место этой карточки в порядке"
+          }
+        }
+      }
+    },
+    "Take this card out of the stack; it stays in History": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать карточку из стека; она останется в History"
+          }
+        }
+      }
+    },
+    "Stack finished": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стек закончился"
           }
         }
       }

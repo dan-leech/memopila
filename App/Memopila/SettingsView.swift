@@ -119,7 +119,7 @@ private struct GeneralSettings: View {
             } header: {
                 Text("Auto-Paste After Choosing")
             } footer: {
-                Text("Choose for Clipboard (double-click, ↩ or ⌘1…⌘9) puts an item on the clipboard and takes you back to the app you were in. With this option Memopila also presses ⌘V there for you, which needs Accessibility. When allowed, Memopila also remembers the title of the window you copied from.")
+                Text("Choose for Clipboard (double-click, ↩ or ⌘1…⌘9) puts an item on the clipboard and takes you back to the app you were in. With this option Memopila also presses ⌘V there for you, which needs Accessibility. When allowed, Memopila also remembers the title of the window you copied from. Paste stacks also need Accessibility (and possibly Input Monitoring) so each ⌘V can advance the deal; Esc stops an armed stack. Menu Paste and Secure Input fields do not advance.")
             }
 
             RecognitionSections(settings: model.settings)
@@ -275,7 +275,7 @@ private struct HistorySettings: View {
             } header: {
                 Text("Retention")
             } footer: {
-                Text("Favorites are never deleted automatically. When all items together reach the storage limit, the oldest make room; lowering it does that at once.")
+                Text("Favorites and paste-stack members are never deleted automatically. When all items together reach the storage limit, the oldest make room; lowering it does that at once.")
             }
 
             Section {
@@ -310,7 +310,7 @@ private struct HistorySettings: View {
             } header: {
                 Text("Clear")
             } footer: {
-                Text("Clear History keeps favorites. Clear Everything removes them too.")
+                Text("Clear History keeps favorites and stack members. Clear Everything removes them too.")
             }
         }
         .formStyle(.grouped)
@@ -353,7 +353,7 @@ private struct HistorySettings: View {
                 }
             }
         } message: { cut in
-            Text(String(localized: "\(cut.victims) items that are not favorites are deleted now. This can't be undone."))
+            Text(String(localized: "\(cut.victims) items that are not favorites or stack members are deleted now. This can't be undone."))
         }
         .onChange(of: isConfirmingStorage) { _, asking in
             // Cancelled: the picker shows the limit in force again.
@@ -364,7 +364,7 @@ private struct HistorySettings: View {
                 model.settings.maxStorageMiB = storageChoice
             }
         } message: {
-            Text("History is larger than the new limit. The oldest items that are not favorites are deleted until it fits; favorites stay. This can't be undone.")
+            Text("History is larger than the new limit. The oldest items that are not favorites or stack members are deleted until it fits; pinned items stay. This can't be undone.")
         }
         // A lower limit deletes old items; the usage shows the result.
         .onChange(of: model.settings.maxStorageMiB) { _, _ in

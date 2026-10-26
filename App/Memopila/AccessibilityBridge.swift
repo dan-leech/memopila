@@ -39,9 +39,10 @@ enum AccessibilityBridge {
 
     /// The key that types `character` in the current Latin layout: ⌘V is on another key with
     /// Dvorak or AZERTY-like layouts. With a non-Latin layout (Russian) apps read shortcuts through
-    /// the Latin layout that goes with it, which is the one asked for here.
+    /// the Latin layout that goes with it, which is the one asked for here. Also used for the
+    /// armed-session ⌘V observer (§3.11 / P25).
     @MainActor
-    private static func keyCode(producing character: Character) -> CGKeyCode? {
+    static func keyCode(producing character: Character) -> CGKeyCode? {
         guard let target = character.unicodeScalars.first?.value,
               let source = TISCopyCurrentASCIICapableKeyboardLayoutInputSource()?.takeRetainedValue(),
               // `kTISPropertyUnicodeKeyLayoutData`, by value: the imported global is not concurrency-safe.
