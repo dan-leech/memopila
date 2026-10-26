@@ -253,6 +253,37 @@ private struct ScopeChip: View {
 }
 
 /// Kind and period above the grid; they combine with the sidebar and the search.
+/// Shared metrics for filter-bar trailing chrome (status + Time/Arrange).
+/// One contract: optical center — never baseline (a 7pt pulse on the text baseline sits low).
+private enum FilterBarMeta {
+    static let fontSize: CGFloat = 12
+    static let iconSlot: CGFloat = 12
+    static let glyphSpacing: CGFloat = 5
+    static let clusterSpacing: CGFloat = 8
+
+    static func captionFont(weight: Font.Weight = .regular) -> Font {
+        .system(size: fontSize, weight: weight).monospacedDigit()
+    }
+
+    /// Icon + caption on one center line (status pulse and period/arrange share this).
+    static func row<Icon: View>(
+        _ title: String,
+        weight: Font.Weight = .regular,
+        tint: Color = .secondary,
+        @ViewBuilder icon: () -> Icon
+    ) -> some View {
+        HStack(alignment: .center, spacing: glyphSpacing) {
+            icon()
+                .frame(width: iconSlot, height: iconSlot)
+            Text(title)
+                .font(captionFont(weight: weight))
+                .foregroundStyle(tint)
+                .lineLimit(1)
+                .fixedSize()
+        }
+    }
+}
+
 private struct FilterBar: View {
     let model: AppModel
 
@@ -284,57 +315,65 @@ private struct FilterBar: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            // Status + period share one baseline (`.top` left the count hanging above Any Time).
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+            HStack(alignment: .center, spacing: FilterBarMeta.clusterSpacing) {
                 PanelStatus(model: model)
                 if !history.scope.isPinboard {
-                    Menu {
-                        Section(String(localized: "Time")) {
-                            ForEach(PeriodFilter.allCases, id: \.self) { period in
-                                Button {
-                                    history.periodFilter = period
-                                } label: {
-                                    if period == history.periodFilter {
-                                        Label(period.title, systemImage: "checkmark")
-                                    } else {
-                                        Text(period.title)
-                                    }
-                                }
-                            }
-                        }
-                        Section(String(localized: "Arrange")) {
-                            ForEach(HistorySortMode.allCases, id: \.self) { mode in
-                                Button {
-                                    history.sortMode = mode
-                                } label: {
-                                    if mode == history.sortMode {
-                                        Label(mode.menuTitle, systemImage: "checkmark")
-                                    } else {
-                                        Text(mode.menuTitle)
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        Label(viewMenuLabel, systemImage: viewMenuSymbol)
-                            .labelStyle(.titleAndIcon)
-                            .font(.system(size: 12, weight: viewMenuIsDefault ? .regular : .semibold))
-                            .foregroundStyle(viewMenuIsDefault ? Color.secondary : Color.accentColor)
-                            .padding(.horizontal, 6)
-                            .contentShape(Rectangle())
-                    }
-                    .menuStyle(.button)
-                    .menuIndicator(.hidden)
-                    .buttonStyle(ToolbarIconStyle(recolorsLabel: false))
-                    .fixedSize()
-                    .floatingHelp(viewMenuHelp)
-                    .accessibilityLabel(Text(viewMenuHelp))
-                    .accessibilityValue(Text(viewMenuLabel))
+                    viewMenu
                 }
             }
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 4)
+    }
+
+    private var viewMenu: some View {
+        Menu {
+            Section(String(localized: "Time")) {
+                ForEach(PeriodFilter.allCases, id: \.self) { period in
+                    Button {
+                        history.periodFilter = period
+                    } label: {
+                        if period == history.periodFilter {
+                            Label(period.title, systemImage: "checkmark")
+                        } else {
+                            Text(period.title)
+                        }
+                    }
+                }
+            }
+            Section(String(localized: "Arrange")) {
+                ForEach(HistorySortMode.allCases, id: \.self) { mode in
+                    Button {
+                        history.sortMode = mode
+                    } label: {
+                        if mode == history.sortMode {
+                            Label(mode.menuTitle, systemImage: "checkmark")
+                        } else {
+                            Text(mode.menuTitle)
+                        }
+                    }
+                }
+            }
+        } label: {
+            FilterBarMeta.row(
+                viewMenuLabel,
+                weight: viewMenuIsDefault ? .regular : .semibold,
+                tint: viewMenuIsDefault ? .secondary : .accentColor
+            ) {
+                Image(systemName: viewMenuSymbol)
+                    .font(.system(size: 11, weight: .regular))
+                    .foregroundStyle(viewMenuIsDefault ? Color.secondary : Color.accentColor)
+            }
+            .padding(.horizontal, 6)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .buttonStyle(ToolbarIconStyle(recolorsLabel: false))
+        .fixedSize()
+        .floatingHelp(viewMenuHelp)
+        .accessibilityLabel(Text(viewMenuHelp))
+        .accessibilityValue(Text(viewMenuLabel))
     }
 
     /// Colours only when there are any.
@@ -443,23 +482,21 @@ private struct PanelStatus: View {
         }
     }
 
+    @ViewBuilder
     private func label(_ status: (symbol: String, tint: Color, help: String), _ text: String?) -> some View {
-        // Baseline with the period menu; geometric circle (not `circle.fill`) stays optically centered.
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
-            statusGlyph(status.symbol, tint: status.tint)
-                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] }
-            if let text {
-                Text(verbatim: text)
-                    .font(.system(size: 12).monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .fixedSize()
+        if let text {
+            FilterBarMeta.row(text, tint: .secondary) {
+                statusGlyph(status.symbol, tint: status.tint)
             }
+        } else {
+            statusGlyph(status.symbol, tint: status.tint)
+                .frame(width: FilterBarMeta.iconSlot, height: FilterBarMeta.iconSlot)
         }
     }
 
     @ViewBuilder
     private func statusGlyph(_ symbol: String, tint: Color) -> some View {
+        // Geometric circle: SF `circle.fill` sits optically high in the icon slot.
         if symbol == "circle.fill" {
             Circle()
                 .fill(tint)
@@ -468,7 +505,6 @@ private struct PanelStatus: View {
             Image(systemName: symbol)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(tint)
-                .frame(width: 11, height: 11)
         }
     }
 
