@@ -25,6 +25,9 @@ let package = Package(
         .testTarget(
             name: "MemopilaServicesTests",
             dependencies: ["MemopilaServices"],
+            resources: [
+                .copy("Fixtures/PreUseCountV3.store"),
+            ],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("WebKit"),

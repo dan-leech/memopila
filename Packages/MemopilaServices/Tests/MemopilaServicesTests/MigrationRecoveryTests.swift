@@ -4,22 +4,23 @@ import Testing
 
 @Suite("Store migration recovery")
 struct MigrationRecoveryTests {
-    /// Dev-machine fixture: Application Support Unreadable backup from pre-useCount V3.
-    /// Skips cleanly when the file is absent (CI).
+    /// Pre-`useCount` V3 store (no `ZUSECOUNT`); staged plan fails, inferred open upgrades.
     @Test func should_open_pre_useCount_store_via_inferred_fallback() async throws {
-        let backup = URL(fileURLWithPath: NSHomeDirectory() + "/Library/Application Support/Memopila/Unreadable History 2026-10-26 21.47.49/History.store")
-        guard FileManager.default.fileExists(atPath: backup.path) else { return }
+        let fixture = try #require(Bundle.module.url(forResource: "PreUseCountV3", withExtension: "store"))
         let tmp = FileManager.default.temporaryDirectory.appending(path: "memopila-recovery-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tmp) }
-        try FileManager.default.copyItem(at: backup, to: tmp.appending(path: "History.store"))
-        let support = backup.deletingLastPathComponent().appending(path: ".History_SUPPORT")
-        if FileManager.default.fileExists(atPath: support.path) {
-            try FileManager.default.copyItem(at: support, to: tmp.appending(path: ".History_SUPPORT"))
-        }
-        let store = try ClipboardStore(url: tmp.appending(path: "History.store"))
-        #expect(try await store.count(HistoryQuery()) == 359)
-        let again = try ClipboardStore(url: tmp.appending(path: "History.store"))
-        #expect(try await again.count(HistoryQuery()) == 359)
+        let dest = tmp.appending(path: "History.store")
+        try FileManager.default.copyItem(at: fixture, to: dest)
+
+        let store = try ClipboardStore(url: dest)
+        #expect(try await store.count(HistoryQuery()) == 2)
+        let cards = try await store.page(HistoryQuery(), offset: 0, limit: 10)
+        #expect(cards.count == 2)
+        #expect(cards.allSatisfy { $0.useCount == 0 })
+
+        // Second open uses the staged plan on the upgraded file.
+        let again = try ClipboardStore(url: dest)
+        #expect(try await again.count(HistoryQuery()) == 2)
     }
 }

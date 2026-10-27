@@ -34,6 +34,8 @@ DerivedData/
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/xcuserdata/
+# Local `swift test` pins under Packages/ — app release resolves via the Xcode project.
+Packages/**/Package.resolved
 
 # CocoaPods / Carthage / fastlane (unused in v1 — ignore if added locally)
 Pods/
