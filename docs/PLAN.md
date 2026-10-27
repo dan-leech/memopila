@@ -1,7 +1,7 @@
 # Memopila — Clipboard Manager Plan
 
 **Document type:** DESIGN  
-**Status:** app at **1.1.0** (v1 plan + Favorites/Collections pinboard order + Stack Window Duplicate & Edit + History Arrange / `useCount` + stack age by freshest activity). Statements marked **(spike)** are follow-up OS checks; access on 15.6 / 26.6 / 27.0 is recorded in §3.1 — **27.2+** still open until Apple releases it. Color marks / colored collections are **out of scope** (Collections stay named groups; Favorites stay keep).  
+**Status:** app at **1.1.0** (v1 plan + Favorites/Collections pinboard order + Stack Window Duplicate & Edit + History Arrange / `useCount` + stack age by freshest activity). Statements marked **(spike)** are follow-up OS checks; access on 15.6 / 26.6 / 27.0 is recorded in §3.1 — **27.2+** still open until Apple releases it.  
 **SSOT:** §3–§6 = normative contracts; §7 = architecture + memory budgets; §8 = UI; §10 = phase done-when; §11 = test matrix by reference (do not restate contracts)  
 **Product:** Memopila — native macOS clipboard manager that replaces [Pasta](https://getpasta.com/): the same UI model (§8) plus what Pasta lacks, starting with record editing (§3.6).
 
