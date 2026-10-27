@@ -1,7 +1,7 @@
 # Memopila — Clipboard Manager Plan
 
 **Document type:** DESIGN  
-**Status:** app at **1.1.0** (v1 plan + Favorites/Collections pinboard order + Stack Window Duplicate & Edit). Statements marked **(spike)** are follow-up OS checks; access on 15.6 / 26.6 / 27.0 is recorded in §3.1 — **27.2+** still open until Apple releases it.  
+**Status:** app at **1.1.0** (v1 plan + Favorites/Collections pinboard order + Stack Window Duplicate & Edit + History Arrange / `useCount` + stack age by freshest activity). Statements marked **(spike)** are follow-up OS checks; access on 15.6 / 26.6 / 27.0 is recorded in §3.1 — **27.2+** still open until Apple releases it. Color marks / colored collections are **out of scope** (Collections stay named groups; Favorites stay keep).  
 **SSOT:** §3–§6 = normative contracts; §7 = architecture + memory budgets; §8 = UI; §10 = phase done-when; §11 = test matrix by reference (do not restate contracts)  
 **Product:** Memopila — native macOS clipboard manager that replaces [Pasta](https://getpasta.com/): the same UI model (§8) plus what Pasta lacks, starting with record editing (§3.6).
 
@@ -400,7 +400,7 @@ User-facing name: **Choose for Clipboard** (internally Restore).
 - Text actions and other transformations do not copy: they create a new card (*Duplicate As*, §3.9). No *Copy as plain text*: ⇧⌘V (Paste and Match Style) in the target app does it.
 - **Auto-paste** (Settings → General → *Auto-Paste After Choosing*, off by default): once the panel has given up key status (it closes; when pinned it resigns key and stays visible), post ⌘V through the session event tap, on the key that types *v* in the current Latin layout (Dvorak, AZERTY) and with only ⌘ set. Requires Accessibility; without it items are only put on the clipboard.
 
-**After any confirmed write** (Restore or a variant): the store moves the source record to the top of **History** (and other recency scopes): `lastCopiedAt = max(lastCopiedAt, restoreTime)`; `copyCount` unchanged. **Favorites** and **Collections** are ordered pinboards (`FavoriteSlot` / tag `position`) — Choose does **not** change their board order. The written content is suppressed by the token, so variant outputs (plain text, text actions, recognized text) are **not** added to history; to keep a transformed text, apply the action in the editor and save (§3.6).
+**After any confirmed write** (Restore or a variant): the store moves the source record to the top of **History** (and other recency scopes): `lastCopiedAt = max(lastCopiedAt, restoreTime)`; `useCount += 1`; `copyCount` unchanged. Choosing a stack bumps `stack.useCount` / `lastUsedAt` the same way. **Favorites** and **Collections** are ordered pinboards (`FavoriteSlot` / tag `position`) — Choose does **not** change their board order. The written content is suppressed by the token, so variant outputs (plain text, text actions, recognized text) are **not** added to history; to keep a transformed text, apply the action in the editor and save (§3.6).
 
 #### PasteboardWriter contract
 
@@ -427,7 +427,7 @@ User-facing name: **Choose for Clipboard** (internally Restore).
 - External change after the pre-write check → no token; the test must not claim foreign content was untouched.
 - A wrong token never suppresses an external change.
 - Confirmed Restore suppressed once; later external change captured.
-- Restore moves the record to the top without changing `copyCount`.
+- Restore moves the record to the top, bumps `useCount`, leaves `copyCount` unchanged.
 - Copy as plain text / text action / text from image writes only plain text + source marker and adds no record.
 
 ### 3.5 Ingest pipeline and payload persistence
@@ -504,7 +504,7 @@ If a mandatory gate fails → amend this PLAN with a fallback (layout, commit or
 - **Choose for Clipboard** in the record window (↩ when the text is not being edited, ⌘↩ always) saves unsaved changes first, then restores (§3.4); the window closes and the focus goes back to the app.
 - Empty text → save disabled. Text larger than `maxSinglePayloadBytes` → save rejected with a message.
 - **Secrets** (§3.10) in saved text are treated as in a copy: masked only while detection is on and for the enabled kinds; *Don't save* refuses the save with a message; *Delete after* sets `expiresAt` (unless favorite) and re-arms the expiry timer.
-- **Dedup collision:** if the new hash equals another record → merge into that record (favorite = OR; collections = union; `copyCount` = sum; `firstCopiedAt` = min; `lastCopiedAt` = max; `customTitle` = the existing one, else the edited one), delete the edited record, select the survivor, show *Merged with an existing record*; the record window then shows the survivor. One transaction.
+- **Dedup collision:** if the new hash equals another record → merge into that record (favorite = OR; collections = union; `copyCount` = sum; `useCount` = sum; `firstCopiedAt` = min; `lastCopiedAt` = max; `customTitle` = the existing one, else the edited one), delete the edited record, select the survivor, show *Merged with an existing record*; the record window then shows the survivor. One transaction.
 - **Concurrency:** Edit is a `ClipboardStore` mutation; it adds the old hash to the tombstones (§3.2 coordination rule 5). Record deleted meanwhile → *Record no longer exists*.
 
 **Tests:** plain edit; rich → plain with warning; URL detection; collision merge; line diff for *Changes…* (`LineDiffTests`); title shown and searchable; Choose for Clipboard with unsaved changes; text action in the editor + undo; in-flight capture of pre-edit content not recreated.
@@ -873,15 +873,15 @@ UI refreshes from store-published change notifications + explicit paged reloads;
 
 ### 7.2 Data model
 
-- **Schema versioning:** `StoreSchemaV1` → V2 (stacks) → V3 (pinboard order: `FavoriteSlot`, `CollectionSlot` — new entities only) → **V4** (`useCount` on records and stacks) via `SchemaMigrationPlan` (lightweight). On open, missing slots are seeded once from `lastCopiedAt` / `lastUsedAt`.
+- **Schema versioning:** `StoreSchemaV1` → V2 (stacks) → V3 (pinboard order: `FavoriteSlot`, `CollectionSlot` — new entities only) → **V4** (`useCount` on records and stacks + `SchemaStampV4` so V3/V4 checksums differ) via `SchemaMigrationPlan` (lightweight). Additive properties on shared `@Model` types change every VersionedSchema checksum: if staged open fails with *unknown model version*, `ClipboardStore` retries **inferred** lightweight migration (no plan); a later open with the plan succeeds. On open, missing slots are seeded once from `lastCopiedAt` / `lastUsedAt`.
 - **Unreadable store:** the store files (store, `-shm`, `-wal`, external data folder) move to *Unreadable History <date>* next to it and a new store starts; a banner offers *Show in Finder* and stays, across relaunches, until dismissed. If an empty store cannot be opened either, the files were not the problem (a full disk, no permission): they go back where they were and history is kept in memory with the red banner (review finding). History is never deleted automatically.
-- `ClipboardRecord` — `id: UUID`, `displayType`, `firstCopiedAt`, `lastCopiedAt`, `copyCount`, `lastSourceAppBundleID`, `lastSourceAppName`, `isFavorite`, `contentHash`, `hashSchemeVersion` (= 1), `storageFormatVersion` (= 1), `payloadSizeBytes`, `cardPreview` (≤ 300 scalars), `searchText` (≤ 10 000 scalars), `customTitle?`, `editedAt?`, `expiresAt?`, `ocrText?`, `ocrState`, `sourceURL?`, `sourceWindowTitle?`, `codeLanguage?` (manual preview override), `pixelWidth?` / `pixelHeight?`, `colorHex?`, `fileCount?`, `fileNames?` (for search), `skippedTypes?` (badge), relationships `representations` (cascade) and `thumbnail` (cascade). `#Index` on `contentHash`, `lastCopiedAt`, `isFavorite`, `lastSourceAppBundleID`, `displayType`, `expiresAt`. Dedup uniqueness is enforced by `ClipboardStore`, not `#Unique` (SwiftData resolves `#Unique` conflicts by upserting, which would bypass the merge rules). Favorite **membership** is `isFavorite`; Favorites **order** is `FavoriteSlot`.
+- `ClipboardRecord` — `id: UUID`, `displayType`, `firstCopiedAt`, `lastCopiedAt`, `copyCount`, `useCount` (Choose/Restore), `lastSourceAppBundleID`, `lastSourceAppName`, `isFavorite`, `contentHash`, `hashSchemeVersion` (= 1), `storageFormatVersion` (= 1), `payloadSizeBytes`, `cardPreview` (≤ 300 scalars), `searchText` (≤ 10 000 scalars), `customTitle?`, `editedAt?`, `expiresAt?`, `ocrText?`, `ocrState`, `sourceURL?`, `sourceWindowTitle?`, `codeLanguage?` (manual preview override), `pixelWidth?` / `pixelHeight?`, `colorHex?`, `fileCount?`, `fileNames?` (for search), `skippedTypes?` (badge), relationships `representations` (cascade) and `thumbnail` (cascade). `#Index` on `contentHash`, `lastCopiedAt`, `isFavorite`, `lastSourceAppBundleID`, `displayType`, `expiresAt`, `useCount`. Dedup uniqueness is enforced by `ClipboardStore`, not `#Unique` (SwiftData resolves `#Unique` conflicts by upserting, which would bypass the merge rules). Favorite **membership** is `isFavorite`; Favorites **order** is `FavoriteSlot`.
 - `PayloadRepresentation`, `RecordThumbnail` — §3.5.
 - `Tag` (UI: Collection) — `id`, `name`, `sortOrder` (sidebar list). `RecordTag` (`recordId`, `tagId`) with `#Unique`. `FavoriteSlot` / `CollectionSlot` for pinboard order (membership stays on tags / `isFavorite`).
 - **Configuration lives in `UserDefaults`, not SwiftData** (`SettingsStore`): it is small, read on every capture, and must not depend on the history store opening. `AppProfile` and `FormatRule` are `Codable` values stored as JSON.
 - `AppProfile` — `bundleID` (unique by construction), `captureMode` (`save` / `dontSave` / `deleteAfter(minutes)`), `sizeLimitMiB?`, `recognizeText`, `recordSourcePage`.
 - `FormatRule` — `appBundleID?` (nil = all apps), `typePattern?`, `isPrefix`, `action`, `maxSizeMiB?`; list order is the tie-breaker.
-- `AppSettings` — window hotkey, pause / skip hotkeys, identity mode, retention, size limit, `loginAtStart`, `pasteAfterCopy` (auto-paste after Choose for Clipboard), `ignoreRemoteClipboard`, `silentDefaultVerifiedOSBuild`, `pausedUntil?`, `pausedIndefinitely`, text recognition on/off + languages, window frame per display. Polling interval is fixed (250 ms). No Dock icon option (v1 stays accessory-only; see §8.7).
+- `AppSettings` — window hotkey, pause / skip hotkeys, identity mode, retention, size limit, `loginAtStart`, `pasteAfterCopy` (auto-paste after Choose for Clipboard), `ignoreRemoteClipboard`, `silentDefaultVerifiedOSBuild`, `pausedUntil?`, `pausedIndefinitely`, text recognition on/off + languages, window frame per display, `historySortMode` (History Arrange; not part of `isFiltered`). Polling interval is fixed (250 ms). No Dock icon option (v1 stays accessory-only; see §8.7).
 
 ### 7.3 Memory budgets
 
