@@ -25,9 +25,13 @@ final class StackEditorState {
     /// Optimistic patches that must survive a concurrent `reload` (store fetch can finish before write).
     /// Favorite overrides are tagged with the AppModel op generation so superseded ops cannot steal a newer pending.
     @ObservationIgnored private var pendingMemberFavorites: [UUID: (isFavorite: Bool, op: Int)] = [:]
-    @ObservationIgnored private var pendingMemberTitles: [UUID: String] = [:]
+    @ObservationIgnored private var pendingMemberTitles: [UUID: (title: String, op: Int)] = [:]
     @ObservationIgnored private var pendingStackFavorite: (isFavorite: Bool, op: Int)?
-    @ObservationIgnored private var pendingStackTitle: String?
+    @ObservationIgnored private var pendingStackTitle: (title: String, op: Int)?
+    @ObservationIgnored private var pendingStackDeal: (mode: StackDealMode, loops: Bool, op: Int)?
+    /// Optimistic playlist order — survives a reload whose store fetch started before the write landed.
+    @ObservationIgnored private var pendingOrder: [UUID]?
+    @ObservationIgnored private var titleEditGeneration = 0
 
     static let maxMembers = 1_200
 
@@ -73,36 +77,37 @@ final class StackEditorState {
         order.firstIndex(of: id).map { $0 + 1 }
     }
 
-    func reload(selecting id: UUID? = nil) {
+    /// `excluding` is re-applied after the snapshot — a delete during reload must not repaint ghosts.
+    func reload(selecting id: UUID? = nil, excluding: @escaping @MainActor () -> Set<UUID> = { [] }) {
         generation += 1
         let generation = generation
         let stackID = stackID
         let preferSelection = id
         Task {
             do {
-                let card = try await store.stack(stackID)
-                let ids = try await store.stackMemberIDs(stackID)
-                let limited = Array(ids.prefix(Self.maxMembers))
-                let page = try await store.page(
-                    HistoryQuery(scope: .stack(stackID)),
-                    offset: 0,
-                    limit: max(limited.count, 1)
-                )
-                guard generation == self.generation else { return }
-                guard let card else {
+                // One actor call — three separate reads used to race duplicate/remove mid-reload.
+                let hiddenAtStart = excluding()
+                guard let snap = try await store.stackSnapshot(
+                    stackID, memberLimit: Self.maxMembers, excluding: hiddenAtStart
+                ) else {
+                    guard generation == self.generation else { return }
                     self.loadError = String(localized: "This stack was deleted.")
                     return
                 }
-                let byID = Dictionary(uniqueKeysWithValues: page.map { ($0.id, $0) })
-                self.stack = card
-                self.totalMemberCount = ids.count
-                self.order = limited
-                self.members = limited.compactMap { byID[$0] }
+                guard generation == self.generation else { return }
+                let stillHidden = excluding()
+                let newlyHidden = stillHidden.subtracting(hiddenAtStart)
+                let order = snap.order.filter { !stillHidden.contains($0) }
+                let byID = Dictionary(uniqueKeysWithValues: snap.members.map { ($0.id, $0) })
+                self.stack = snap.stack
+                self.totalMemberCount = max(0, snap.totalVisible - newlyHidden.count)
+                self.order = order
+                self.members = order.compactMap { byID[$0] }
                 self.applyPendingOverrides()
                 self.loadError = nil
-                if let preferSelection, limited.contains(preferSelection) {
+                if let preferSelection, self.order.contains(preferSelection) {
                     self.selectedID = preferSelection
-                } else if let selectedID, !limited.contains(selectedID) {
+                } else if let selectedID, !self.order.contains(selectedID) {
                     self.selectedID = nil
                 }
             } catch {
@@ -112,25 +117,54 @@ final class StackEditorState {
         }
     }
 
-    /// Re-paint in-flight optimistic ♥ / titles after a store-backed reload.
+    /// Re-paint in-flight optimistic ♥ / titles / deal / order after a store-backed reload.
     private func applyPendingOverrides() {
         if let favorite = pendingStackFavorite {
             stack = stack.withFavorite(favorite.isFavorite)
         }
         if let title = pendingStackTitle {
-            patchStackTitle(title)
+            patchStackTitle(title.title)
+        }
+        if let deal = pendingStackDeal {
+            stack = stack.withDeal(mode: deal.mode, loops: deal.loops)
+        }
+        if let pending = pendingOrder {
+            let byID = Dictionary(uniqueKeysWithValues: members.map { ($0.id, $0) })
+            var next = pending.filter { byID[$0] != nil }
+            let have = Set(next)
+            // Membership added while the reorder was in flight stays at the end.
+            for id in order where !have.contains(id) {
+                next.append(id)
+            }
+            paintOrder(next)
         }
         for (id, pending) in pendingMemberFavorites {
             guard let index = members.firstIndex(where: { $0.id == id }) else { continue }
             members[index] = members[index].withFavorite(pending.isFavorite)
         }
-        for (id, title) in pendingMemberTitles {
+        for (id, pending) in pendingMemberTitles {
             guard let index = members.firstIndex(where: { $0.id == id }) else { continue }
-            members[index] = members[index].withTitle(title)
+            members[index] = members[index].withTitle(pending.title)
         }
     }
 
+    /// True while the inspector title has not yet settled to the store.
+    var hasPendingStackTitle: Bool { pendingStackTitle != nil }
+
     func applyOrder(_ next: [UUID]) {
+        pendingOrder = next
+        paintOrder(next)
+    }
+
+    func settleOrder(_ recordIDs: [UUID]) {
+        if pendingOrder == recordIDs { pendingOrder = nil }
+    }
+
+    func discardOrderOverride() {
+        pendingOrder = nil
+    }
+
+    private func paintOrder(_ next: [UUID]) {
         order = next
         let byID = Dictionary(uniqueKeysWithValues: members.map { ($0.id, $0) })
         members = next.compactMap { byID[$0] }
@@ -142,6 +176,7 @@ final class StackEditorState {
     }
 
     /// Drop members from the in-memory window immediately (store / reload remain SSOT).
+    /// Paint only — do not invent a pending reorder (that stuck across delete/Undo and skewed Choose).
     func removeMembers(_ ids: Set<UUID>) {
         guard !ids.isEmpty else { return }
         for id in ids {
@@ -151,29 +186,72 @@ final class StackEditorState {
         let next = order.filter { !ids.contains($0) }
         let removed = order.count - next.count
         guard removed > 0 else { return }
-        applyOrder(next)
+        if let pending = pendingOrder {
+            pendingOrder = pending.filter { !ids.contains($0) }
+        }
+        paintOrder(next)
         totalMemberCount = max(next.count, totalMemberCount - removed)
         if let selectedID, ids.contains(selectedID) {
             self.selectedID = nil
         }
     }
 
-    func applyDeal(mode: StackDealMode, loops: Bool) {
+    /// Merge retarget: keep playlist slot, swap id (pending order included).
+    func remapMember(from oldID: UUID, to newID: UUID) {
+        if let pending = pendingOrder {
+            pendingOrder = pending.map { $0 == oldID ? newID : $0 }
+        }
+        guard order.contains(oldID) else { return }
+        var seen = Set<UUID>()
+        let next = order.map { $0 == oldID ? newID : $0 }.filter { seen.insert($0).inserted }
+        paintOrder(next)
+        if let fav = pendingMemberFavorites.removeValue(forKey: oldID) {
+            pendingMemberFavorites[newID] = fav
+        }
+        if let title = pendingMemberTitles.removeValue(forKey: oldID) {
+            pendingMemberTitles[newID] = title
+        }
+    }
+
+    func applyDeal(mode: StackDealMode, loops: Bool, op: Int) {
+        pendingStackDeal = (mode, loops, op)
         stack = stack.withDeal(mode: mode, loops: loops)
     }
 
-    func applyTitle(_ title: String) {
+    func settleDeal(mode: StackDealMode, loops: Bool, op: Int) {
+        guard pendingStackDeal?.mode == mode,
+              pendingStackDeal?.loops == loops,
+              pendingStackDeal?.op == op else { return }
+        pendingStackDeal = nil
+    }
+
+    func discardDealOverride(op: Int) {
+        guard pendingStackDeal?.op == op else { return }
+        pendingStackDeal = nil
+    }
+
+    /// Local typing omits `op` (bumps an edit gen); store commits pass AppModel’s rename gen.
+    func applyTitle(_ title: String, op: Int? = nil) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let next = trimmed.isEmpty ? "Stack" : trimmed
-        pendingStackTitle = next
+        let owned: Int
+        if let op {
+            owned = op
+            titleEditGeneration = max(titleEditGeneration, op)
+        } else {
+            titleEditGeneration += 1
+            owned = titleEditGeneration
+        }
+        pendingStackTitle = (next, owned)
         patchStackTitle(next)
     }
 
-    /// Store committed this title — drop the pending override when it still matches.
-    func settleTitle(_ title: String) {
+    /// Store committed this title — drop the pending override when this op still owns it.
+    func settleTitle(_ title: String, op: Int) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let next = trimmed.isEmpty ? "Stack" : trimmed
-        if pendingStackTitle == next { pendingStackTitle = nil }
+        guard pendingStackTitle?.title == next, pendingStackTitle?.op == op else { return }
+        pendingStackTitle = nil
     }
 
     private func patchStackTitle(_ title: String) {
@@ -191,9 +269,10 @@ final class StackEditorState {
         pendingStackFavorite = nil
     }
 
-    /// True when this op still owns the in-flight stack ♥ (or there is none for another op).
+    /// True when this op still owns an in-flight stack ♥. Nil pending is not ownership —
+    /// a later settle must not be reverted by a superseded failure.
     func ownsStackFavoritePending(op: Int) -> Bool {
-        guard let pending = pendingStackFavorite else { return true }
+        guard let pending = pendingStackFavorite else { return false }
         return pending.op == op
     }
 
@@ -229,28 +308,36 @@ final class StackEditorState {
         members[index] = members[index].withFavorite(isFavorite)
     }
 
-    /// Optimistic member rename — same dual-projection rule as favorite.
-    func applyMemberTitle(id: UUID, title: String) {
+    /// Optimistic member rename — op-tagged like ♥ so a lagged failure cannot wipe a newer pending.
+    func applyMemberTitle(id: UUID, title: String, op: Int) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        pendingMemberTitles[id] = trimmed
+        pendingMemberTitles[id] = (trimmed, op)
         guard let index = members.firstIndex(where: { $0.id == id }) else { return }
         members[index] = members[index].withTitle(title)
     }
 
-    func settleMemberTitle(id: UUID, title: String) {
+    func settleMemberTitle(id: UUID, title: String, op: Int) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if pendingMemberTitles[id] == trimmed {
-            pendingMemberTitles.removeValue(forKey: id)
-        }
-    }
-
-    /// Drop pending title so a reload can show store truth after a failed rename.
-    func discardMemberTitleOverride(id: UUID) {
+        guard let pending = pendingMemberTitles[id],
+              pending.title == trimmed,
+              pending.op == op else { return }
         pendingMemberTitles.removeValue(forKey: id)
     }
 
-    func discardStackTitleOverride() {
+    /// Drop pending title so a reload can show store truth after a failed rename.
+    func discardMemberTitleOverride(id: UUID, op: Int) {
+        guard pendingMemberTitles[id]?.op == op else { return }
+        pendingMemberTitles.removeValue(forKey: id)
+    }
+
+    func discardStackTitleOverride(op: Int) {
+        guard pendingStackTitle?.op == op else { return }
         pendingStackTitle = nil
+    }
+
+    /// In-flight member title override for `id`, if any.
+    func memberTitleOverride(_ id: UUID) -> String? {
+        pendingMemberTitles[id]?.title
     }
 
     func moveMember(_ id: UUID, by delta: Int) -> [UUID]? {

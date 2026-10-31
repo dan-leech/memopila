@@ -75,6 +75,13 @@ enum StackKeys {
             }
             return true
         }
+        // ⌘⌫ removes the selected member from this stack (History delete stays on the panel).
+        if flags == .command,
+           key.code == kVK_Delete || key.code == kVK_ForwardDelete,
+           let id = state.selectedID {
+            model.removeRecord(id, fromStack: state.stackID)
+            return true
+        }
         if flags.isEmpty, key.code == kVK_Return || key.code == kVK_ANSI_KeypadEnter {
             model.chooseStackFromEditor(paste: false)
             return true
@@ -219,6 +226,10 @@ private struct StackEditorView: View {
                     TextField(String(localized: "Stack title"), text: titleBinding)
                         .textFieldStyle(.roundedBorder)
                         .focused($titleFocused)
+                        .onSubmit { commitStackTitle() }
+                        .onChange(of: titleFocused) { _, focused in
+                            if !focused { commitStackTitle() }
+                        }
                         .floatingHelp(String(localized: "Shown on the stack card and found by search"))
                 }
 
@@ -297,7 +308,7 @@ private struct StackEditorView: View {
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.red)
-                .floatingHelp(String(localized: "Delete this stack; its cards stay in History"))
+                .floatingHelp(String(localized: "Delete this stack. Cards stay in History unless they are older than History keeps."))
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -454,13 +465,15 @@ private struct StackEditorView: View {
             .controlSize(.regular)
             .floatingHelp(String(localized: "Edit this shared history card (Space). Changes apply everywhere it appears."))
 
-            Menu {
-                StackMemberMoveMenu(cardID: card.id, model: model)
-            } label: {
-                Label(String(localized: "Move"), systemImage: "arrow.up.arrow.down")
-                    .frame(maxWidth: .infinity)
+            if state.canReorder {
+                Menu {
+                    StackMemberMoveMenu(cardID: card.id, model: model)
+                } label: {
+                    Label(String(localized: "Move"), systemImage: "arrow.up.arrow.down")
+                        .frame(maxWidth: .infinity)
+                }
+                .floatingHelp(String(localized: "Change this card’s place in the order"))
             }
-            .floatingHelp(String(localized: "Change this card’s place in the order"))
 
             Button(role: .destructive) {
                 model.removeRecord(card.id, fromStack: state.stackID)
@@ -473,14 +486,20 @@ private struct StackEditorView: View {
         }
     }
 
+    /// Local paint while typing; store write on ↩ / blur (same contract as Edit Record title).
     private var titleBinding: Binding<String> {
         Binding(
             get: { state.stack.title },
             set: { newValue in
                 state.applyTitle(newValue)
-                model.renameStack(state.stackID, title: newValue)
+                model.windows.updateStackTitle(state.title)
             }
         )
+    }
+
+    private func commitStackTitle() {
+        guard state.hasPendingStackTitle else { return }
+        model.renameStack(state.stackID, title: state.stack.title)
     }
 
     // MARK: Card grid
@@ -705,6 +724,8 @@ private struct StackMemberContextMenu: View {
     let stackID: UUID
     let model: AppModel
 
+    private var canReorder: Bool { model.stackEditor?.canReorder == true }
+
     var body: some View {
         Button {
             model.duplicateInStack(cardID, stackID: stackID)
@@ -716,10 +737,12 @@ private struct StackMemberContextMenu: View {
         } label: {
             Label(String(localized: "Edit Original"), systemImage: "pencil")
         }
-        Menu {
-            StackMemberMoveMenu(cardID: cardID, model: model)
-        } label: {
-            Label(String(localized: "Move"), systemImage: "arrow.up.arrow.down")
+        if canReorder {
+            Menu {
+                StackMemberMoveMenu(cardID: cardID, model: model)
+            } label: {
+                Label(String(localized: "Move"), systemImage: "arrow.up.arrow.down")
+            }
         }
         Divider()
         Button(String(localized: "Remove from Stack"), role: .destructive) {

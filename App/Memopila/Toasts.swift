@@ -22,6 +22,24 @@ final class ToastCenter {
     @ObservationIgnored private var dismissTask: Task<Void, Never>?
 
     func show(_ message: String, isError: Bool = false, actions: [Toast.Action] = []) {
+        // Sacred Undo: do not replace a delete-Undo toast with a transient message.
+        if actions.isEmpty, current.map({ !$0.actions.isEmpty && !$0.isError }) == true {
+            return
+        }
+        present(message, isError: isError, actions: actions)
+    }
+
+    /// Delete / stack-delete Undo toast — always replaces the current toast.
+    func showUndo(_ message: String, undo: @escaping @MainActor () -> Void) {
+        present(message, actions: [.init(title: String(localized: "Undo"), run: undo)])
+    }
+
+    func clearUndo() {
+        guard let current, !current.actions.isEmpty, !current.isError else { return }
+        dismiss()
+    }
+
+    private func present(_ message: String, isError: Bool = false, actions: [Toast.Action] = []) {
         let toast = Toast(message: message, isError: isError, actions: actions)
         current = toast
         dismissTask?.cancel()
@@ -34,7 +52,7 @@ final class ToastCenter {
     }
 
     func error(_ message: String) {
-        show(message, isError: true)
+        present(message, isError: true)
     }
 
     func dismiss() {

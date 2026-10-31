@@ -353,7 +353,7 @@ private struct HistorySettings: View {
                 }
             }
         } message: { cut in
-            Text(String(localized: "\(cut.victims) items that are not favorites or stack members are deleted now. This can't be undone."))
+            Text(String(localized: "\(cut.victims) items that are not favorites or stack members (including stale stacks) are deleted now. This can't be undone."))
         }
         .onChange(of: isConfirmingStorage) { _, asking in
             // Cancelled: the picker shows the limit in force again.
@@ -423,8 +423,13 @@ private struct HistorySettings: View {
             case .count(let count):
                 victims = max(0, ((try? await store.countNonFavorites()) ?? count + 1) - count)
             case .age(let days):
-                let cutoff = Date().addingTimeInterval(-TimeInterval(days) * 86_400)
-                victims = (try? await store.countNonFavorites(copiedBefore: cutoff)) ?? 1
+                let maxAge = TimeInterval(days) * 86_400
+                if let preview = try? await store.retentionCutPreview(maxAge: maxAge) {
+                    // Records + stale stacks + cascade members (preview ≠ apply without this).
+                    victims = preview.records + preview.stacks + preview.cascade
+                } else {
+                    victims = 1
+                }
             }
             guard victims > 0 else {
                 switch kind {

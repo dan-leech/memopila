@@ -230,19 +230,40 @@ final class PanelController: NSObject, NSWindowDelegate {
             return true
         case .confirmDelete(let ids):
             if key.code == kVK_Escape { model.present(nil); return true }
-            if key.isReturn { model.delete(ids, confirmed: true); return true }
+            if key.isReturn {
+                model.present(nil)
+                model.confirmPendingRecordDelete(ids)
+                return true
+            }
             return false
-        case .confirmDeleteMany(_, let others, _):
+        case .confirmDeleteMany(_, let others, let favorites):
             if key.code == kVK_Escape { model.present(nil); return true }
             if key.isReturn, !others.isEmpty {
                 model.present(nil)
-                model.delete(others, confirmed: true)
+                model.confirmPendingDeleteMany(others: others, favorites: [])
                 return true
             }
+            _ = favorites
             return false
         case .confirmUnfavorite(let ids, _):
             if key.code == kVK_Escape { model.present(nil); return true }
             if key.isReturn { model.toggleFavorites(ids, confirmed: true); return true }
+            return false
+        case .confirmDeleteStacks(let ids, _, _):
+            if key.code == kVK_Escape { model.present(nil); return true }
+            if key.isReturn {
+                model.present(nil)
+                for id in ids { model.deleteStack(id, confirmed: true) }
+                return true
+            }
+            return false
+        case .confirmLeaveStack(let record, let stack):
+            if key.code == kVK_Escape { model.present(nil); return true }
+            if key.isReturn {
+                model.present(nil)
+                model.removeRecord(record, fromStack: stack, confirmed: true)
+                return true
+            }
             return false
         case .confirmDeleteCollection(let id):
             if key.code == kVK_Escape { model.present(nil); return true }

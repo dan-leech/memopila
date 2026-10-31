@@ -32,6 +32,8 @@ final class ClipboardMonitor {
 
     @ObservationIgnored private let settings: SettingsStore
     @ObservationIgnored private let store: ClipboardStore
+    /// A copy being read or saved when ⌘Q arrives is waited for, not lost.
+    @ObservationIgnored private let writes: WriteLedger
     @ObservationIgnored private var timer: Timer?
     @ObservationIgnored private let logger = Logger(subsystem: "io.github.dan-leech.Memopila", category: "capture")
     /// A record was committed or merged.
@@ -53,9 +55,10 @@ final class ClipboardMonitor {
     /// The last other app that was active: where the focus goes back to when nothing else is known.
     var lastOtherApp: NSRunningApplication? { frontmostTracker.lastOtherApp }
 
-    init(settings: SettingsStore, store: ClipboardStore) {
+    init(settings: SettingsStore, store: ClipboardStore, writes: WriteLedger) {
         self.settings = settings
         self.store = store
+        self.writes = writes
         coordinator = CaptureCoordinator(pausedUntil: settings.pausedUntil, pausedIndefinitely: settings.pausedIndefinitely)
     }
 
@@ -157,6 +160,8 @@ final class ClipboardMonitor {
         let reader = SnapshotReader(context: captureContext(saveAnyway: saveAnyway, sourceSince: sourceSince, identity: identity))
         let frontmost = NSWorkspace.shared.frontmostApplication
         let titleSource = AccessibilityBridge.isTrusted ? frontmost.map { ($0.processIdentifier, $0.bundleIdentifier) } : nil
+        let writes = writes
+        writes.begin()
         Task.detached(priority: .userInitiated) { [weak self] in
             var outcome = reader.read(GeneralPasteboardSource())
             if let expectedChangeCount, outcome.changeCount != expectedChangeCount { outcome = .unstable }
@@ -169,6 +174,7 @@ final class ClipboardMonitor {
                 enrichment = IngestEnrichment.make(for: snapshot.items, sourceAppName: nil, sourceWindowTitle: title)
             }
             await self?.finishRead(outcome, enrichment: enrichment, readerSeq: readerSeq, saveAnyway: saveAnyway)
+            await writes.end()
         }
     }
 

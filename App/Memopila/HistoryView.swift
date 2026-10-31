@@ -1043,17 +1043,18 @@ private struct OverlayHost: View {
             ) { model.renameCollection(id, to: $0) } cancel: { model.present(nil) }
         case .confirmDelete(let ids):
             ConfirmDeleteOverlay(count: ids.count) {
-                model.delete(ids, confirmed: true)
+                model.present(nil)
+                model.confirmPendingRecordDelete(ids)
             } cancel: {
                 model.present(nil)
             }
         case .confirmDeleteMany(let scope, let others, let favorites):
             ConfirmDeleteManyOverlay(scope: scope, others: others.count, favorites: favorites.count) {
                 model.present(nil)
-                model.delete(others, confirmed: true)
+                model.confirmPendingDeleteMany(others: others, favorites: [])
             } deleteFavoritesToo: {
                 model.present(nil)
-                model.delete(others + favorites, confirmed: true)
+                model.confirmPendingDeleteMany(others: others, favorites: favorites)
             } cancel: {
                 model.present(nil)
             }
@@ -1066,6 +1067,20 @@ private struct OverlayHost: View {
         case .confirmUnfavorite(let ids, let old):
             ConfirmUnfavoriteOverlay(count: ids.count, old: old, maxAgeDays: model.settings.maxAgeDays) {
                 model.toggleFavorites(ids, confirmed: true)
+            } cancel: {
+                model.present(nil)
+            }
+        case .confirmDeleteStacks(let ids, let aged, let favorite):
+            ConfirmDeleteStacksOverlay(count: ids.count, aged: aged, favorite: favorite, maxAgeDays: model.settings.maxAgeDays) {
+                model.present(nil)
+                for id in ids { model.deleteStack(id, confirmed: true) }
+            } cancel: {
+                model.present(nil)
+            }
+        case .confirmLeaveStack(let record, let stack):
+            ConfirmLeaveStackOverlay(maxAgeDays: model.settings.maxAgeDays) {
+                model.present(nil)
+                model.removeRecord(record, fromStack: stack, confirmed: true)
             } cancel: {
                 model.present(nil)
             }
@@ -1348,6 +1363,83 @@ private struct ConfirmUnfavoriteOverlay: View {
                 Spacer()
                 Button("Cancel", action: cancel)
                 Button(count == 1 ? String(localized: "Remove and Delete") : String(localized: "Remove"), role: .destructive, action: confirm)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(18)
+        .frame(width: 380)
+    }
+}
+
+private struct ConfirmDeleteStacksOverlay: View {
+    let count: Int
+    let aged: Int
+    let favorite: Bool
+    let maxAgeDays: Int
+    let confirm: () -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.headline)
+            Text(detail)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button("Cancel", action: cancel)
+                Button("Delete", role: .destructive, action: confirm)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(18)
+        .frame(width: 380)
+    }
+
+    private var title: String {
+        if count == 1, favorite, aged > 0 {
+            return String(localized: "Delete this favorite stack and \(aged) old cards?")
+        }
+        if count == 1, favorite {
+            return String(localized: "Delete this favorite stack?")
+        }
+        if aged > 0 {
+            return count == 1
+                ? String(localized: "Delete this stack and \(aged) old cards?")
+                : String(localized: "Delete \(count) stacks?")
+        }
+        return count == 1
+            ? String(localized: "Delete this stack?")
+            : String(localized: "Delete \(count) stacks?")
+    }
+
+    private var detail: String {
+        if aged > 0 {
+            return String(localized: "Cards older than History keeps (\(maxAgeDays) days) that are only in this stack are deleted. You can Undo for a few seconds.")
+        }
+        return String(localized: "Cards stay in History. You can Undo for a few seconds.")
+    }
+}
+
+private struct ConfirmLeaveStackOverlay: View {
+    let maxAgeDays: Int
+    let confirm: () -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(String(localized: "Remove from stack and delete?"))
+                .font(.headline)
+            Text(String(localized: "It is older than History keeps (\(maxAgeDays) days), so it is deleted. This can't be undone."))
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Spacer()
+                Button("Cancel", action: cancel)
+                Button(String(localized: "Remove and Delete"), role: .destructive, action: confirm)
                     .keyboardShortcut(.defaultAction)
             }
         }

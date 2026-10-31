@@ -59,14 +59,18 @@ final class HistoryModel {
     private(set) var stacks: [StackCard] = []
     /// Unfiltered stacks for membership menus (Add/Remove), not the grid filter.
     private(set) var allStacks: [StackCard] = []
+    /// Pin SSOT — every stacked record id (not capped `allStacks`).
+    private(set) var stackedIDs: Set<UUID> = []
     /// Merge-sorted view of records ∪ stacks (records-only, position order, inside a stack).
     private(set) var entries: [HistoryEntry] = []
     private(set) var recordTotal = 0
     /// Footer: records + stacks.
     var totalCount: Int { max(0, recordTotal - hiddenRecordAdjustment) + stacks.count }
     private var hiddenRecordAdjustment = 0
+    /// Optimistic pinboard order while a coalesced reorder write is in flight.
+    @ObservationIgnored private var pendingPinboardOrder: [HistoryEntry.ID]?
 
-    /// Optimistic Deal / Loop on `allStacks` so toolbar chrome updates before reload.
+    /// Optimistic Deal / Loop on every History projection (grid entries included).
     func setStackDealLocally(id: UUID, mode: StackDealMode, loops: Bool) {
         if let index = allStacks.firstIndex(where: { $0.id == id }) {
             allStacks[index] = allStacks[index].withDeal(mode: mode, loops: loops)
@@ -74,6 +78,7 @@ final class HistoryModel {
         if let index = stacks.firstIndex(where: { $0.id == id }) {
             stacks[index] = stacks[index].withDeal(mode: mode, loops: loops)
         }
+        refreshEntriesAfterStackPatch()
     }
 
     /// Optimistic playlist patch — face stays the first UI member (PLAN §3.11).
@@ -113,7 +118,16 @@ final class HistoryModel {
         }
         stacks = stacks.map(patch)
         allStacks = allStacks.map(patch)
+        // Pin SSOT: drop only when no remaining stack still lists this record.
+        if !allStacks.contains(where: { $0.memberIDs.contains(recordID) }) {
+            stackedIDs.remove(recordID)
+        }
         refreshEntriesAfterStackPatch()
+    }
+
+    /// Local pin after append / create (before reload).
+    func noteStackedLocally(_ recordIDs: [UUID]) {
+        stackedIDs.formUnion(recordIDs)
     }
 
     /// Drop deleted records from every loaded stack card; preview follows the new first.
@@ -137,7 +151,12 @@ final class HistoryModel {
         }
         stacks = stacks.map(patch)
         allStacks = allStacks.map(patch)
-        if changed { refreshEntriesAfterStackPatch() }
+        if changed {
+            for id in ids where !allStacks.contains(where: { $0.memberIDs.contains(id) }) {
+                stackedIDs.remove(id)
+            }
+            refreshEntriesAfterStackPatch()
+        }
     }
 
     /// History page first; optional live projection (Stack Window) when the face is off-page.
@@ -191,6 +210,8 @@ final class HistoryModel {
     @ObservationIgnored var clipboardStackID: () -> UUID? = { nil }
     @ObservationIgnored private var followsClipboard = false
     @ObservationIgnored private(set) var hiddenIDs: Set<UUID> = []
+    /// Sticky hide for stack cards during Undo (mirrors `hiddenIDs` for records).
+    @ObservationIgnored private(set) var hiddenStackIDs: Set<UUID> = []
     @ObservationIgnored private var isLoadingMore = false
     @ObservationIgnored private var isActive = false
     @ObservationIgnored private var isStale = true
@@ -360,14 +381,17 @@ final class HistoryModel {
         let stacksOnly = kindFilter == .stacks
         let stackScopeID = scopedStackID
         let pinboard = scope.isPinboard
+        let excluding = hiddenIDs
+        let hideStacks = hiddenStackIDs
         reloadTask = Task {
             do {
-                async let allStackPage = store.stacks(HistoryQuery(), limit: Self.maxStacks)
+                async let allStackPage = store.stacks(HistoryQuery(), limit: Self.maxStacks, excluding: excluding)
+                async let stackedPage = store.stackedRecordIDs()
                 if let stackID = stackScopeID {
                     // Leftover `.stack` scope (store query only) — panel never drills in; bounce home if gone.
                     async let page = store.page(query, offset: 0, limit: limit)
                     async let count = store.count(query)
-                    let (loaded, total, loadedAllStacks) = try await (page, count, allStackPage)
+                    let (loaded, total, loadedAllStacks, loadedStacked) = try await (page, count, allStackPage, stackedPage)
                     let memberships = try await store.memberships(of: loaded.map(\.id))
                     guard generation == self.generation else { return }
                     if !loadedAllStacks.contains(where: { $0.id == stackID }) {
@@ -379,24 +403,33 @@ final class HistoryModel {
                     withAnimation(animated ? .spring(response: 0.35, dampingFraction: 0.82) : nil) {
                         records = visibleRecords
                         stacks = []
-                        allStacks = loadedAllStacks
+                        allStacks = loadedAllStacks.filter { !hideStacks.contains($0.id) }
+                        stackedIDs = loadedStacked
                         entries = visibleRecords.map { .record($0) }
                     }
                     self.memberships = memberships
                     recordTotal = total
                 } else if pinboard {
                     async let board = store.pinboardEntries(query, limit: ClipboardStore.maxPinboardEntries)
-                    let (loadedEntries, loadedAllStacks) = try await (board, allStackPage)
+                    let (loadedEntries, loadedAllStacks, loadedStacked) = try await (board, allStackPage, stackedPage)
                     guard generation == self.generation else { return }
                     var visible = loadedEntries.filter { entry in
-                        if case .record(let card) = entry { return !hiddenIDs.contains(card.id) }
-                        return true
+                        switch entry {
+                        case .record(let card): return !hiddenIDs.contains(card.id)
+                        case .stack(let card): return !hideStacks.contains(card.id)
+                        }
                     }
                     if stacksOnly {
                         visible = visible.filter {
                             if case .stack = $0 { return true }
                             return false
                         }
+                    }
+                    if let pending = pendingPinboardOrder {
+                        let byID = Dictionary(uniqueKeysWithValues: visible.map { ($0.id, $0) })
+                        let ordered = pending.compactMap { byID[$0] }
+                        let rest = visible.filter { !pending.contains($0.id) }
+                        visible = ordered + rest
                     }
                     let visibleRecords = visible.compactMap { entry -> HistoryCard? in
                         if case .record(let card) = entry { return card }
@@ -410,20 +443,23 @@ final class HistoryModel {
                     withAnimation(animated ? .spring(response: 0.35, dampingFraction: 0.82) : nil) {
                         records = visibleRecords
                         stacks = visibleStacks
-                        allStacks = loadedAllStacks
+                        allStacks = loadedAllStacks.filter { !hideStacks.contains($0.id) }
+                        stackedIDs = loadedStacked
                         entries = visible
                     }
                     memberships = try await store.memberships(of: visibleRecords.map(\.id))
                     recordTotal = visibleRecords.count
                 } else if stacksOnly {
-                    async let stackPage = store.stacks(query, limit: Self.maxStacks)
-                    let (loadedStacks, loadedAllStacks) = try await (stackPage, allStackPage)
+                    async let stackPage = store.stacks(query, limit: Self.maxStacks, excluding: excluding)
+                    let (loadedStacks, loadedAllStacks, loadedStacked) = try await (stackPage, allStackPage, stackedPage)
                     guard generation == self.generation else { return }
+                    let visibleStacks = loadedStacks.filter { !hideStacks.contains($0.id) }
                     withAnimation(animated ? .spring(response: 0.35, dampingFraction: 0.82) : nil) {
                         records = []
-                        stacks = loadedStacks
-                        allStacks = loadedAllStacks
-                        entries = loadedStacks.map { .stack($0) }
+                        stacks = visibleStacks
+                        allStacks = loadedAllStacks.filter { !hideStacks.contains($0.id) }
+                        stackedIDs = loadedStacked
+                        entries = visibleStacks.map { .stack($0) }
                     }
                     memberships = [:]
                     recordTotal = 0
@@ -431,17 +467,21 @@ final class HistoryModel {
                 } else {
                     async let page = store.page(query, offset: 0, limit: limit)
                     async let count = store.count(query)
-                    async let stackPage = store.stacks(query, limit: Self.maxStacks)
-                    let (loaded, total, loadedStacks, loadedAllStacks) = try await (page, count, stackPage, allStackPage)
+                    async let stackPage = store.stacks(query, limit: Self.maxStacks, excluding: excluding)
+                    let (loaded, total, loadedStacks, loadedAllStacks, loadedStacked) = try await (
+                        page, count, stackPage, allStackPage, stackedPage
+                    )
                     let memberships = try await store.memberships(of: loaded.map(\.id))
                     guard generation == self.generation else { return }
                     let visibleRecords = loaded.filter { !hiddenIDs.contains($0.id) }
+                    let visibleStacks = loadedStacks.filter { !hideStacks.contains($0.id) }
                     hiddenRecordAdjustment = loaded.count - visibleRecords.count
                     withAnimation(animated ? .spring(response: 0.35, dampingFraction: 0.82) : nil) {
                         records = visibleRecords
-                        stacks = loadedStacks
-                        allStacks = loadedAllStacks
-                        entries = Self.mergeEntries(records: visibleRecords, stacks: loadedStacks, sort: sortMode)
+                        stacks = visibleStacks
+                        allStacks = loadedAllStacks.filter { !hideStacks.contains($0.id) }
+                        stackedIDs = loadedStacked
+                        entries = Self.mergeEntries(records: visibleRecords, stacks: visibleStacks, sort: sortMode)
                     }
                     self.memberships = memberships
                     recordTotal = total
@@ -676,6 +716,20 @@ final class HistoryModel {
         hiddenIDs.subtract(ids)
     }
 
+    func hideStacks(_ ids: Set<UUID>) {
+        hiddenStackIDs.formUnion(ids)
+        for id in ids { removeStackLocally(id) }
+    }
+
+    func unhideStacks(_ ids: Set<UUID>) {
+        hiddenStackIDs.subtract(ids)
+        storeDidChange()
+    }
+
+    func forgetHiddenStacks(_ ids: Set<UUID>) {
+        hiddenStackIDs.subtract(ids)
+    }
+
     func removeLocally(_ ids: Set<UUID>) {
         let selected = selectedIndex
         let remaining = records.enumerated().filter { !ids.contains($0.element.id) }
@@ -840,6 +894,7 @@ final class HistoryModel {
         let byID = Dictionary(uniqueKeysWithValues: entries.map { ($0.id, $0) })
         let next = order.compactMap { byID[$0] }
         guard next.count == entries.count else { return }
+        pendingPinboardOrder = order
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -855,9 +910,13 @@ final class HistoryModel {
         }
     }
 
+    func clearPendingPinboardOrder() {
+        pendingPinboardOrder = nil
+    }
+
     /// Record is a paste-stack member → pinned for retention even after unfavorite (§6).
     func isStackPinned(_ recordID: UUID) -> Bool {
-        allStacks.contains { $0.memberIDs.contains(recordID) }
+        stackedIDs.contains(recordID)
     }
 
     // MARK: Navigation

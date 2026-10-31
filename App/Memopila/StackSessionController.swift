@@ -4,6 +4,13 @@ import MemopilaCore
 import MemopilaServices
 import Observation
 
+/// Result of Choose — distinguish write failure from Stop so the Stack Window does not reopen on cancel.
+enum StackChooseOutcome: Sendable {
+    case armed
+    case failed
+    case cancelled
+}
+
 /// Armed paste-stack session: DealEngine + single-flight writes + ⌘V/Esc (PLAN §3.11).
 /// `@Observable` so panel stack cards / status refresh on arm, advance, and stop (not only the menu bar).
 @MainActor
@@ -41,75 +48,108 @@ final class StackSessionController {
     /// Single definition lives on `AppModel` (P23).
     var memopilaUIKey: Bool { model?.memopilaUIKey ?? false }
 
-    func chooseStack(_ stackID: UUID, paste: Bool? = nil, uiOrder: [UUID]? = nil) {
-        Task { await chooseStackAsync(stackID, paste: paste, uiOrder: uiOrder) }
+    func chooseStack(
+        _ stackID: UUID,
+        paste: Bool? = nil,
+        uiOrder: [UUID]? = nil,
+        dealMode: StackDealMode? = nil,
+        loops: Bool? = nil
+    ) {
+        // Ledger: Choose bumps `useCount` / `lastUsedAt` — ⌘Q right after must not lose it.
+        model?.writes.run {
+            _ = await self.chooseStackAsync(
+                stackID, paste: paste, uiOrder: uiOrder, dealMode: dealMode, loops: loops
+            )
+        }
     }
 
-    func chooseStackAsync(_ stackID: UUID, paste: Bool? = nil, uiOrder: [UUID]? = nil) async {
-        guard let model else { return }
+    /// Callers that closed the Stack Window first reopen only on `.failed` (not Stop/cancel).
+    /// Pass `dealMode` / `loops` when the editor was closed before this runs (editor branch is then dead).
+    @discardableResult
+    func chooseStackAsync(
+        _ stackID: UUID,
+        paste: Bool? = nil,
+        uiOrder: [UUID]? = nil,
+        dealMode: StackDealMode? = nil,
+        loops: Bool? = nil
+    ) async -> StackChooseOutcome {
+        guard let model else { return .failed }
         if paste == true, !AccessibilityBridge.isTrusted {
             AccessibilityBridge.requestTrust()
             model.toasts.error(String(localized: "To paste, allow Memopila in System Settings → Privacy & Security → Accessibility, then try again."))
-            return
+            return .failed
         }
+        let hidden = model.history.hiddenIDs
         // Prefer an in-memory playlist (editor / optimistic history) so a Choose right after
-        // reorder does not race a still-in-flight `setStackMembers` and start from the old order.
-        let members: [UUID]
+        // reorder does not race a still-in-flight `reorderStackMembers` and start from the old order.
+        let rawMembers: [UUID]
         if let uiOrder, !uiOrder.isEmpty {
-            members = uiOrder
+            rawMembers = uiOrder
         } else if let editor = model.stackEditor, editor.stackID == stackID,
                   !editor.isTruncated, !editor.order.isEmpty {
-            members = editor.order
+            rawMembers = editor.order
         } else if let local = model.history.stackCard(id: stackID), !local.memberIDs.isEmpty {
-            members = local.memberIDs
+            rawMembers = local.memberIDs
         } else {
-            members = (try? await model.store.stackMemberIDs(stackID)) ?? []
+            rawMembers = (try? await model.store.stackMemberIDs(stackID)) ?? []
         }
+        let members = rawMembers.filter { !hidden.contains($0) }
         guard !members.isEmpty else {
             model.toasts.show(String(localized: "This stack is empty."))
-            return
+            return .failed
         }
-        // Prefer the open editor’s optimistic Deal/Loop over a store read that may lag the last write.
-        let dealMode: StackDealMode
-        let loops: Bool
-        if let editor = model.stackEditor, editor.stackID == stackID {
-            dealMode = editor.stack.dealMode
-            loops = editor.stack.loops
+        // Captured plan first — Choose from editor closes the window before this awaits.
+        let resolvedDeal: StackDealMode
+        let resolvedLoops: Bool
+        if let dealMode, let loops {
+            resolvedDeal = dealMode
+            resolvedLoops = loops
+        } else if let editor = model.stackEditor, editor.stackID == stackID {
+            resolvedDeal = editor.stack.dealMode
+            resolvedLoops = editor.stack.loops
         } else if let local = model.history.stackCard(id: stackID) {
-            dealMode = local.dealMode
-            loops = local.loops
+            resolvedDeal = local.dealMode
+            resolvedLoops = local.loops
         } else if let card = try? await model.store.stack(stackID) {
-            dealMode = card.dealMode
-            loops = card.loops
+            resolvedDeal = card.dealMode
+            resolvedLoops = card.loops
         } else {
-            dealMode = .sequential
-            loops = false
+            resolvedDeal = .sequential
+            resolvedLoops = false
         }
         guard let started = DealEngine.startRound(
-            stackID: stackID, uiOrder: members, dealMode: dealMode, loops: loops
-        ) else { return }
+            stackID: stackID, uiOrder: members, dealMode: resolvedDeal, loops: resolvedLoops
+        ) else { return .failed }
 
+        var outcome: StackChooseOutcome = .failed
         await runSessionWrite { [self] generation in
             self.disarmInternal(toast: false)
-            guard self.generationOK(generation) else { return }
+            guard self.generationOK(generation) else {
+                outcome = .cancelled
+                return
+            }
             self.session = started
             guard await self.writeCurrent(started.current, stackID: stackID) else {
                 self.session = nil
+                outcome = .failed
                 return
             }
             guard self.generationOK(generation) else {
                 // Stop raced the write: drop stack chrome that writeCurrent just set.
                 self.model?.monitor.clearStackIdentity()
                 self.session = nil
+                outcome = .cancelled
                 return
             }
             try? await model.store.markStackUsed(stackID, at: Date())
             guard self.generationOK(generation) else {
                 self.model?.monitor.clearStackIdentity()
                 self.session = nil
+                outcome = .cancelled
                 return
             }
             self.arm()
+            outcome = .armed
             model.history.storeDidChange()
             if self.commandVMonitor == nil {
                 model.toasts.show(String(localized: "Stack armed — first item on clipboard. Allow Accessibility to advance on ⌘V. Esc to stop."))
@@ -130,6 +170,7 @@ final class StackSessionController {
                 await self.syntheticPasteThenAdvance(generation: generation)
             }
         }
+        return outcome
     }
 
     /// After ⌘V keyUp: advance deal (separate flight from Choose).
@@ -148,8 +189,13 @@ final class StackSessionController {
         guard let session, isArmed, let model else { return }
         let stackID = session.stackID
         Task {
-            let members = (try? await model.store.stackMemberIDs(stackID)) ?? []
+            // Read members inside the flight so we do not arm on a pre-coalesce snapshot.
             await runSessionWrite { [self] generation in
+                guard self.generationOK(generation),
+                      let current = self.session, current.stackID == stackID else { return }
+                let hidden = model.history.hiddenIDs
+                let members = ((try? await model.store.stackMemberIDs(stackID)) ?? [])
+                    .filter { !hidden.contains($0) }
                 guard self.generationOK(generation),
                       let current = self.session, current.stackID == stackID else { return }
                 guard let rebuilt = DealEngine.rebuild(current, uiOrder: members) else {
@@ -178,8 +224,12 @@ final class StackSessionController {
         guard let session, isArmed, let model else { return }
         let stackID = session.stackID
         Task {
-            let members = (try? await model.store.stackMemberIDs(stackID)) ?? []
             await runSessionWrite { [self] generation in
+                guard self.generationOK(generation),
+                      let current = self.session, current.stackID == stackID else { return }
+                let hidden = model.history.hiddenIDs
+                let members = ((try? await model.store.stackMemberIDs(stackID)) ?? [])
+                    .filter { !hidden.contains($0) }
                 guard self.generationOK(generation),
                       let current = self.session, current.stackID == stackID else { return }
                 guard let next = DealEngine.retarget(
@@ -305,9 +355,9 @@ final class StackSessionController {
     }
 
     private func runSessionWrite(_ body: @escaping (_ generation: Int) async -> Void) async {
-        // Wait first, then bump: bumping before await would invalidate the in-flight body
-        // (second ⌘V aborted the first advance mid-write and cleared stack chrome).
-        if let writeTask {
+        // Wait out the whole chain — a single `if` lets two waiters resume together, bump gen
+        // twice, and race (older body then clears the newer write’s stack chrome).
+        while let writeTask {
             await writeTask.value
         }
         writeGeneration += 1

@@ -16,6 +16,10 @@ enum PanelOverlay: Equatable {
     case confirmDeleteCollection(UUID)
     /// Taking cards out of Favorites deletes those older than History keeps (§6): asked first.
     case confirmUnfavorite([UUID], old: Int)
+    /// Delete stack(s): favorite and/or aged exclusive members ask first.
+    case confirmDeleteStacks([UUID], aged: Int, favorite: Bool)
+    /// Leave stack: aged exclusive member would be age-deleted (§6).
+    case confirmLeaveStack(record: UUID, stack: UUID)
     case confirmClear
     /// ⌘/ — every shortcut of the panel (§8.3).
     case shortcuts
@@ -112,6 +116,8 @@ final class AppModel {
     @ObservationIgnored private(set) var previousApp: NSRunningApplication?
     @ObservationIgnored private var expiryTimer: Timer?
     @ObservationIgnored private var dailyTimer: Timer?
+    /// Store writes still running — ⌘Q waits for them (`prepareToQuit`).
+    @ObservationIgnored let writes = WriteLedger()
     @ObservationIgnored private var retentionTask: Task<Void, Never>?
     @ObservationIgnored private var purgeTask: Task<Void, Never>?
     @ObservationIgnored private var memoryPressure: DispatchSourceMemoryPressure?
@@ -148,7 +154,7 @@ final class AppModel {
             storeMovedAside = nil
         }
         self.store = store
-        monitor = ClipboardMonitor(settings: settings, store: store)
+        monitor = ClipboardMonitor(settings: settings, store: store, writes: writes)
         history = HistoryModel(store: store)
         history.onSortModeChange = { [settings] mode in settings.historySortMode = mode }
         history.sortMode = settings.historySortMode
@@ -201,7 +207,10 @@ final class AppModel {
     /// while the panel stays open — not when the panel itself is closing (`refocusSearch: false`),
     /// or FocusState can re-key an ordered-out panel and skip auto-paste.
     func present(_ next: PanelOverlay?, refocusSearch: Bool = true) {
-        if next == nil { pendingStackRecordIDs = nil }
+        if next == nil {
+            pendingStackRecordIDs = nil
+            pendingStacksAfterRecordConfirm = []
+        }
         switch next {
         case .actions(let entryID)?:
             let selection = history.selection
@@ -342,7 +351,7 @@ final class AppModel {
     /// window moves on or closes (first-run feedback: a separate Save for a title was one step too many).
     func saveTitle() {
         guard let change = takeTitleChange() else { return }
-        Task { await persist(change) }
+        writes.run { await persist(change) }
     }
 
     /// The changed title, marked saved at once so closing or moving on does not save it twice.
@@ -353,18 +362,23 @@ final class AppModel {
     }
 
     private func persist(_ change: (id: UUID, title: String)) async {
-        setRecordTitleLocally(id: change.id, title: change.title)
+        let gen = nextOpGeneration(for: change.id, in: &recordTitleOpGeneration)
+        setRecordTitleLocally(id: change.id, title: change.title, op: gen)
         do {
+            guard gen == recordTitleOpGeneration[change.id] else { return }
             try await store.rename(change.id, title: change.title)
-            stackEditor?.settleMemberTitle(id: change.id, title: change.title)
+            guard gen == recordTitleOpGeneration[change.id] else { return }
+            stackEditor?.settleMemberTitle(id: change.id, title: change.title, op: gen)
         } catch {
+            guard gen == recordTitleOpGeneration[change.id] else { return }
             toasts.error(error.localizedDescription)
             // Drop failed optimistic title so reload does not re-paint it forever.
-            stackEditor?.discardMemberTitleOverride(id: change.id)
+            stackEditor?.discardMemberTitleOverride(id: change.id, op: gen)
             reloadStackEditorIfNeeded()
             history.storeDidChange()
             return
         }
+        guard gen == recordTitleOpGeneration[change.id] else { return }
         history.storeDidChange()
     }
 
@@ -425,7 +439,7 @@ final class AppModel {
 
     /// Save (⌘S): normally keeps the window open. With `closesAfterSave` (Duplicate & Edit) closes after save.
     func saveItem() {
-        Task {
+        writes.run {
             guard await saveText() else { return }
             if itemState?.closesAfterSave == true {
                 closeRecord()
@@ -465,7 +479,7 @@ final class AppModel {
         guard let state = itemState else { return }
         if state.isDirty {
             // After a merge the window shows the surviving record, which is then the one selected.
-            Task { if await saveText() { copyItem(paste: paste) } }
+            writes.run { if await saveText() { copyItem(paste: paste) } }
             return
         }
         if paste == true, !AccessibilityBridge.isTrusted {
@@ -618,9 +632,16 @@ final class AppModel {
     /// Age, short retention and count cap (§6); re-arms the expiry timer for the nearest `expiresAt`.
     func runRetention() {
         let limits = settings.retentionLimits
-        Task {
+        var protecting = Set<UUID>()
+        if let open = stackEditor?.stackID { protecting.insert(open) }
+        if let armed = stackSession.armedStackID { protecting.insert(armed) }
+        // Pending Undo stack deletes must not be age-deleted mid-window (stale non-favorite).
+        if let pending = pendingDeletion { protecting.formUnion(pending.stacks) }
+        writes.run {
             do {
-                let next = try await store.applyRetention(limits: limits, now: Date())
+                let next = try await store.applyRetention(
+                    limits: limits, now: Date(), protectingStacks: protecting
+                )
                 history.storeDidChange()
                 // Age/count purge can remove stack members — History-only invalidate left Stack Window stale.
                 reloadStackEditorIfNeeded()
@@ -648,7 +669,7 @@ final class AppModel {
     }
 
     private func enableRecognition(forApp bundleID: String?) {
-        Task {
+        writes.run {
             try? await store.setRecognitionState(forApp: bundleID, enabled: true)
             recognition.wake()
         }
@@ -659,7 +680,7 @@ final class AppModel {
     /// ↩, ⌘C: waits for a pending search so the restored card is the one the results show. Nothing
     /// selected (the clipboard holds something not in history) → nothing to do; several → an error.
     func restoreSelected(paste: Bool? = nil) {
-        Task {
+        writes.run {
             await history.settle()
             guard let entryID = singleSelection() else { return }
             switch entryID {
@@ -672,7 +693,7 @@ final class AppModel {
     }
 
     func restoreVisible(_ index: Int) {
-        Task {
+        writes.run {
             await history.settle()
             guard let entry = history.entry(at: index) else { return }
             history.selectedID = entry.id
@@ -686,7 +707,7 @@ final class AppModel {
     }
 
     func restore(_ id: UUID, paste: Bool? = nil) {
-        Task { await performRestore(id, paste: paste) }
+        writes.run { await performRestore(id, paste: paste) }
     }
 
     /// *Choose for Clipboard* from a card's menu: several selected cards cannot all go to the clipboard.
@@ -797,7 +818,7 @@ final class AppModel {
     /// goes to the clipboard as a new card at the top, so history always shows what the clipboard
     /// holds (§3.4). Copying part of an item keeps the window open, like ⌘C in its text.
     func copyNewText(_ text: String, from id: UUID?) {
-        Task {
+        writes.run {
             let items = PasteboardWriter.plainTextItems(text)
             let sourceBundleID = id.flatMap { resolveCard($0)?.sourceAppBundleID }
             switch await ingestDerived(items, from: id) {
@@ -878,7 +899,7 @@ final class AppModel {
     /// *Duplicate As ▸* (§3.9): a transformed copy becomes a new card at the top and is selected;
     /// the original stays as it is. Nothing touches the clipboard until the user copies it.
     func duplicate(_ id: UUID, as variant: RestoreVariant) {
-        Task {
+        writes.run {
             guard let content = await variantContent(id, variant: variant) else { return }
             switch await ingestDerived(content.items, from: id) {
             case .saved(let newID):
@@ -968,43 +989,91 @@ final class AppModel {
             return confirmDeleteFavorites(ids: ids)
         }
         if case .confirmDelete? = overlay { present(nil) }
+        enqueuePendingDeletion(records: Set(ids), stacks: [], ageVictims: [])
+        let message = ids.count == 1 ? String(localized: "Deleted") : String(localized: "Deleted \(ids.count) items")
+        toasts.showUndo(message) { [weak self] in self?.undoDeletion() }
+    }
+
+    /// Shared Undo window for records and/or stacks.
+    private func enqueuePendingDeletion(records: Set<UUID>, stacks: Set<UUID>, ageVictims: Set<UUID>) {
         commitPendingDeletion()
-        let set = Set(ids)
-        history.hide(set)
-        // Stack Window + stack cards keep their own lists — prune now (store cascade waits for Undo).
-        // Face stays the new first UI member; deal cursor is badge-only.
-        stackEditor?.removeMembers(set)
-        history.removeRecordsFromStacksLocally(set) { [weak self] in self?.resolveCard($0) }
+        if !records.isEmpty {
+            history.hide(records)
+            stackEditor?.removeMembers(records)
+            history.removeRecordsFromStacksLocally(records) { [weak self] in self?.resolveCard($0) }
+            if stackSession.isArmed { stackSession.rebuildFromStore() }
+        }
+        if !stacks.isEmpty {
+            for id in stacks {
+                if stackSession.armedStackID == id { stackSession.stop(toast: false) }
+                if stackEditor?.stackID == id {
+                    stackEditor = nil
+                    windows.closeStack(returningToPanel: true)
+                }
+            }
+            history.hideStacks(stacks)
+        }
         let task = Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))
             guard !Task.isCancelled, let self, let pending = self.pendingDeletion else { return }
             self.pendingDeletion = nil
-            await self.performDeletion(pending.ids)
+            await self.performDeletion(
+                records: pending.records,
+                stacks: pending.stacks,
+                ageVictims: pending.ageVictims
+            )
         }
-        pendingDeletion = (set, task)
-        let message = ids.count == 1 ? String(localized: "Deleted") : String(localized: "Deleted \(ids.count) items")
-        toasts.show(message, actions: [.init(title: String(localized: "Undo")) { [weak self] in self?.undoDeletion() }])
+        pendingDeletion = (records, stacks, ageVictims, task)
     }
 
-    @ObservationIgnored private var pendingDeletion: (ids: Set<UUID>, task: Task<Void, Never>)?
-    /// Record vs stack favorite Tasks must not abort each other (shared gen caused silent drops).
-    @ObservationIgnored private var recordFavoriteOpGeneration = 0
-    @ObservationIgnored private var stackFavoriteOpGeneration = 0
+    /// Deferred destructive delete (Undo window): records, stacks, and age victims from stack delete.
+    @ObservationIgnored private var pendingDeletion: (
+        records: Set<UUID>,
+        stacks: Set<UUID>,
+        ageVictims: Set<UUID>,
+        task: Task<Void, Never>
+    )?
+    /// Per-entity gens — a ♥/rename/deal/title on B must not cancel A's in-flight write.
+    @ObservationIgnored private var recordFavoriteOpGeneration: [UUID: Int] = [:]
+    @ObservationIgnored private var stackFavoriteOpGeneration: [UUID: Int] = [:]
+    @ObservationIgnored private var stackRenameOpGeneration: [UUID: Int] = [:]
+    @ObservationIgnored private var stackDealOpGeneration: [UUID: Int] = [:]
+    @ObservationIgnored private var recordTitleOpGeneration: [UUID: Int] = [:]
+    /// Coalesce non-destructive reorders per stack (latest relative order wins).
+    @ObservationIgnored private var pendingPlaylistWrites: [UUID: [UUID]] = [:]
+    @ObservationIgnored private var playlistWriteTask: Task<Void, Never>?
+    /// Pinboard reorder coalesce (same class as playlist).
+    @ObservationIgnored private var pendingPinboardWrites: [String: (scope: HistoryScope, order: [HistoryEntry.ID])] = [:]
+    @ObservationIgnored private var pinboardWriteTask: Task<Void, Never>?
+
+    private func nextOpGeneration(for id: UUID, in map: inout [UUID: Int]) -> Int {
+        let next = (map[id] ?? 0) + 1
+        map[id] = next
+        return next
+    }
 
     func undoDeletion() {
         guard let pending = pendingDeletion else { return }
         pending.task.cancel()
         pendingDeletion = nil
-        history.unhide(pending.ids)
-        // Membership was never removed from the store during the Undo window.
+        if !pending.records.isEmpty { history.unhide(pending.records) }
+        if !pending.stacks.isEmpty { history.unhideStacks(pending.stacks) }
+        // Membership stays in the store during Undo — reorder is splice-only and will not delete
+        // hidden members; reload brings them back into the editor once unhidden.
         reloadStackEditorIfNeeded()
+        if stackSession.isArmed { stackSession.rebuildFromStore() }
     }
 
     /// A record waiting out its Undo period came back — copied again, merged into by an edit or a
     /// derived copy: it is not deleted after all (review finding: the new copy was lost).
     private func rescueFromPendingDeletion(_ id: UUID) {
-        guard let pending = pendingDeletion, pending.ids.contains(id) else { return }
-        pendingDeletion = (pending.ids.subtracting([id]), pending.task)
+        guard let pending = pendingDeletion, pending.records.contains(id) else { return }
+        pendingDeletion = (
+            pending.records.subtracting([id]),
+            pending.stacks,
+            pending.ageVictims.subtracting([id]),
+            pending.task
+        )
         history.unhide([id])
         reloadStackEditorIfNeeded()
     }
@@ -1014,7 +1083,7 @@ final class AppModel {
         guard let pending = pendingDeletion else { return }
         pending.task.cancel()
         pendingDeletion = nil
-        await performDeletion(pending.ids)
+        await performDeletion(records: pending.records, stacks: pending.stacks, ageVictims: pending.ageVictims)
     }
 
     /// ⌘Q: unsaved text asks first — Cancel keeps Memopila running — and a pending delete is
@@ -1022,9 +1091,13 @@ final class AppModel {
     func prepareToQuit(_ reply: @escaping @MainActor (Bool) -> Void) {
         let quit: @MainActor () -> Void = { [weak self] in
             Task { @MainActor in
-                // A title typed in the record window is saved before the app goes (review finding).
-                if let self, let change = self.takeTitleChange() { await self.persist(change) }
-                await self?.commitPendingDeletionNow()
+                guard let self else { reply(true); return }
+                // Record + stack titles and coalesced playlist / pinboard writes before exit.
+                if let change = self.takeTitleChange() { await self.persist(change) }
+                await self.flushStackEditor()
+                await self.commitPendingDeletionNow()
+                // Everything else fire-and-forget (♥, memberships, collection ops, a capture being saved).
+                await self.writes.drain()
                 reply(true)
             }
         }
@@ -1033,37 +1106,74 @@ final class AppModel {
         resolveUnsavedChanges(then: quit) { reply(false) }
     }
 
+    /// Commit inspector title and drain coalesced reorders (swap stack / quit / Choose).
+    private func flushStackEditor() async {
+        commitOpenStackTitleIfNeeded()
+        await awaitPlaylistIdle()
+        await awaitPinboardIdle()
+    }
+
+    /// Wait until no playlist drain is running — a single `await task?.value` misses a drain
+    /// that starts after the wait begins.
+    private func awaitPlaylistIdle() async {
+        while let task = playlistWriteTask {
+            await task.value
+        }
+    }
+
+    private func awaitPinboardIdle() async {
+        while let task = pinboardWriteTask {
+            await task.value
+        }
+    }
+
     /// A second deletion does not wait for the first.
     private func commitPendingDeletion() {
         guard let pending = pendingDeletion else { return }
         pending.task.cancel()
         pendingDeletion = nil
-        Task { await performDeletion(pending.ids) }
+        writes.run {
+            await performDeletion(records: pending.records, stacks: pending.stacks, ageVictims: pending.ageVictims)
+        }
     }
 
-    private func performDeletion(_ ids: Set<UUID>) async {
-        if pendingDeletion?.ids == ids { pendingDeletion = nil }
+    private func performDeletion(records: Set<UUID>, stacks: Set<UUID>, ageVictims: Set<UUID>) async {
+        // Also entered from the Undo timer, which is not a ledger task: ⌘Q must wait for it.
+        writes.begin()
+        defer { writes.end() }
         let store = store
-        let list = Array(ids)
+        let recordList = Array(records.union(ageVictims))
+        let stackList = Array(stacks)
         for attempt in 1...3 {
-            switch await monitor.destructive({ opSeq in try await store.delete(list, opSeq: opSeq) }) {
+            switch await monitor.destructive({ opSeq in
+                if !stackList.isEmpty {
+                    try await store.deleteStacks(stackList)
+                }
+                if !recordList.isEmpty {
+                    try await store.delete(recordList, opSeq: opSeq)
+                }
+            }) {
             case .success:
-                for id in ids { thumbnails.invalidate(id) }
-                history.forgetHidden(ids)
+                for id in recordList { thumbnails.invalidate(id) }
+                history.forgetHidden(records)
+                history.forgetHiddenStacks(stacks)
                 history.storeDidChange()
                 prunePreviewFiles()
-                // Rebuild after members are gone — pre-delete rebuild kept stale IDs (P24).
                 if stackSession.isArmed { stackSession.rebuildFromStore() }
-                // Editor may still show ghosts if Undo-window prune was skipped / raced.
-                stackEditor?.removeMembers(ids)
+                if !records.isEmpty {
+                    stackEditor?.removeMembers(records)
+                }
                 reloadStackEditorIfNeeded()
                 await dropOpenRecordIfGone()
+                toasts.clearUndo()
                 return
             case .failure(.busy) where attempt < 3:
-                // Another delete, clear or edit is running; this one follows it.
                 try? await Task.sleep(for: .milliseconds(500))
             case .failure(let error):
-                history.unhide(ids)
+                if !records.isEmpty { history.unhide(records) }
+                if !stacks.isEmpty { history.unhideStacks(stacks) }
+                reloadStackEditorIfNeeded()
+                if stackSession.isArmed { stackSession.rebuildFromStore() }
                 report(error)
                 return
             }
@@ -1083,6 +1193,7 @@ final class AppModel {
     }
 
     /// History grid + Stack Window members (same resolve rule as `openRecord`).
+    /// Open editor members win over History — they carry in-flight ♥ / title paints.
     private func historyCards(matching ids: [UUID]) -> [HistoryCard] {
         let wanted = Set(ids)
         guard !wanted.isEmpty else { return [] }
@@ -1090,13 +1201,24 @@ final class AppModel {
         for card in history.cards where wanted.contains(card.id) {
             byID[card.id] = card
         }
-        if let members = stackEditor?.members {
-            for card in members where wanted.contains(card.id) {
-                byID[card.id] = byID[card.id] ?? card
-            }
-        }
         if let open = itemState, wanted.contains(open.id) {
             byID[open.id] = byID[open.id] ?? open.card
+        }
+        if let editor = stackEditor {
+            for card in editor.members where wanted.contains(card.id) {
+                byID[card.id] = card
+            }
+            // Layer pending onto a History-only id that is not in the loaded member page yet.
+            for id in wanted {
+                guard var card = byID[id] else { continue }
+                if let fav = editor.memberFavoriteOverride(id) {
+                    card = card.withFavorite(fav.isFavorite)
+                }
+                if let title = editor.memberTitleOverride(id) {
+                    card = card.withTitle(title)
+                }
+                byID[id] = card
+            }
         }
         return ids.compactMap { byID[$0] }
     }
@@ -1108,10 +1230,11 @@ final class AppModel {
     }
 
     /// Stack from History grid / menus / open Stack Window (one rule).
+    /// Open editor wins — it holds pending title / deal / ♥.
     func resolveStack(_ id: UUID) -> StackCard? {
-        history.stacks.first(where: { $0.id == id })
+        if stackEditor?.stackID == id { return stackEditor?.stack }
+        return history.stacks.first(where: { $0.id == id })
             ?? history.allStacks.first(where: { $0.id == id })
-            ?? (stackEditor?.stackID == id ? stackEditor?.stack : nil)
     }
 
     private func setRecordFavoriteLocally(id: UUID, isFavorite: Bool, op: Int) {
@@ -1119,9 +1242,9 @@ final class AppModel {
         stackEditor?.applyMemberFavorite(id: id, isFavorite: isFavorite, op: op)
     }
 
-    private func setRecordTitleLocally(id: UUID, title: String) {
+    private func setRecordTitleLocally(id: UUID, title: String, op: Int) {
         history.setTitleLocally(record: id, title: title)
-        stackEditor?.applyMemberTitle(id: id, title: title)
+        stackEditor?.applyMemberTitle(id: id, title: title, op: op)
         if let state = itemState, state.id == id {
             let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
             state.adoptStoredTitle(trimmed.isEmpty ? nil : trimmed)
@@ -1171,7 +1294,13 @@ final class AppModel {
                 : String(localized: "Delete \(count) items, including favorites?"),
             informative: String(localized: "Favorites are never removed automatically. You can Undo for a few seconds after deleting."),
             confirmTitle: String(localized: "Delete"),
-            onConfirm: { [weak self] in self?.delete(ids, confirmed: true) }
+            onConfirm: { [weak self] in
+                guard let self else { return }
+                self.delete(ids, confirmed: true)
+                let stacks = self.pendingStacksAfterRecordConfirm
+                self.pendingStacksAfterRecordConfirm = []
+                for id in stacks { self.deleteStack(id, confirmed: true) }
+            }
         ) { return }
         present(.confirmDelete(ids))
     }
@@ -1209,76 +1338,77 @@ final class AppModel {
             return ageVictims
         }()
 
-        recordFavoriteOpGeneration += 1
-        let gen = recordFavoriteOpGeneration
         let target = makeFavorite
+        // Per-id gens — ♥ on another card must not abort the rest of a bulk toggle.
+        var ops: [UUID: Int] = [:]
         for card in changing {
+            let gen = nextOpGeneration(for: card.id, in: &recordFavoriteOpGeneration)
+            ops[card.id] = gen
             setRecordFavoriteLocally(id: card.id, isFavorite: makeFavorite, op: gen)
         }
         if !hideIDs.isEmpty { history.hide(hideIDs) }
 
-        Task { [weak self] in
+        writes.run { [weak self] in
             guard let self else { return }
             var written = Set<UUID>()
+            var deletedByStore = Set<UUID>()
             do {
                 for id in changingIDs {
-                    guard gen == self.recordFavoriteOpGeneration else {
+                    let gen = ops[id] ?? 0
+                    guard gen == self.recordFavoriteOpGeneration[id] else {
                         self.reconcileSupersededRecordFavorites(
-                            written: written, all: changingIDs, target: target,
-                            previous: previous, hideIDs: hideIDs, op: gen
+                            written: written.intersection([id]), all: [id], target: target,
+                            previous: previous, hideIDs: hideIDs.intersection([id]), op: gen
                         )
-                        return
+                        continue
                     }
-                    try await self.store.setFavorite(id, target, limits: limits, now: Date())
+                    // Store is SSOT for who was actually deleted (count-cap + age of this id).
+                    let deleted = try await self.store.setFavorite(id, target, limits: limits, now: Date())
                     written.insert(id)
+                    deletedByStore.formUnion(deleted)
                 }
             } catch {
-                if gen != self.recordFavoriteOpGeneration {
-                    self.reconcileSupersededRecordFavorites(
-                        written: written, all: changingIDs, target: target,
-                        previous: previous, hideIDs: hideIDs, op: gen
-                    )
-                    return
-                }
-                self.toasts.error(error.localizedDescription)
-                // Partial store success: keep written at target; revert only the unwritten.
+                // Partial store success: keep written at target; revert only still-owned unwritten.
                 for id in written {
+                    let gen = ops[id] ?? 0
                     self.stackEditor?.settleMemberFavorite(id: id, isFavorite: target, op: gen)
                 }
+                var restored = false
                 for id in changingIDs where !written.contains(id) {
-                    if let card = previous[id] {
-                        self.setRecordFavoriteLocally(id: id, isFavorite: card.isFavorite, op: gen)
-                        self.stackEditor?.settleMemberFavorite(id: id, isFavorite: card.isFavorite, op: gen)
+                    let gen = ops[id] ?? 0
+                    guard gen == self.recordFavoriteOpGeneration[id], let card = previous[id] else {
+                        if hideIDs.contains(id) {
+                            self.history.forgetHidden([id])
+                        }
+                        continue
+                    }
+                    self.setRecordFavoriteLocally(id: id, isFavorite: card.isFavorite, op: gen)
+                    self.stackEditor?.settleMemberFavorite(id: id, isFavorite: card.isFavorite, op: gen)
+                    if hideIDs.contains(id) {
+                        self.history.unhide([id])
+                        restored = true
                     }
                 }
-                let pending = self.pendingDeletion?.ids ?? []
-                let restoreHide = hideIDs.subtracting(pending).subtracting(written)
-                if !restoreHide.isEmpty {
-                    self.history.unhide(restoreHide)
-                } else {
-                    self.history.storeDidChange()
-                }
-                // Written age/favorites hides are committed — drop sticky hiddenIDs.
+                if !restored { self.history.storeDidChange() }
+                let pending = self.pendingDeletion?.records ?? []
                 let committedHide = hideIDs.intersection(written).subtracting(pending)
                 if !committedHide.isEmpty { self.history.forgetHidden(committedHide) }
+                self.toasts.error(error.localizedDescription)
                 return
             }
-            if gen != self.recordFavoriteOpGeneration {
-                self.reconcileSupersededRecordFavorites(
-                    written: written, all: changingIDs, target: target,
-                    previous: previous, hideIDs: hideIDs, op: gen
-                )
-                return
+            for id in written {
+                let gen = ops[id] ?? 0
+                if gen == self.recordFavoriteOpGeneration[id] {
+                    self.stackEditor?.settleMemberFavorite(id: id, isFavorite: target, op: gen)
+                }
             }
-            for id in changingIDs {
-                self.stackEditor?.settleMemberFavorite(id: id, isFavorite: target, op: gen)
-            }
-            let pending = self.pendingDeletion?.ids ?? []
-            self.history.forgetHidden(hideIDs.subtracting(pending))
-            // Age-deleted records leave the store — prune Stack Window + stack faces (same as delete).
-            if !ageVictims.isEmpty {
-                self.stackEditor?.removeMembers(ageVictims)
-                self.history.removeRecordsFromStacksLocally(ageVictims) { [weak self] in self?.resolveCard($0) }
+            let pending = self.pendingDeletion?.records ?? []
+            self.history.forgetHidden(hideIDs.intersection(written).subtracting(pending))
+            // Prune from store-returned deletes (not UI age prediction — that missed count-cap victims).
+            if !deletedByStore.isEmpty {
+                self.stackEditor?.removeMembers(deletedByStore)
+                self.history.removeRecordsFromStacksLocally(deletedByStore) { [weak self] in self?.resolveCard($0) }
+                self.history.forgetHidden(deletedByStore.subtracting(pending))
                 await self.dropOpenRecordIfGone()
             }
             self.history.storeDidChange()
@@ -1360,41 +1490,113 @@ final class AppModel {
     /// Collections ▸ with several cards: adds them all, or takes them all out when they all are in.
     func setMembership(_ ids: [UUID], collection: UUID, isMember: Bool) {
         for id in ids { history.setMembershipLocally(record: id, collection: collection, isMember: isMember) }
-        Task {
+        writes.run {
             for id in ids { try? await store.setMembership(record: id, collection: collection, isMember: isMember) }
             history.refreshCollections()
             history.storeDidChange()
         }
     }
 
-    /// Deletes what is selected: one card or several.
+    /// Deletes what is selected: one card or several. One confirm gate — stacks wait if records ask.
     func deleteSelection() {
         let recordIDs = history.selectionRecordIDs
         let stackIDs = history.selection.compactMap { if case .stack(let id) = $0 { return id }; return nil }
-        if !recordIDs.isEmpty { delete(recordIDs) }
+        let favorites = historyCards(matching: recordIDs).filter(\.isFavorite)
+        if !favorites.isEmpty {
+            // Confirm records first; on OK delete records + stacks together.
+            return confirmDeleteFavoritesThenStacks(records: recordIDs, stacks: stackIDs)
+        }
+        if !recordIDs.isEmpty {
+            delete(recordIDs)
+        }
         for id in stackIDs { deleteStack(id) }
     }
 
-    func deleteStack(_ id: UUID) {
-        if stackSession.armedStackID == id { stackSession.stop(toast: false) }
-        if stackEditor?.stackID == id {
-            stackEditor = nil
-            windows.closeStack(returningToPanel: true)
+    private func confirmDeleteFavoritesThenStacks(records: [UUID], stacks: [UUID]) {
+        let count = records.count
+        let onConfirm: @MainActor () -> Void = { [weak self] in
+            guard let self else { return }
+            self.delete(records, confirmed: true)
+            for id in stacks { self.deleteStack(id, confirmed: true) }
         }
-        history.removeStackLocally(id)
-        Task {
-            try? await store.deleteStacks([id])
-            history.storeDidChange()
+        if confirmOnKeyStackWindow(
+            message: count == 1
+                ? String(localized: "Delete this favorite?")
+                : String(localized: "Delete \(count) items, including favorites?"),
+            informative: String(localized: "Favorites are never removed automatically. You can Undo for a few seconds after deleting."),
+            confirmTitle: String(localized: "Delete"),
+            onConfirm: onConfirm
+        ) { return }
+        // Panel overlay only carries record ids; stacks follow on confirm via a one-shot flag.
+        pendingStacksAfterRecordConfirm = stacks
+        present(.confirmDelete(records))
+    }
+
+    @ObservationIgnored private var pendingStacksAfterRecordConfirm: [UUID] = []
+
+    func deleteStack(_ id: UUID, confirmed: Bool = false) {
+        guard let stack = resolveStack(id) else {
+            enqueueStackDelete([id], ageVictims: [])
+            return
         }
-        toasts.show(String(localized: "Stack deleted"))
+        let cutoff = Date().addingTimeInterval(-settings.retentionLimits.maxAge)
+        let aged = stack.memberIDs.filter { memberID in
+            guard let card = resolveCard(memberID), !card.isFavorite else { return false }
+            let inOther = history.allStacks.contains { $0.id != id && $0.memberIDs.contains(memberID) }
+            return !inOther && card.lastCopiedAt < cutoff
+        }
+        if !confirmed, stack.isFavorite || !aged.isEmpty {
+            return confirmDeleteStacks([id], aged: aged.count, favorite: stack.isFavorite)
+        }
+        if case .confirmDeleteStacks? = overlay { present(nil) }
+        enqueueStackDelete([id], ageVictims: Set(aged))
+    }
+
+    private func confirmDeleteStacks(_ ids: [UUID], aged: Int, favorite: Bool) {
+        let count = ids.count
+        let message: String
+        let informative: String
+        if count == 1, favorite, aged > 0 {
+            message = String(localized: "Delete this favorite stack and \(aged) old cards?")
+            informative = String(localized: "Cards older than History keeps (\(settings.maxAgeDays) days) are deleted with the stack. You can Undo for a few seconds.")
+        } else if count == 1, favorite {
+            message = String(localized: "Delete this favorite stack?")
+            informative = String(localized: "Its cards stay in History unless they are older than History keeps. You can Undo for a few seconds.")
+        } else if aged > 0 {
+            message = count == 1
+                ? String(localized: "Delete this stack and \(aged) old cards?")
+                : String(localized: "Delete \(count) stacks?")
+            informative = String(localized: "\(aged) card(s) older than History keeps (\(settings.maxAgeDays) days) are deleted. You can Undo for a few seconds.")
+        } else {
+            message = count == 1
+                ? String(localized: "Delete this stack?")
+                : String(localized: "Delete \(count) stacks?")
+            informative = String(localized: "Cards stay in History. You can Undo for a few seconds.")
+        }
+        if confirmOnKeyStackWindow(
+            message: message,
+            informative: informative,
+            confirmTitle: String(localized: "Delete"),
+            onConfirm: { [weak self] in
+                for id in ids { self?.deleteStack(id, confirmed: true) }
+            }
+        ) { return }
+        present(.confirmDeleteStacks(ids, aged: aged, favorite: favorite))
+    }
+
+    private func enqueueStackDelete(_ ids: [UUID], ageVictims: Set<UUID>) {
+        enqueuePendingDeletion(records: [], stacks: Set(ids), ageVictims: ageVictims)
+        let message = ids.count == 1
+            ? String(localized: "Stack deleted")
+            : String(localized: "Deleted \(ids.count) stacks")
+        toasts.showUndo(message) { [weak self] in self?.undoDeletion() }
     }
 
     func toggleStackFavorite(_ id: UUID) {
         guard let stack = resolveStack(id) else { return }
         let makeFavorite = !stack.isFavorite
         let previous = stack
-        stackFavoriteOpGeneration += 1
-        let gen = stackFavoriteOpGeneration
+        let gen = nextOpGeneration(for: id, in: &stackFavoriteOpGeneration)
         // A superseded unfavorite may have wiped allStacks via removeStackLocally — setFavoriteLocally
         // alone cannot revive Favorites; reinsert from the resolved card when missing.
         if makeFavorite, !history.allStacks.contains(where: { $0.id == id }) {
@@ -1406,11 +1608,11 @@ final class AppModel {
         let leftFavorites = !makeFavorite && history.scope == .favorites
         if leftFavorites { history.removeStackLocally(id) }
 
-        Task { [weak self] in
+        writes.run { [weak self] in
             guard let self else { return }
             var didWrite = false
             do {
-                guard gen == self.stackFavoriteOpGeneration else {
+                guard gen == self.stackFavoriteOpGeneration[id] else {
                     self.reconcileSupersededStackFavorite(
                         id: id, makeFavorite: makeFavorite, previous: previous,
                         leftFavorites: leftFavorites, didWrite: false, op: gen
@@ -1420,7 +1622,7 @@ final class AppModel {
                 try await self.store.setStackFavorite(id, makeFavorite)
                 didWrite = true
             } catch {
-                guard gen == self.stackFavoriteOpGeneration else {
+                guard gen == self.stackFavoriteOpGeneration[id] else {
                     self.reconcileSupersededStackFavorite(
                         id: id, makeFavorite: makeFavorite, previous: previous,
                         leftFavorites: leftFavorites, didWrite: didWrite, op: gen
@@ -1428,7 +1630,12 @@ final class AppModel {
                     return
                 }
                 self.toasts.error(error.localizedDescription)
-                self.history.setStackFavoriteLocally(id: id, isFavorite: previous.isFavorite)
+                // Same revive rule as supersede: removeStackLocally cannot be undone by setFavoriteLocally.
+                if leftFavorites {
+                    self.history.reinsertStackLocally(previous)
+                } else {
+                    self.history.setStackFavoriteLocally(id: id, isFavorite: previous.isFavorite)
+                }
                 if self.stackEditor?.stackID == id {
                     self.stackEditor?.applyFavorite(previous.isFavorite, op: gen)
                     self.stackEditor?.settleFavorite(previous.isFavorite, op: gen)
@@ -1436,7 +1643,7 @@ final class AppModel {
                 self.history.storeDidChange()
                 return
             }
-            if gen != self.stackFavoriteOpGeneration {
+            if gen != self.stackFavoriteOpGeneration[id] {
                 self.reconcileSupersededStackFavorite(
                     id: id, makeFavorite: makeFavorite, previous: previous,
                     leftFavorites: leftFavorites, didWrite: true, op: gen
@@ -1464,8 +1671,8 @@ final class AppModel {
             }
             return
         }
-        // Pre-write supersede: only revert if this op still owns the pending.
-        if let editor = stackEditor, editor.stackID == id, !editor.ownsStackFavoritePending(op: op) {
+        // Pre-write supersede: only revert if this op still owns the pending (nil ≠ owned).
+        if stackEditor?.stackID == id, stackEditor?.ownsStackFavoritePending(op: op) != true {
             return
         }
         if stackEditor?.stackID == id {
@@ -1513,33 +1720,74 @@ final class AppModel {
             // Pinned panel stays so history cards can be dropped into the editor (§3.11).
             if !isPinned { hidePanelForWindow() }
             windows.showStack()
-            existing.reload()
+            existing.reload(excluding: { [weak self] in self?.history.hiddenIDs ?? [] })
+            try? await store.noteStackEdited(id)
             return
+        }
+        // Switching stacks: commit title + drain reorder so A's pending work is not dropped.
+        if stackEditor != nil {
+            await flushStackEditor()
         }
         let state = StackEditorState(stack: card, store: store)
         stackEditor = state
-        state.reload()
+        state.reload(excluding: { [weak self] in self?.history.hiddenIDs ?? [] })
+        try? await store.noteStackEdited(id)
         if !isPinned { hidePanelForWindow() }
         windows.showStack()
         windows.updateStackTitle(state.title)
     }
 
     func closeStackEditor(returningToPanel: Bool = true) {
+        commitOpenStackTitleIfNeeded()
         windows.closeStack(returningToPanel: returningToPanel || isPinned)
     }
 
     func stackWindowDidClose() {
+        // Red X / ⌘W skip `closeStackEditor` — commit before tearing down the editor projection.
+        commitOpenStackTitleIfNeeded()
         stackEditor = nil
         endCardDrag()
+    }
+
+    private func commitOpenStackTitleIfNeeded() {
+        guard let state = stackEditor, state.hasPendingStackTitle else { return }
+        renameStack(state.stackID, title: state.stack.title)
     }
 
     func chooseStackFromEditor(paste: Bool) {
         guard let state = stackEditor else { return }
         let id = state.stackID
-        // Capture playlist before close — Choose must not race a pending reorder persist.
-        let order = state.isTruncated || state.order.isEmpty ? nil : state.order
+        // Capture the full Choose plan before close — `stackWindowDidClose` nils the editor.
+        let hidden = history.hiddenIDs
+        let order: [UUID]? = {
+            guard !state.isTruncated, !state.order.isEmpty else { return nil }
+            let visible = state.order.filter { !hidden.contains($0) }
+            return visible.isEmpty ? nil : visible
+        }()
+        let dealMode = state.stack.dealMode
+        let loops = state.stack.loops
+        // Preflight while the Stack Window still hosts toasts; failure used to close first and strand UI.
+        if state.totalMemberCount == 0 || (order?.isEmpty == true && state.order.allSatisfy(hidden.contains)) {
+            toasts.show(String(localized: "This stack is empty."))
+            return
+        }
+        if paste, !AccessibilityBridge.isTrusted {
+            AccessibilityBridge.requestTrust()
+            toasts.error(String(localized: "To paste, allow Memopila in System Settings → Privacy & Security → Accessibility, then try again."))
+            return
+        }
         closeStackEditor(returningToPanel: false)
-        chooseStack(id, paste: paste, uiOrder: order)
+        writes.run { [weak self] in
+            guard let self else { return }
+            // Flush coalesced reorders so Choose does not arm on a pre-reorder store.
+            await self.awaitPlaylistIdle()
+            // Reopen only on failure — Stop/cancel must not bring the editor back.
+            if await self.stackSession.chooseStackAsync(
+                id, paste: paste, uiOrder: order, dealMode: dealMode, loops: loops
+            ) == .failed {
+                self.openStackEditor(id)
+            }
+        }
     }
 
     func presentStackRename() {
@@ -1587,50 +1835,71 @@ final class AppModel {
     }
 
     func reloadStackEditorIfNeeded() {
-        stackEditor?.reload()
+        stackEditor?.reload(excluding: { [weak self] in self?.history.hiddenIDs ?? [] })
         if let state = stackEditor {
             windows.updateStackTitle(state.title)
         }
     }
 
     func renameStack(_ id: UUID, title: String) {
+        let gen = nextOpGeneration(for: id, in: &stackRenameOpGeneration)
         history.setStackTitleLocally(id: id, title: title)
         if stackEditor?.stackID == id {
-            stackEditor?.applyTitle(title)
+            stackEditor?.applyTitle(title, op: gen)
             windows.updateStackTitle(stackEditor?.title ?? title)
         }
-        Task {
+        writes.run {
             do {
+                // Gen before write — a superseded keystroke must not commit an older title.
+                guard gen == self.stackRenameOpGeneration[id] else { return }
                 try await store.renameStack(id, title: title)
+                guard gen == self.stackRenameOpGeneration[id] else { return }
                 if self.stackEditor?.stackID == id {
-                    self.stackEditor?.settleTitle(title)
+                    self.stackEditor?.settleTitle(title, op: gen)
                 }
             } catch {
+                guard gen == self.stackRenameOpGeneration[id] else { return }
                 if self.stackEditor?.stackID == id {
-                    // Clear failed optimistic title; reload paints store truth.
-                    self.stackEditor?.discardStackTitleOverride()
+                    // Clear failed optimistic title only if this op still owns pending.
+                    self.stackEditor?.discardStackTitleOverride(op: gen)
                     self.reloadStackEditorIfNeeded()
                 }
             }
+            guard gen == self.stackRenameOpGeneration[id] else { return }
             history.storeDidChange()
         }
     }
 
     func setStackDeal(_ id: UUID, mode: StackDealMode, loops: Bool) {
+        let gen = nextOpGeneration(for: id, in: &stackDealOpGeneration)
         history.setStackDealLocally(id: id, mode: mode, loops: loops)
         if stackEditor?.stackID == id {
-            stackEditor?.applyDeal(mode: mode, loops: loops)
+            stackEditor?.applyDeal(mode: mode, loops: loops, op: gen)
         }
-        Task {
+        writes.run {
             do {
+                guard gen == self.stackDealOpGeneration[id] else { return }
                 try await store.setStackDeal(id, dealMode: mode, loops: loops)
+                guard gen == self.stackDealOpGeneration[id] else { return }
+                if self.stackEditor?.stackID == id {
+                    self.stackEditor?.settleDeal(mode: mode, loops: loops, op: gen)
+                }
                 history.storeDidChange()
                 if stackSession.armedStackID == id {
                     stackSession.applyDealSettings(dealMode: mode, loops: loops)
                 }
             } catch {
+                guard gen == self.stackDealOpGeneration[id] else { return }
+                if self.stackEditor?.stackID == id {
+                    self.stackEditor?.discardDealOverride(op: gen)
+                }
                 history.storeDidChange()
                 reloadStackEditorIfNeeded()
+                // Armed session must follow store truth after a failed optimistic deal.
+                if stackSession.armedStackID == id,
+                   let card = try? await store.stack(id) {
+                    stackSession.applyDealSettings(dealMode: card.dealMode, loops: card.loops)
+                }
                 toasts.error(error.localizedDescription)
             }
         }
@@ -1644,13 +1913,15 @@ final class AppModel {
             toasts.show(String(localized: "Select records to put in a stack."))
             return
         }
-        Task {
+        history.noteStackedLocally(ids)
+        writes.run {
             do {
                 let stackID = try await store.createStack(title: title, recordIDs: ids)
                 history.storeDidChange()
                 openStackEditor(stackID)
                 toasts.show(String(localized: "Stack created — drop cards onto the stack card to add them"))
             } catch {
+                history.storeDidChange()
                 toasts.error(error.localizedDescription)
             }
         }
@@ -1673,31 +1944,67 @@ final class AppModel {
         }
     }
 
-    /// The panel's list as filtered and searched now.
+    /// The panel's list as filtered and searched now — always from `entries`, never `ids(query)`.
     func deleteAllShown() {
-        deleteAll(matching: history.query, scope: .shown)
+        let hidden = history.hiddenIDs
+        let hiddenStacks = history.hiddenStackIDs
+        let shownRecords = history.entries.compactMap { entry -> UUID? in
+            guard case .record(let card) = entry, !hidden.contains(card.id) else { return nil }
+            return card.id
+        }
+        let shownStacks = history.entries.compactMap { entry -> UUID? in
+            guard case .stack(let card) = entry, !hiddenStacks.contains(card.id) else { return nil }
+            return card.id
+        }
+        // Pin SSOT keep-bucket (favorite ∨ stacked) — matches store.ids().
+        let keep = shownRecords.filter { id in
+            history.cards.first { $0.id == id }?.isFavorite == true || history.isStackPinned(id)
+        }
+        let others = shownRecords.filter { !keep.contains($0) }
+        if shownStacks.isEmpty {
+            guard !others.isEmpty || !keep.isEmpty else {
+                return toasts.show(String(localized: "Nothing to delete"))
+            }
+            present(.confirmDeleteMany(.shown, others: others, favorites: keep))
+            return
+        }
+        // Stacks on the board: confirm stacks (and any unpinned records) together.
+        guard !others.isEmpty || !keep.isEmpty || !shownStacks.isEmpty else {
+            return toasts.show(String(localized: "Nothing to delete"))
+        }
+        pendingStacksAfterRecordConfirm = shownStacks
+        if others.isEmpty && keep.isEmpty {
+            for id in shownStacks { deleteStack(id) }
+            return
+        }
+        present(.confirmDeleteMany(.shown, others: others, favorites: keep))
     }
 
 
     func rename(_ id: UUID, title: String) {
         present(nil)
-        setRecordTitleLocally(id: id, title: title)
-        Task {
+        let gen = nextOpGeneration(for: id, in: &recordTitleOpGeneration)
+        setRecordTitleLocally(id: id, title: title, op: gen)
+        writes.run {
             do {
+                guard gen == self.recordTitleOpGeneration[id] else { return }
                 try await store.rename(id, title: title)
-                stackEditor?.settleMemberTitle(id: id, title: title)
+                guard gen == self.recordTitleOpGeneration[id] else { return }
+                stackEditor?.settleMemberTitle(id: id, title: title, op: gen)
             } catch {
+                guard gen == self.recordTitleOpGeneration[id] else { return }
                 toasts.error(error.localizedDescription)
-                stackEditor?.discardMemberTitleOverride(id: id)
+                stackEditor?.discardMemberTitleOverride(id: id, op: gen)
                 reloadStackEditorIfNeeded()
             }
+            guard gen == self.recordTitleOpGeneration[id] else { return }
             history.storeDidChange()
         }
     }
 
     /// Preview language override (§8.5): `nil` = automatic, `"plain"` = none, else a `CodeLanguage`.
     func setCodeLanguage(_ id: UUID, _ language: String?) {
-        Task { try? await store.setCodeLanguage(id, language) }
+        writes.run { try? await store.setCodeLanguage(id, language) }
     }
 
     /// The stored image or PDF page, downsampled to the preview size off the main actor (§7.3).
@@ -1723,6 +2030,8 @@ final class AppModel {
         if policy == .dontSave, SecretDetector.detect(text, kinds: kinds) != nil {
             return String(localized: "The text contains a secret, and Settings say not to save secrets.")
         }
+        // Drain reorders first — a stale splice must not race merge retarget.
+        await awaitPlaylistIdle()
         switch await monitor.destructive({ opSeq in
             try await store.editText(id, text: text, rich: rich, opSeq: opSeq, maxBytes: maxBytes, secretPolicy: policy, secretKinds: kinds)
         }) {
@@ -1744,6 +2053,7 @@ final class AppModel {
             history.removeLocally([id])
             rescueFromPendingDeletion(survivor)
             history.selectedID = .record(survivor)
+            stackEditor?.remapMember(from: id, to: survivor)
             history.storeDidChange()
             // Merge retargets StackMember rows — refresh the deal queue if armed.
             if stackSession.isArmed { stackSession.rebuildFromStore() }
@@ -1793,7 +2103,7 @@ final class AppModel {
     }
 
     func clear(_ scope: ClearScope) {
-        Task {
+        writes.run {
             let store = store
             switch await monitor.destructive({ opSeq in try await store.clear(scope, opSeq: opSeq) }) {
             case .success:
@@ -1823,7 +2133,7 @@ final class AppModel {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         if case .newCollection? = overlay { present(nil) }
-        Task {
+        writes.run {
             do {
                 let id = try await store.createCollection(named: trimmed)
                 if let recordID {
@@ -1842,7 +2152,7 @@ final class AppModel {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         present(nil)
-        Task {
+        writes.run {
             try? await store.renameCollection(id, to: trimmed)
             history.refreshCollections()
         }
@@ -1851,7 +2161,7 @@ final class AppModel {
     /// After *Delete Collection?* — the records stay in history.
     func deleteCollection(_ id: UUID) {
         present(nil)
-        Task {
+        writes.run {
             try? await store.deleteCollection(id)
             if history.scope == .collection(id) { history.scope = .all }
             history.refreshCollections()
@@ -1861,7 +2171,7 @@ final class AppModel {
 
     func setMembership(_ recordID: UUID, collection: UUID, isMember: Bool) {
         history.setMembershipLocally(record: recordID, collection: collection, isMember: isMember)
-        Task {
+        writes.run {
             try? await store.setMembership(record: recordID, collection: collection, isMember: isMember)
             history.refreshCollections()
             history.storeDidChange()
@@ -1914,47 +2224,56 @@ final class AppModel {
             endCardDrag()
             return false
         }
-        // Filtered pinboard: splice into the full board so hidden slots are not deleted.
+        // Store splices visible order into full slots atomically — never prefetch a capped board.
         let scope = history.scope
         let visibleOrder = order
         history.applyPinboardOrderLocally(visibleOrder)
         endCardDrag()
         stackDragRevision &+= 1
-        Task {
-            do {
-                let fullQuery = HistoryQuery(scope: scope)
-                let full = try await store.pinboardEntries(fullQuery, limit: ClipboardStore.maxPinboardEntries).map(\.id)
-                let merged: [HistoryEntry.ID]
-                if history.kindFilter == .all, history.search.isEmpty {
-                    merged = visibleOrder
-                } else {
-                    merged = Self.splicePinboardOrder(full: full, visible: visibleOrder)
-                }
-                switch scope {
-                case .favorites:
-                    try await store.reorderFavorites(merged)
-                case .collection(let collectionID):
-                    try await store.reorderCollection(collectionID, merged)
-                default:
-                    break
-                }
-            } catch {
-                history.storeDidChange()
-            }
-        }
+        enqueuePinboardReorder(scope: scope, order: visibleOrder)
         return true
     }
 
-    /// Replace the relative order of `visible` ids inside `full`, keeping non-visible ids in place.
-    private static func splicePinboardOrder(full: [HistoryEntry.ID], visible: [HistoryEntry.ID]) -> [HistoryEntry.ID] {
-        let visibleSet = Set(visible)
-        var queue = visible
-        return full.map { id in
-            if visibleSet.contains(id), !queue.isEmpty {
-                return queue.removeFirst()
+    private func pinboardScopeKey(_ scope: HistoryScope) -> String? {
+        switch scope {
+        case .favorites: return "favorites"
+        case .collection(let id): return id.uuidString
+        default: return nil
+        }
+    }
+
+    private func enqueuePinboardReorder(scope: HistoryScope, order: [HistoryEntry.ID]) {
+        guard let key = pinboardScopeKey(scope) else { return }
+        pendingPinboardWrites[key] = (scope, order)
+        guard pinboardWriteTask == nil else { return }
+        pinboardWriteTask = Task { [weak self] in
+            await self?.drainPinboardWrites()
+        }
+    }
+
+    private func drainPinboardWrites() async {
+        defer { pinboardWriteTask = nil }
+        while let key = pendingPinboardWrites.keys.first {
+            guard let pending = pendingPinboardWrites.removeValue(forKey: key) else { continue }
+            do {
+                switch pending.scope {
+                case .favorites:
+                    try await store.reorderFavorites(pending.order)
+                case .collection(let collectionID):
+                    try await store.reorderCollection(collectionID, pending.order)
+                default:
+                    break
+                }
+                if pendingPinboardWrites[key] != nil { continue }
+                history.clearPendingPinboardOrder()
+                history.storeDidChange()
+            } catch {
+                if pendingPinboardWrites[key] != nil { continue }
+                history.clearPendingPinboardOrder()
+                history.storeDidChange()
+                toasts.error(error.localizedDescription)
             }
-            return id
-        } + queue
+        }
     }
 
     func endCardDrag() {
@@ -2023,13 +2342,25 @@ final class AppModel {
     }
 
     private func appendOrMoveToEndOfStack(_ stackID: UUID, recordID: UUID) {
-        Task {
+        // Open non-truncated editor: mutate in-memory order and coalesce a splice reorder.
+        if let editor = stackEditor, editor.stackID == stackID, !editor.isTruncated {
+            if editor.order.contains(recordID) {
+                guard let order = editor.moveMemberToEnd(recordID, toStart: false) else { return }
+                enqueueStackReorder(stackID: stackID, recordIDs: order)
+                toasts.show(String(localized: "Moved to end of stack"))
+            } else {
+                addRecord(recordID, toStack: stackID, toast: true)
+            }
+            return
+        }
+        writes.run {
+            await awaitPlaylistIdle()
             let members = (try? await store.stackMemberIDs(stackID)) ?? []
             if members.contains(recordID) {
                 var order = members.filter { $0 != recordID }
                 order.append(recordID)
                 do {
-                    try await store.setStackMembers(stackID, recordIDs: order)
+                    try await store.reorderStackMembers(stackID, orderedIDs: order)
                     history.storeDidChange()
                     if stackEditor?.stackID == stackID { reloadStackEditorIfNeeded() }
                     if stackSession.armedStackID == stackID { stackSession.rebuildFromStore() }
@@ -2047,12 +2378,13 @@ final class AppModel {
     /// Clone a stack member after itself, then open Edit on the copy (PLAN §3.11 — playlist links
     /// cannot repeat an id; the copy is a new history card).
     func duplicateInStack(_ recordID: UUID, stackID: UUID) {
-        Task {
+        writes.run {
+            await awaitPlaylistIdle()
             do {
                 let newID = try await store.duplicateInStack(recordID: recordID, stackID: stackID)
                 history.storeDidChange()
                 if stackEditor?.stackID == stackID {
-                    stackEditor?.reload(selecting: newID)
+                    stackEditor?.reload(selecting: newID, excluding: { [weak self] in self?.history.hiddenIDs ?? [] })
                     windows.updateStackTitle(stackEditor?.title ?? "")
                 }
                 openRecord(newID, focusText: true, closeAfterSave: true)
@@ -2066,7 +2398,10 @@ final class AppModel {
 
     /// Playlist membership (§3.11): join clears `expiresAt`; leave does not restore it (§6).
     func addRecord(_ recordID: UUID, toStack stackID: UUID, toast: Bool = false) {
-        Task {
+        history.noteStackedLocally([recordID])
+        writes.run {
+            // Wait out coalesced reorders so append is not racing a drain mid-write.
+            await awaitPlaylistIdle()
             do {
                 try await store.appendStackMember(stackID, recordID: recordID)
                 history.storeDidChange()
@@ -2080,27 +2415,67 @@ final class AppModel {
         }
     }
 
-    func removeRecord(_ recordID: UUID, fromStack stackID: UUID) {
+    /// Overlay confirm for ⌘⌫ favorites — also flushes stacks waiting behind the same gate.
+    func confirmPendingRecordDelete(_ ids: [UUID]) {
+        delete(ids, confirmed: true)
+        let stacks = pendingStacksAfterRecordConfirm
+        pendingStacksAfterRecordConfirm = []
+        for id in stacks { deleteStack(id, confirmed: true) }
+    }
+
+    func confirmPendingDeleteMany(others: [UUID], favorites: [UUID]) {
+        delete(others + favorites, confirmed: true)
+        let stacks = pendingStacksAfterRecordConfirm
+        pendingStacksAfterRecordConfirm = []
+        for id in stacks { deleteStack(id) }
+    }
+
+    func removeRecord(_ recordID: UUID, fromStack stackID: UUID, confirmed: Bool = false) {
+        let cutoff = Date().addingTimeInterval(-settings.retentionLimits.maxAge)
+        let card = resolveCard(recordID)
+        let inOther = history.allStacks.contains { $0.id != stackID && $0.memberIDs.contains(recordID) }
+        let wouldAge = !confirmed
+            && card.map { !$0.isFavorite && $0.lastCopiedAt < cutoff && !inOther } == true
+        if wouldAge {
+            return confirmLeaveStack(record: recordID, stack: stackID)
+        }
+        if case .confirmLeaveStack? = overlay { present(nil) }
         if stackEditor?.stackID == stackID {
             stackEditor?.removeMembers([recordID])
         }
-        // Only this stack — the record may still belong to others.
-        // Face preview via resolveCard: new first may live only in Stack Window members.
         history.removeRecordFromStackLocally(stackID: stackID, recordID: recordID) { [weak self] in
             self?.resolveCard($0)
         }
-        Task {
+        let ageDelete = confirmed && card.map { !$0.isFavorite && $0.lastCopiedAt < cutoff && !inOther } == true
+        writes.run {
+            await awaitPlaylistIdle()
             do {
                 try await store.removeStackMember(stackID, recordID: recordID)
+                if ageDelete {
+                    _ = try? await monitor.destructive({ opSeq in
+                        try await store.delete([recordID], opSeq: opSeq)
+                    })
+                }
                 history.storeDidChange()
                 if stackEditor?.stackID == stackID { reloadStackEditorIfNeeded() }
                 if stackSession.armedStackID == stackID { stackSession.rebuildFromStore() }
+                if ageDelete { await dropOpenRecordIfGone() }
             } catch {
                 history.storeDidChange()
                 reloadStackEditorIfNeeded()
                 toasts.error(error.localizedDescription)
             }
         }
+    }
+
+    private func confirmLeaveStack(record: UUID, stack: UUID) {
+        if confirmOnKeyStackWindow(
+            message: String(localized: "Remove from stack and delete?"),
+            informative: String(localized: "It is older than History keeps (\(settings.maxAgeDays) days), so it is deleted. This can't be undone."),
+            confirmTitle: String(localized: "Remove and Delete"),
+            onConfirm: { [weak self] in self?.removeRecord(record, fromStack: stack, confirmed: true) }
+        ) { return }
+        present(.confirmLeaveStack(record: record, stack: stack))
     }
 
     private func persistStackMemberOrder(_ stackID: UUID, recordIDs: [UUID]) {
@@ -2110,6 +2485,11 @@ final class AppModel {
             reloadStackEditorIfNeeded()
             return
         }
+        enqueueStackReorder(stackID: stackID, recordIDs: recordIDs)
+    }
+
+    /// Latest relative order wins per stack — splice-only, never clobbers append/remove/Undo.
+    private func enqueueStackReorder(stackID: UUID, recordIDs: [UUID]) {
         if let editor = stackEditor, editor.stackID == stackID {
             history.setStackMembersLocally(
                 id: stackID,
@@ -2118,12 +2498,32 @@ final class AppModel {
                 sensitiveKind: editor.members.first?.sensitiveKind
             )
         }
-        Task {
+        pendingPlaylistWrites[stackID] = recordIDs
+        guard playlistWriteTask == nil else { return }
+        playlistWriteTask = Task { [weak self] in
+            await self?.drainPlaylistWrites()
+        }
+    }
+
+    private func drainPlaylistWrites() async {
+        defer { playlistWriteTask = nil }
+        while let stackID = pendingPlaylistWrites.keys.first {
+            guard let recordIDs = pendingPlaylistWrites.removeValue(forKey: stackID) else { continue }
             do {
-                try await store.setStackMembers(stackID, recordIDs: recordIDs)
+                try await store.reorderStackMembers(stackID, orderedIDs: recordIDs)
+                if pendingPlaylistWrites[stackID] != nil { continue }
+                if stackEditor?.stackID == stackID {
+                    stackEditor?.settleOrder(recordIDs)
+                }
                 history.storeDidChange()
-                if stackSession.armedStackID == stackID { stackSession.rebuildFromStore() }
+                if stackSession.armedStackID == stackID {
+                    stackSession.rebuildFromStore()
+                }
             } catch {
+                if pendingPlaylistWrites[stackID] != nil { continue }
+                if stackEditor?.stackID == stackID {
+                    stackEditor?.discardOrderOverride()
+                }
                 history.storeDidChange()
                 reloadStackEditorIfNeeded()
                 toasts.error(error.localizedDescription)
@@ -2132,7 +2532,7 @@ final class AppModel {
     }
 
     func setStackMembership(stack stackID: UUID, collection: UUID, isMember: Bool) {
-        Task {
+        writes.run {
             try? await store.setStackMembership(stack: stackID, collection: collection, isMember: isMember)
             history.storeDidChange()
         }
@@ -2166,12 +2566,13 @@ final class AppModel {
     }
 
     func deleteAndDontSave(_ id: UUID, bundleID: String) {
-        delete([id], confirmed: true)
+        // Never bypass favorite confirm (`confirmed: true` would skip the gate).
+        delete([id])
         setCaptureMode(.dontSave, for: bundleID)
     }
 
     func deleteRecords(fromApp bundleID: String) {
-        Task {
+        writes.run {
             let store = store
             switch await monitor.destructive({ opSeq in try await store.deleteRecords(fromApp: bundleID, opSeq: opSeq) }) {
             case .success(let count):

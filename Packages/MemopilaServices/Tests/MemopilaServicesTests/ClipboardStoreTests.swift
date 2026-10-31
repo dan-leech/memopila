@@ -436,6 +436,37 @@ struct ClipboardStoreTests {
         #expect(try await store.stackMemberIDs(stackID) == [b])
     }
 
+    @Test func should_keep_stack_membership_when_edit_merges_into_existing_record() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let a) = await ingest(store, snapshot("draft")),
+              case .committed(let b) = await ingest(store, snapshot("final", at: 2_000)) else { return }
+        // Survivor b is NOT in the stack — retarget must insert, not mutate-then-cascade-lose.
+        let stackID = try await store.createStack(title: "S", recordIDs: [a])
+        let other = try await store.createStack(title: "T", recordIDs: [a])
+        #expect(try await store.editText(a, text: "final", opSeq: 1, maxBytes: 1_000) == .merged(into: b))
+        #expect(try await store.stackMemberIDs(stackID) == [b])
+        #expect(try await store.stackMemberIDs(other) == [b])
+        #expect(try await store.stackedRecordIDs().contains(b))
+    }
+
+    @Test func should_keep_pinboard_position_when_edit_merges_into_existing_record() async throws {
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits()
+        guard case .committed(let x) = await ingest(store, snapshot("x", at: 1)),
+              case .committed(let draft) = await ingest(store, snapshot("draft", at: 2)),
+              case .committed(let y) = await ingest(store, snapshot("y", at: 3)),
+              case .committed(let keeper) = await ingest(store, snapshot("final", at: 4)) else { return }
+        try await store.setFavorite(x, true, limits: limits, now: Date(timeIntervalSince1970: 10))
+        try await store.setFavorite(draft, true, limits: limits, now: Date(timeIntervalSince1970: 11))
+        try await store.setFavorite(y, true, limits: limits, now: Date(timeIntervalSince1970: 12))
+        try await store.reorderFavorites([.record(x), .record(draft), .record(y)])
+        #expect(try await store.editText(draft, text: "final", opSeq: 1, maxBytes: 1_000) == .merged(into: keeper))
+        #expect(
+            try await store.pinboardEntries(HistoryQuery(scope: .favorites)).map(\.id)
+                == [.record(x), .record(keeper), .record(y)]
+        )
+    }
+
     @Test func should_duplicate_stack_member_after_source_as_independent_record() async throws {
         let store = try ClipboardStore(url: nil)
         guard case .committed(let a) = await ingest(store, snapshot("alpha", at: 1)),
@@ -463,8 +494,40 @@ struct ClipboardStoreTests {
         #expect(try await store.page(query, offset: 1, limit: 1).map(\.id) == [b])
         #expect(try await store.count(query) == 3)
         #expect(try await store.stacks(query).isEmpty, "stack drill-down never nests stack cards")
-        try await store.setStackMembers(stackID, recordIDs: [c, a, b])
+        try await store.reorderStackMembers(stackID, orderedIDs: [c, a, b])
         #expect(try await store.page(query, offset: 0, limit: 10).map(\.id) == [c, a, b])
+    }
+
+    @Test func should_reorder_stack_members_without_dropping_unlisted() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let a) = await ingest(store, snapshot("a", at: 1)),
+              case .committed(let b) = await ingest(store, snapshot("b", at: 2)),
+              case .committed(let c) = await ingest(store, snapshot("c", at: 3)) else { return }
+        let stackID = try await store.createStack(title: "S", recordIDs: [a, b, c])
+        // Visible reorder a↔c while b is "hidden" from the UI list — splice must keep b.
+        try await store.reorderStackMembers(stackID, orderedIDs: [c, a])
+        #expect(try await store.stackMemberIDs(stackID) == [c, b, a])
+        try await store.appendStackMember(stackID, recordID: a) // already a member — no-op
+        #expect(try await store.stackMemberIDs(stackID) == [c, b, a])
+        guard case .committed(let d) = await ingest(store, snapshot("d", at: 4)) else { return }
+        try await store.appendStackMember(stackID, recordID: d)
+        // [c,b,a,d] + visible [a,c] → splice listed slots only → [a,b,c,d]
+        try await store.reorderStackMembers(stackID, orderedIDs: [a, c])
+        #expect(try await store.stackMemberIDs(stackID) == [a, b, c, d])
+    }
+
+    @Test func should_append_after_position_gaps_without_collision() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let a) = await ingest(store, snapshot("a", at: 1)),
+              case .committed(let b) = await ingest(store, snapshot("b", at: 2)),
+              case .committed(let c) = await ingest(store, snapshot("c", at: 3)) else { return }
+        let stackID = try await store.createStack(title: "S", recordIDs: [a, b, c])
+        try await store.removeStackMember(stackID, recordID: b)
+        guard case .committed(let d) = await ingest(store, snapshot("d", at: 4)) else { return }
+        try await store.appendStackMember(stackID, recordID: d)
+        #expect(try await store.stackMemberIDs(stackID) == [a, c, d])
+        let copy = try await store.duplicateInStack(recordID: a, stackID: stackID)
+        #expect(try await store.stackMemberIDs(stackID) == [a, copy, c, d])
     }
 
     @Test func stackScopeEmptyAndFiltered() async throws {
@@ -550,6 +613,14 @@ struct ClipboardStoreTests {
         try await store.reorderCollection(collection, [.record(b), .stack(stackID)])
         #expect(try await store.pinboardEntries(HistoryQuery(scope: .collection(collection))).map(\.id)
             == [.record(b), .stack(stackID)])
+        // Splice must keep unlisted membership — c stays even when omitted from the visible order.
+        guard case .committed(let c) = await ingest(store, snapshot("c", at: 3)) else { return }
+        try await store.setMembership(record: c, collection: collection, isMember: true)
+        #expect(try await store.pinboardEntries(HistoryQuery(scope: .collection(collection))).map(\.id)
+            == [.record(c), .record(b), .stack(stackID)])
+        try await store.reorderCollection(collection, [.stack(stackID), .record(b)])
+        #expect(try await store.pinboardEntries(HistoryQuery(scope: .collection(collection))).map(\.id)
+            == [.record(c), .stack(stackID), .record(b)])
     }
 
     @Test func should_ignore_since_in_favorites_and_collection_scopes() async throws {
@@ -642,6 +713,37 @@ struct ClipboardStoreTests {
         #expect(try await store.card(a)?.useCount == 1)
     }
 
+    @Test func should_unfavorite_age_delete_only_that_record_not_all_aged() async throws {
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits(maxCount: 1_000, maxAge: 100)
+        guard case .committed(let oldFav) = await ingest(store, snapshot("old-fav", at: 1), limits: limits),
+              case .committed(let otherAged) = await ingest(store, snapshot("other", at: 2), limits: limits) else { return }
+        try await store.setFavorite(oldFav, true, limits: limits, now: Date(timeIntervalSince1970: 3))
+        // otherAged stays non-favorite and aged — unfavorite must not sweep it.
+        let deleted = try await store.setFavorite(oldFav, false, limits: limits, now: Date(timeIntervalSince1970: 1_000))
+        #expect(deleted == Set<UUID>([oldFav]))
+        #expect(try await store.card(oldFav) == nil)
+        #expect(try await store.card(otherAged) != nil)
+    }
+
+    @Test func should_fetch_stack_by_id_outside_recent_cap() async throws {
+        let store = try ClipboardStore(url: nil)
+        var oldest: UUID?
+        for i in 0..<5 {
+            guard case .committed(let id) = await ingest(store, snapshot("m\(i)", at: TimeInterval(i + 1))) else { return }
+            let stackID = try await store.createStack(
+                title: "S\(i)", recordIDs: [id], now: Date(timeIntervalSince1970: TimeInterval(i + 1))
+            )
+            if i == 0 { oldest = stackID }
+            try await store.markStackUsed(stackID, at: Date(timeIntervalSince1970: TimeInterval(100 + i)))
+        }
+        let id = try #require(oldest)
+        #expect(try await store.stack(id)?.title == "S0")
+        let snap = try #require(try await store.stackSnapshot(id))
+        #expect(snap.stack.id == id)
+        #expect(!snap.order.isEmpty)
+    }
+
     @Test func should_age_delete_stale_non_favorite_stack_and_sole_members() async throws {
         let store = try ClipboardStore(url: nil)
         let limits = RetentionLimits(maxAge: 100)
@@ -661,6 +763,39 @@ struct ClipboardStoreTests {
         try await store.applyRetention(limits: limits, now: Date(timeIntervalSince1970: 1_000))
         #expect(try await store.stack(stackID) != nil)
         #expect(try await store.card(a) != nil)
+    }
+
+    @Test func should_not_age_delete_stack_right_after_it_is_unfavorited() async throws {
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits(maxAge: 100)
+        guard case .committed(let a) = await ingest(store, snapshot("a", at: 1), limits: limits) else { return }
+        let stackID = try await store.createStack(title: "Was favorite", recordIDs: [a], now: Date(timeIntervalSince1970: 1))
+        try await store.setStackFavorite(stackID, true)
+        try await store.setStackFavorite(stackID, false)
+        try await store.applyRetention(limits: limits, now: Date(timeIntervalSince1970: 1_000))
+        #expect(try await store.stack(stackID) != nil)
+        #expect(try await store.card(a) != nil)
+    }
+
+    @Test func should_spare_protected_open_stack_from_age_delete() async throws {
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits(maxAge: 100)
+        guard case .committed(let a) = await ingest(store, snapshot("a", at: 1), limits: limits) else { return }
+        let stackID = try await store.createStack(title: "Open", recordIDs: [a], now: Date(timeIntervalSince1970: 1))
+        try await store.applyRetention(
+            limits: limits, now: Date(timeIntervalSince1970: 1_000), protectingStacks: [stackID]
+        )
+        #expect(try await store.stack(stackID) != nil)
+        #expect(try await store.card(a) != nil)
+    }
+
+    @Test func should_not_tag_record_into_deleted_collection() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let a) = await ingest(store, snapshot("a", at: 1)) else { return }
+        let collection = try await store.createCollection(named: "Gone")
+        try await store.deleteCollection(collection)
+        try await store.setMembership(record: a, collection: collection, isMember: true)
+        #expect(try await store.memberships(of: [a])[a] == nil)
     }
 
     @Test func should_keep_member_still_in_fresh_stack_when_other_ages_out() async throws {
