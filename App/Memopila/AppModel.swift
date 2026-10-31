@@ -359,6 +359,8 @@ final class AppModel {
             stackEditor?.settleMemberTitle(id: change.id, title: change.title)
         } catch {
             toasts.error(error.localizedDescription)
+            // Drop failed optimistic title so reload does not re-paint it forever.
+            stackEditor?.discardMemberTitleOverride(id: change.id)
             reloadStackEditorIfNeeded()
             history.storeDidChange()
             return
@@ -1217,20 +1219,38 @@ final class AppModel {
         let target = makeFavorite
         Task { [weak self] in
             guard let self else { return }
+            var written = Set<UUID>()
             do {
                 for id in changingIDs {
-                    guard gen == self.recordFavoriteOpGeneration else { return }
+                    guard gen == self.recordFavoriteOpGeneration else {
+                        self.reconcileSupersededRecordFavorites(
+                            written: written, all: changingIDs, target: target, previous: previous
+                        )
+                        return
+                    }
                     try await self.store.setFavorite(id, target, limits: limits, now: Date())
+                    written.insert(id)
                 }
             } catch {
-                guard gen == self.recordFavoriteOpGeneration else { return }
+                if gen != self.recordFavoriteOpGeneration {
+                    self.reconcileSupersededRecordFavorites(
+                        written: written, all: changingIDs, target: target, previous: previous
+                    )
+                    return
+                }
                 self.toasts.error(error.localizedDescription)
-                for (id, card) in previous {
-                    self.setRecordFavoriteLocally(id: id, isFavorite: card.isFavorite)
-                    self.stackEditor?.settleMemberFavorite(id: id, isFavorite: card.isFavorite)
+                // Partial store success: keep written at target; revert only the unwritten.
+                for id in written {
+                    self.stackEditor?.settleMemberFavorite(id: id, isFavorite: target)
+                }
+                for id in changingIDs where !written.contains(id) {
+                    if let card = previous[id] {
+                        self.setRecordFavoriteLocally(id: id, isFavorite: card.isFavorite)
+                        self.stackEditor?.settleMemberFavorite(id: id, isFavorite: card.isFavorite)
+                    }
                 }
                 let pending = self.pendingDeletion?.ids ?? []
-                let restoreHide = hideIDs.subtracting(pending)
+                let restoreHide = hideIDs.subtracting(pending).subtracting(written)
                 if !restoreHide.isEmpty {
                     self.history.unhide(restoreHide)
                 } else {
@@ -1238,7 +1258,12 @@ final class AppModel {
                 }
                 return
             }
-            guard gen == self.recordFavoriteOpGeneration else { return }
+            if gen != self.recordFavoriteOpGeneration {
+                self.reconcileSupersededRecordFavorites(
+                    written: written, all: changingIDs, target: target, previous: previous
+                )
+                return
+            }
             for id in changingIDs {
                 self.stackEditor?.settleMemberFavorite(id: id, isFavorite: target)
             }
@@ -1251,6 +1276,27 @@ final class AppModel {
                 await self.dropOpenRecordIfGone()
             }
             self.history.storeDidChange()
+        }
+    }
+
+    /// A newer favorite op bumped the gen: settle store-committed ids; revert unwritten only if
+    /// pending/UI still shows this op's target (otherwise the newer op already owns them).
+    private func reconcileSupersededRecordFavorites(
+        written: Set<UUID>,
+        all: Set<UUID>,
+        target: Bool,
+        previous: [UUID: HistoryCard]
+    ) {
+        for id in written {
+            stackEditor?.settleMemberFavorite(id: id, isFavorite: target)
+        }
+        for id in all where !written.contains(id) {
+            let pendingOurs = stackEditor?.takeMemberFavoriteOverride(id: id, matching: target) ?? false
+            let uiOurs = resolveCard(id)?.isFavorite == target
+            guard pendingOurs || uiOurs else { continue }
+            guard let card = previous[id] else { continue }
+            history.setFavoriteLocally(record: id, isFavorite: card.isFavorite)
+            stackEditor?.paintMemberFavorite(id: id, isFavorite: card.isFavorite)
         }
     }
 
@@ -1331,7 +1377,14 @@ final class AppModel {
                 self.history.storeDidChange()
                 return
             }
-            guard gen == self.stackFavoriteOpGeneration else { return }
+            // Superseded after a successful write: leave UI to the newer op; just drop our pending
+            // if it still matches what we committed.
+            if gen != self.stackFavoriteOpGeneration {
+                if self.stackEditor?.stackID == id {
+                    self.stackEditor?.settleFavorite(makeFavorite)
+                }
+                return
+            }
             if self.stackEditor?.stackID == id {
                 self.stackEditor?.settleFavorite(makeFavorite)
             }
@@ -1457,9 +1510,17 @@ final class AppModel {
             windows.updateStackTitle(stackEditor?.title ?? title)
         }
         Task {
-            try? await store.renameStack(id, title: title)
-            if self.stackEditor?.stackID == id {
-                self.stackEditor?.settleTitle(title)
+            do {
+                try await store.renameStack(id, title: title)
+                if self.stackEditor?.stackID == id {
+                    self.stackEditor?.settleTitle(title)
+                }
+            } catch {
+                if self.stackEditor?.stackID == id {
+                    // Clear failed optimistic title; reload paints store truth.
+                    self.stackEditor?.discardStackTitleOverride()
+                    self.reloadStackEditorIfNeeded()
+                }
             }
             history.storeDidChange()
         }
@@ -1537,6 +1598,7 @@ final class AppModel {
                 stackEditor?.settleMemberTitle(id: id, title: title)
             } catch {
                 toasts.error(error.localizedDescription)
+                stackEditor?.discardMemberTitleOverride(id: id)
                 reloadStackEditorIfNeeded()
             }
             history.storeDidChange()

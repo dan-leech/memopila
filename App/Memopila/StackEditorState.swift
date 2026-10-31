@@ -196,9 +196,21 @@ final class StackEditorState {
     }
 
     func settleMemberFavorite(id: UUID, isFavorite: Bool) {
-        if pendingMemberFavorites[id] == isFavorite {
-            pendingMemberFavorites.removeValue(forKey: id)
-        }
+        _ = takeMemberFavoriteOverride(id: id, matching: isFavorite)
+    }
+
+    /// Clears a pending ♥ only if it still matches (newer op may have overwritten it).
+    @discardableResult
+    func takeMemberFavoriteOverride(id: UUID, matching isFavorite: Bool) -> Bool {
+        guard pendingMemberFavorites[id] == isFavorite else { return false }
+        pendingMemberFavorites.removeValue(forKey: id)
+        return true
+    }
+
+    /// Paint without touching pending (revert after a superseded / failed write).
+    func paintMemberFavorite(id: UUID, isFavorite: Bool) {
+        guard let index = members.firstIndex(where: { $0.id == id }) else { return }
+        members[index] = members[index].withFavorite(isFavorite)
     }
 
     /// Optimistic member rename — same dual-projection rule as favorite.
@@ -214,6 +226,15 @@ final class StackEditorState {
         if pendingMemberTitles[id] == trimmed {
             pendingMemberTitles.removeValue(forKey: id)
         }
+    }
+
+    /// Drop pending title so a reload can show store truth after a failed rename.
+    func discardMemberTitleOverride(id: UUID) {
+        pendingMemberTitles.removeValue(forKey: id)
+    }
+
+    func discardStackTitleOverride() {
+        pendingStackTitle = nil
     }
 
     func moveMember(_ id: UUID, by delta: Int) -> [UUID]? {
