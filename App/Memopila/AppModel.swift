@@ -1288,6 +1288,7 @@ final class AppModel {
     /// A newer favorite op bumped the gen: settle store-committed ids; revert unwritten only if
     /// pending/UI still shows this op's target (otherwise the newer op already owns them).
     /// Also clear sticky `hideIDs` — success/failure paths do; supersede must too.
+    /// After `hide`, the card leaves `history.records`, so `resolveCard` alone cannot prove ownership.
     private func reconcileSupersededRecordFavorites(
         written: Set<UUID>,
         all: Set<UUID>,
@@ -1302,17 +1303,35 @@ final class AppModel {
             history.forgetHidden(hideIDs.intersection(written))
         }
         var restoreHide = Set<UUID>()
+        var dropStickyHide = Set<UUID>()
         for id in all where !written.contains(id) {
-            let pendingOurs = stackEditor?.takeMemberFavoriteOverride(id: id, matching: target) ?? false
+            let override = stackEditor?.memberFavoriteOverride(id)
+            let pendingOurs = override == target
+            if pendingOurs {
+                _ = stackEditor?.takeMemberFavoriteOverride(id: id, matching: target)
+            }
             let uiOurs = resolveCard(id)?.isFavorite == target
-            guard pendingOurs || uiOurs else { continue }
-            guard let card = previous[id] else { continue }
-            history.setFavoriteLocally(record: id, isFavorite: card.isFavorite)
-            stackEditor?.paintMemberFavorite(id: id, isFavorite: card.isFavorite)
-            if hideIDs.contains(id) { restoreHide.insert(id) }
+            // Hidden + no newer pending → we still own the optimistic hide (resolveCard is nil).
+            let hiddenOurs = hideIDs.contains(id) && override == nil
+            if pendingOurs || uiOurs || hiddenOurs {
+                if let card = previous[id] {
+                    history.setFavoriteLocally(record: id, isFavorite: card.isFavorite)
+                    stackEditor?.paintMemberFavorite(id: id, isFavorite: card.isFavorite)
+                }
+                if hideIDs.contains(id) { restoreHide.insert(id) }
+            } else if hideIDs.contains(id) {
+                // Newer op owns ♥ — still drop our sticky hide so reload can show the card.
+                dropStickyHide.insert(id)
+            }
         }
         if !restoreHide.isEmpty {
             history.unhide(restoreHide)
+        }
+        if !dropStickyHide.isEmpty {
+            history.forgetHidden(dropStickyHide)
+            if restoreHide.isEmpty {
+                history.storeDidChange()
+            }
         }
     }
 

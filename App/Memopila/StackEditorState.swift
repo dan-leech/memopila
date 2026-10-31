@@ -199,6 +199,11 @@ final class StackEditorState {
         _ = takeMemberFavoriteOverride(id: id, matching: isFavorite)
     }
 
+    /// In-flight ♥ override, if any (nil = none / already settled).
+    func memberFavoriteOverride(_ id: UUID) -> Bool? {
+        pendingMemberFavorites[id]
+    }
+
     /// Clears a pending ♥ only if it still matches (newer op may have overwritten it).
     @discardableResult
     func takeMemberFavoriteOverride(id: UUID, matching isFavorite: Bool) -> Bool {
