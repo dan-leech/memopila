@@ -1114,9 +1114,9 @@ final class AppModel {
             ?? (stackEditor?.stackID == id ? stackEditor?.stack : nil)
     }
 
-    private func setRecordFavoriteLocally(id: UUID, isFavorite: Bool) {
+    private func setRecordFavoriteLocally(id: UUID, isFavorite: Bool, op: Int) {
         history.setFavoriteLocally(record: id, isFavorite: isFavorite)
-        stackEditor?.applyMemberFavorite(id: id, isFavorite: isFavorite)
+        stackEditor?.applyMemberFavorite(id: id, isFavorite: isFavorite, op: op)
     }
 
     private func setRecordTitleLocally(id: UUID, title: String) {
@@ -1209,14 +1209,14 @@ final class AppModel {
             return ageVictims
         }()
 
-        for card in changing {
-            setRecordFavoriteLocally(id: card.id, isFavorite: makeFavorite)
-        }
-        if !hideIDs.isEmpty { history.hide(hideIDs) }
-
         recordFavoriteOpGeneration += 1
         let gen = recordFavoriteOpGeneration
         let target = makeFavorite
+        for card in changing {
+            setRecordFavoriteLocally(id: card.id, isFavorite: makeFavorite, op: gen)
+        }
+        if !hideIDs.isEmpty { history.hide(hideIDs) }
+
         Task { [weak self] in
             guard let self else { return }
             var written = Set<UUID>()
@@ -1225,7 +1225,7 @@ final class AppModel {
                     guard gen == self.recordFavoriteOpGeneration else {
                         self.reconcileSupersededRecordFavorites(
                             written: written, all: changingIDs, target: target,
-                            previous: previous, hideIDs: hideIDs
+                            previous: previous, hideIDs: hideIDs, op: gen
                         )
                         return
                     }
@@ -1236,19 +1236,19 @@ final class AppModel {
                 if gen != self.recordFavoriteOpGeneration {
                     self.reconcileSupersededRecordFavorites(
                         written: written, all: changingIDs, target: target,
-                        previous: previous, hideIDs: hideIDs
+                        previous: previous, hideIDs: hideIDs, op: gen
                     )
                     return
                 }
                 self.toasts.error(error.localizedDescription)
                 // Partial store success: keep written at target; revert only the unwritten.
                 for id in written {
-                    self.stackEditor?.settleMemberFavorite(id: id, isFavorite: target)
+                    self.stackEditor?.settleMemberFavorite(id: id, isFavorite: target, op: gen)
                 }
                 for id in changingIDs where !written.contains(id) {
                     if let card = previous[id] {
-                        self.setRecordFavoriteLocally(id: id, isFavorite: card.isFavorite)
-                        self.stackEditor?.settleMemberFavorite(id: id, isFavorite: card.isFavorite)
+                        self.setRecordFavoriteLocally(id: id, isFavorite: card.isFavorite, op: gen)
+                        self.stackEditor?.settleMemberFavorite(id: id, isFavorite: card.isFavorite, op: gen)
                     }
                 }
                 let pending = self.pendingDeletion?.ids ?? []
@@ -1266,12 +1266,12 @@ final class AppModel {
             if gen != self.recordFavoriteOpGeneration {
                 self.reconcileSupersededRecordFavorites(
                     written: written, all: changingIDs, target: target,
-                    previous: previous, hideIDs: hideIDs
+                    previous: previous, hideIDs: hideIDs, op: gen
                 )
                 return
             }
             for id in changingIDs {
-                self.stackEditor?.settleMemberFavorite(id: id, isFavorite: target)
+                self.stackEditor?.settleMemberFavorite(id: id, isFavorite: target, op: gen)
             }
             let pending = self.pendingDeletion?.ids ?? []
             self.history.forgetHidden(hideIDs.subtracting(pending))
@@ -1285,19 +1285,19 @@ final class AppModel {
         }
     }
 
-    /// A newer favorite op bumped the gen: settle store-committed ids; revert unwritten only if
-    /// pending/UI still shows this op's target (otherwise the newer op already owns them).
+    /// A newer favorite op bumped the gen: settle store-committed ids; revert unwritten only when
+    /// this op still owns the pending (gen-tagged). Polarity alone is not ownership.
     /// Also clear sticky `hideIDs` — success/failure paths do; supersede must too.
-    /// After `hide`, the card leaves `history.records`, so `resolveCard` alone cannot prove ownership.
     private func reconcileSupersededRecordFavorites(
         written: Set<UUID>,
         all: Set<UUID>,
         target: Bool,
         previous: [UUID: HistoryCard],
-        hideIDs: Set<UUID>
+        hideIDs: Set<UUID>,
+        op: Int
     ) {
         for id in written {
-            stackEditor?.settleMemberFavorite(id: id, isFavorite: target)
+            stackEditor?.settleMemberFavorite(id: id, isFavorite: target, op: op)
         }
         if !hideIDs.intersection(written).isEmpty {
             history.forgetHidden(hideIDs.intersection(written))
@@ -1306,13 +1306,18 @@ final class AppModel {
         var dropStickyHide = Set<UUID>()
         for id in all where !written.contains(id) {
             let override = stackEditor?.memberFavoriteOverride(id)
-            let pendingOurs = override == target
-            if pendingOurs {
-                _ = stackEditor?.takeMemberFavoriteOverride(id: id, matching: target)
+            if let override, override.op != op {
+                // Newer (or other) op owns the pending — never take/paint it; just drop sticky hide.
+                if hideIDs.contains(id) { dropStickyHide.insert(id) }
+                continue
             }
-            let uiOurs = resolveCard(id)?.isFavorite == target
-            // Hidden + no newer pending → we still own the optimistic hide (resolveCard is nil).
-            let hiddenOurs = hideIDs.contains(id) && override == nil
+            let pendingOurs = override.map { $0.isFavorite == target && $0.op == op } ?? false
+            if pendingOurs {
+                _ = stackEditor?.takeMemberFavoriteOverride(id: id, matching: target, op: op)
+            }
+            // Hidden + no foreign pending → we still own the optimistic hide (`resolveCard` is nil).
+            let hiddenOurs = hideIDs.contains(id) && (override == nil || override?.op == op)
+            let uiOurs = override == nil && resolveCard(id)?.isFavorite == target
             if pendingOurs || uiOurs || hiddenOurs {
                 if let card = previous[id] {
                     history.setFavoriteLocally(record: id, isFavorite: card.isFavorite)
@@ -1320,7 +1325,6 @@ final class AppModel {
                 }
                 if hideIDs.contains(id) { restoreHide.insert(id) }
             } else if hideIDs.contains(id) {
-                // Newer op owns ♥ — still drop our sticky hide so reload can show the card.
                 dropStickyHide.insert(id)
             }
         }
@@ -1389,22 +1393,21 @@ final class AppModel {
         guard let stack = resolveStack(id) else { return }
         let makeFavorite = !stack.isFavorite
         let previous = stack
+        stackFavoriteOpGeneration += 1
+        let gen = stackFavoriteOpGeneration
         history.setStackFavoriteLocally(id: id, isFavorite: makeFavorite)
-        if stackEditor?.stackID == id { stackEditor?.applyFavorite(makeFavorite) }
+        if stackEditor?.stackID == id { stackEditor?.applyFavorite(makeFavorite, op: gen) }
         let leftFavorites = !makeFavorite && history.scope == .favorites
         if leftFavorites { history.removeStackLocally(id) }
 
-        stackFavoriteOpGeneration += 1
-        let gen = stackFavoriteOpGeneration
         Task { [weak self] in
             guard let self else { return }
             var didWrite = false
             do {
                 guard gen == self.stackFavoriteOpGeneration else {
-                    // Pre-write supersede: restore Favorites-scope removal if we still own the pending.
                     self.reconcileSupersededStackFavorite(
                         id: id, makeFavorite: makeFavorite, previous: previous,
-                        leftFavorites: leftFavorites, didWrite: false
+                        leftFavorites: leftFavorites, didWrite: false, op: gen
                     )
                     return
                 }
@@ -1414,15 +1417,15 @@ final class AppModel {
                 guard gen == self.stackFavoriteOpGeneration else {
                     self.reconcileSupersededStackFavorite(
                         id: id, makeFavorite: makeFavorite, previous: previous,
-                        leftFavorites: leftFavorites, didWrite: didWrite
+                        leftFavorites: leftFavorites, didWrite: didWrite, op: gen
                     )
                     return
                 }
                 self.toasts.error(error.localizedDescription)
                 self.history.setStackFavoriteLocally(id: id, isFavorite: previous.isFavorite)
                 if self.stackEditor?.stackID == id {
-                    self.stackEditor?.applyFavorite(previous.isFavorite)
-                    self.stackEditor?.settleFavorite(previous.isFavorite)
+                    self.stackEditor?.applyFavorite(previous.isFavorite, op: gen)
+                    self.stackEditor?.settleFavorite(previous.isFavorite, op: gen)
                 }
                 self.history.storeDidChange()
                 return
@@ -1430,12 +1433,12 @@ final class AppModel {
             if gen != self.stackFavoriteOpGeneration {
                 self.reconcileSupersededStackFavorite(
                     id: id, makeFavorite: makeFavorite, previous: previous,
-                    leftFavorites: leftFavorites, didWrite: true
+                    leftFavorites: leftFavorites, didWrite: true, op: gen
                 )
                 return
             }
             if self.stackEditor?.stackID == id {
-                self.stackEditor?.settleFavorite(makeFavorite)
+                self.stackEditor?.settleFavorite(makeFavorite, op: gen)
             }
             self.history.storeDidChange()
         }
@@ -1446,21 +1449,30 @@ final class AppModel {
         makeFavorite: Bool,
         previous: StackCard,
         leftFavorites: Bool,
-        didWrite: Bool
+        didWrite: Bool,
+        op: Int
     ) {
-        if stackEditor?.stackID == id {
-            stackEditor?.settleFavorite(makeFavorite)
+        if didWrite {
+            if stackEditor?.stackID == id {
+                stackEditor?.settleFavorite(makeFavorite, op: op)
+            }
+            return
         }
-        guard !didWrite else { return }
-        // Store unchanged — undo optimistic UI. `removeStackLocally` dropped allStacks, so reinsert.
+        // Pre-write supersede: only revert if this op still owns the pending.
+        if let editor = stackEditor, editor.stackID == id, !editor.ownsStackFavoritePending(op: op) {
+            return
+        }
+        if stackEditor?.stackID == id {
+            stackEditor?.settleFavorite(makeFavorite, op: op)
+        }
         if leftFavorites {
             history.reinsertStackLocally(previous)
         } else {
             history.setStackFavoriteLocally(id: id, isFavorite: previous.isFavorite)
         }
         if stackEditor?.stackID == id {
-            stackEditor?.applyFavorite(previous.isFavorite)
-            stackEditor?.settleFavorite(previous.isFavorite)
+            stackEditor?.applyFavorite(previous.isFavorite, op: op)
+            stackEditor?.settleFavorite(previous.isFavorite, op: op)
         }
     }
 

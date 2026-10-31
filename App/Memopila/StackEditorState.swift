@@ -23,9 +23,10 @@ final class StackEditorState {
     @ObservationIgnored private let store: ClipboardStore
     @ObservationIgnored private var generation = 0
     /// Optimistic patches that must survive a concurrent `reload` (store fetch can finish before write).
-    @ObservationIgnored private var pendingMemberFavorites: [UUID: Bool] = [:]
+    /// Favorite overrides are tagged with the AppModel op generation so superseded ops cannot steal a newer pending.
+    @ObservationIgnored private var pendingMemberFavorites: [UUID: (isFavorite: Bool, op: Int)] = [:]
     @ObservationIgnored private var pendingMemberTitles: [UUID: String] = [:]
-    @ObservationIgnored private var pendingStackFavorite: Bool?
+    @ObservationIgnored private var pendingStackFavorite: (isFavorite: Bool, op: Int)?
     @ObservationIgnored private var pendingStackTitle: String?
 
     static let maxMembers = 1_200
@@ -114,14 +115,14 @@ final class StackEditorState {
     /// Re-paint in-flight optimistic ♥ / titles after a store-backed reload.
     private func applyPendingOverrides() {
         if let favorite = pendingStackFavorite {
-            stack = stack.withFavorite(favorite)
+            stack = stack.withFavorite(favorite.isFavorite)
         }
         if let title = pendingStackTitle {
             patchStackTitle(title)
         }
-        for (id, isFavorite) in pendingMemberFavorites {
+        for (id, pending) in pendingMemberFavorites {
             guard let index = members.firstIndex(where: { $0.id == id }) else { continue }
-            members[index] = members[index].withFavorite(isFavorite)
+            members[index] = members[index].withFavorite(pending.isFavorite)
         }
         for (id, title) in pendingMemberTitles {
             guard let index = members.firstIndex(where: { $0.id == id }) else { continue }
@@ -179,35 +180,45 @@ final class StackEditorState {
         stack = stack.withTitle(title)
     }
 
-    func applyFavorite(_ isFavorite: Bool) {
-        pendingStackFavorite = isFavorite
+    func applyFavorite(_ isFavorite: Bool, op: Int) {
+        pendingStackFavorite = (isFavorite, op)
         stack = stack.withFavorite(isFavorite)
     }
 
-    func settleFavorite(_ isFavorite: Bool) {
-        if pendingStackFavorite == isFavorite { pendingStackFavorite = nil }
+    func settleFavorite(_ isFavorite: Bool, op: Int) {
+        guard pendingStackFavorite?.isFavorite == isFavorite,
+              pendingStackFavorite?.op == op else { return }
+        pendingStackFavorite = nil
+    }
+
+    /// True when this op still owns the in-flight stack ♥ (or there is none for another op).
+    func ownsStackFavoritePending(op: Int) -> Bool {
+        guard let pending = pendingStackFavorite else { return true }
+        return pending.op == op
     }
 
     /// Optimistic member ♥ — Stack Window cards are not in `HistoryModel.records`.
-    func applyMemberFavorite(id: UUID, isFavorite: Bool) {
-        pendingMemberFavorites[id] = isFavorite
+    func applyMemberFavorite(id: UUID, isFavorite: Bool, op: Int) {
+        pendingMemberFavorites[id] = (isFavorite, op)
         guard let index = members.firstIndex(where: { $0.id == id }) else { return }
         members[index] = members[index].withFavorite(isFavorite)
     }
 
-    func settleMemberFavorite(id: UUID, isFavorite: Bool) {
-        _ = takeMemberFavoriteOverride(id: id, matching: isFavorite)
+    func settleMemberFavorite(id: UUID, isFavorite: Bool, op: Int) {
+        _ = takeMemberFavoriteOverride(id: id, matching: isFavorite, op: op)
     }
 
-    /// In-flight ♥ override, if any (nil = none / already settled).
-    func memberFavoriteOverride(_ id: UUID) -> Bool? {
+    /// In-flight ♥ override for `id`, if any.
+    func memberFavoriteOverride(_ id: UUID) -> (isFavorite: Bool, op: Int)? {
         pendingMemberFavorites[id]
     }
 
-    /// Clears a pending ♥ only if it still matches (newer op may have overwritten it).
+    /// Clears a pending ♥ only if it still belongs to this op.
     @discardableResult
-    func takeMemberFavoriteOverride(id: UUID, matching isFavorite: Bool) -> Bool {
-        guard pendingMemberFavorites[id] == isFavorite else { return false }
+    func takeMemberFavoriteOverride(id: UUID, matching isFavorite: Bool, op: Int) -> Bool {
+        guard let pending = pendingMemberFavorites[id],
+              pending.isFavorite == isFavorite,
+              pending.op == op else { return false }
         pendingMemberFavorites.removeValue(forKey: id)
         return true
     }
