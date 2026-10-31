@@ -713,6 +713,28 @@ final class HistoryModel {
         markedIDs.remove(.stack(id))
     }
 
+    /// Undo an optimistic Favorites-scope stack removal when the store write never happened.
+    func reinsertStackLocally(_ stack: StackCard) {
+        let id = stack.id
+        if let index = allStacks.firstIndex(where: { $0.id == id }) {
+            allStacks[index] = stack
+        } else {
+            allStacks.insert(stack, at: 0)
+        }
+        if scope == .favorites {
+            stacks.removeAll { $0.id == id }
+            stacks.insert(stack, at: 0)
+            entries.removeAll { $0.id == .stack(id) }
+            entries.insert(.stack(stack), at: 0)
+        } else if let index = stacks.firstIndex(where: { $0.id == id }) {
+            stacks[index] = stack
+            refreshEntriesAfterStackPatch()
+        } else {
+            stacks.insert(stack, at: 0)
+            refreshEntriesAfterStackPatch()
+        }
+    }
+
     func replaceLocally(_ card: HistoryCard) {
         if let index = records.firstIndex(where: { $0.id == card.id }) {
             records[index] = card
