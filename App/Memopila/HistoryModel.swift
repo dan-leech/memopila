@@ -93,12 +93,18 @@ final class HistoryModel {
     }
 
     /// Drop a member from one stack card only (Remove from Stack — not every stack that held it).
-    func removeRecordFromStackLocally(stackID: UUID, recordID: UUID) {
+    /// `faceCard` resolves the new first member when it is not on the loaded History page
+    /// (e.g. open Stack Window members — same dual-projection rule as favorites).
+    func removeRecordFromStackLocally(
+        stackID: UUID,
+        recordID: UUID,
+        faceCard: ((UUID) -> HistoryCard?)? = nil
+    ) {
         func patch(_ stack: StackCard) -> StackCard {
             guard stack.id == stackID else { return stack }
             let next = stack.memberIDs.filter { $0 != recordID }
             guard next.count != stack.memberIDs.count else { return stack }
-            let first = next.first.flatMap { id in records.first(where: { $0.id == id }) }
+            let first = face(of: next.first, lookup: faceCard)
             return stack.withMemberIDs(
                 next,
                 preview: first?.preview,
@@ -111,14 +117,18 @@ final class HistoryModel {
     }
 
     /// Drop deleted records from every loaded stack card; preview follows the new first.
-    func removeRecordsFromStacksLocally(_ ids: Set<UUID>) {
+    /// `faceCard` — see `removeRecordFromStackLocally`.
+    func removeRecordsFromStacksLocally(
+        _ ids: Set<UUID>,
+        faceCard: ((UUID) -> HistoryCard?)? = nil
+    ) {
         guard !ids.isEmpty else { return }
         var changed = false
         func patch(_ stack: StackCard) -> StackCard {
             let next = stack.memberIDs.filter { !ids.contains($0) }
             guard next.count != stack.memberIDs.count else { return stack }
             changed = true
-            let first = next.first.flatMap { id in records.first(where: { $0.id == id }) }
+            let first = face(of: next.first, lookup: faceCard)
             return stack.withMemberIDs(
                 next,
                 preview: first?.preview,
@@ -128,6 +138,12 @@ final class HistoryModel {
         stacks = stacks.map(patch)
         allStacks = allStacks.map(patch)
         if changed { refreshEntriesAfterStackPatch() }
+    }
+
+    /// History page first; optional live projection (Stack Window) when the face is off-page.
+    private func face(of id: UUID?, lookup: ((UUID) -> HistoryCard?)?) -> HistoryCard? {
+        guard let id else { return nil }
+        return records.first(where: { $0.id == id }) ?? lookup?(id)
     }
 
     private func refreshEntriesAfterStackPatch() {
@@ -709,6 +725,25 @@ final class HistoryModel {
             } else {
                 entries = Self.mergeEntries(records: records, stacks: stacks, sort: sortMode)
             }
+        }
+    }
+
+    /// Optimistic rename on a loaded record card (History grid + pinboards).
+    func setTitleLocally(record id: UUID, title: String) {
+        guard let card = records.first(where: { $0.id == id }) else { return }
+        replaceLocally(card.withTitle(title))
+    }
+
+    /// Optimistic stack rename (grid + allStacks for menus).
+    func setStackTitleLocally(id: UUID, title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let nextTitle = trimmed.isEmpty ? "Stack" : trimmed
+        let patched: (StackCard) -> StackCard = { $0.id == id ? $0.withTitle(nextTitle) : $0 }
+        stacks = stacks.map(patched)
+        allStacks = allStacks.map(patched)
+        if let entryIndex = entries.firstIndex(where: { $0.id == .stack(id) }),
+           case .stack(let stack) = entries[entryIndex] {
+            entries[entryIndex] = .stack(stack.withTitle(nextTitle))
         }
     }
 

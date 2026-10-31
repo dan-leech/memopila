@@ -54,6 +54,12 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
         [settings?.window, diagnostics, record, stack].compactMap { $0 }.contains { $0.isKeyWindow }
     }
 
+    /// Stack Window is key — panel overlays (confirm unfavorite, …) are invisible behind it.
+    var stackIsKey: Bool { stack?.isKeyWindow == true }
+
+    /// Host for sheets while editing a stack (same role as the record window for save alerts).
+    var stackWindowForSheet: NSWindow? { stack }
+
     /// Focus the frontmost secondary window (hotkey gate — do not open the panel underneath).
     @discardableResult
     func focusFrontSecondary() -> Bool {

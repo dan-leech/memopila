@@ -16,6 +16,9 @@ struct CardView: View {
     var onDoubleClick: () -> Void = {}
     /// Stack Window replaces the History ⋯ menu with member actions (SSOT — do not fork in hover icons).
     var moreMenu: AnyView? = nil
+    /// Stack Window: VoiceOver must not history-delete a member (chrome says Remove from Stack).
+    var accessibilityDelete: (() -> Void)? = nil
+    var accessibilityDeleteName: LocalizedStringKey = "Delete"
     @State private var image: NSImage?
     @State private var richPreview: RichPreview?
     @Environment(\.colorScheme) private var colorScheme
@@ -108,8 +111,8 @@ struct CardView: View {
         .accessibilityAction(named: Text(card.isFavorite ? String(localized: "Remove from Favorites") : String(localized: "Favorite"))) {
             model.toggleFavorite(card.id)
         }
-        .accessibilityAction(named: Text(String(localized: "Delete"))) {
-            model.delete([card.id])
+        .accessibilityAction(named: Text(accessibilityDeleteName)) {
+            (accessibilityDelete ?? { model.delete([card.id]) })()
         }
     }
 

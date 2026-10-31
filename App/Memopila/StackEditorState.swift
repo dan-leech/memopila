@@ -22,6 +22,11 @@ final class StackEditorState {
 
     @ObservationIgnored private let store: ClipboardStore
     @ObservationIgnored private var generation = 0
+    /// Optimistic patches that must survive a concurrent `reload` (store fetch can finish before write).
+    @ObservationIgnored private var pendingMemberFavorites: [UUID: Bool] = [:]
+    @ObservationIgnored private var pendingMemberTitles: [UUID: String] = [:]
+    @ObservationIgnored private var pendingStackFavorite: Bool?
+    @ObservationIgnored private var pendingStackTitle: String?
 
     static let maxMembers = 1_200
 
@@ -92,6 +97,7 @@ final class StackEditorState {
                 self.totalMemberCount = ids.count
                 self.order = limited
                 self.members = limited.compactMap { byID[$0] }
+                self.applyPendingOverrides()
                 self.loadError = nil
                 if let preferSelection, limited.contains(preferSelection) {
                     self.selectedID = preferSelection
@@ -102,6 +108,24 @@ final class StackEditorState {
                 guard generation == self.generation else { return }
                 self.loadError = error.localizedDescription
             }
+        }
+    }
+
+    /// Re-paint in-flight optimistic ♥ / titles after a store-backed reload.
+    private func applyPendingOverrides() {
+        if let favorite = pendingStackFavorite {
+            stack = stack.withFavorite(favorite)
+        }
+        if let title = pendingStackTitle {
+            patchStackTitle(title)
+        }
+        for (id, isFavorite) in pendingMemberFavorites {
+            guard let index = members.firstIndex(where: { $0.id == id }) else { continue }
+            members[index] = members[index].withFavorite(isFavorite)
+        }
+        for (id, title) in pendingMemberTitles {
+            guard let index = members.firstIndex(where: { $0.id == id }) else { continue }
+            members[index] = members[index].withTitle(title)
         }
     }
 
@@ -119,6 +143,10 @@ final class StackEditorState {
     /// Drop members from the in-memory window immediately (store / reload remain SSOT).
     func removeMembers(_ ids: Set<UUID>) {
         guard !ids.isEmpty else { return }
+        for id in ids {
+            pendingMemberFavorites.removeValue(forKey: id)
+            pendingMemberTitles.removeValue(forKey: id)
+        }
         let next = order.filter { !ids.contains($0) }
         let removed = order.count - next.count
         guard removed > 0 else { return }
@@ -135,26 +163,57 @@ final class StackEditorState {
 
     func applyTitle(_ title: String) {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        stack = StackCard(
-            id: stack.id,
-            title: trimmed.isEmpty ? "Stack" : trimmed,
-            isFavorite: stack.isFavorite,
-            loops: stack.loops,
-            dealMode: stack.dealMode,
-            createdAt: stack.createdAt,
-            lastUsedAt: stack.lastUsedAt,
-            useCount: stack.useCount,
-            memberIDs: stack.memberIDs,
-            previewRecordID: stack.previewRecordID,
-            memberCount: stack.memberCount,
-            collectionIDs: stack.collectionIDs,
-            sensitiveKind: stack.sensitiveKind,
-            preview: stack.preview
-        )
+        let next = trimmed.isEmpty ? "Stack" : trimmed
+        pendingStackTitle = next
+        patchStackTitle(next)
+    }
+
+    /// Store committed this title — drop the pending override when it still matches.
+    func settleTitle(_ title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let next = trimmed.isEmpty ? "Stack" : trimmed
+        if pendingStackTitle == next { pendingStackTitle = nil }
+    }
+
+    private func patchStackTitle(_ title: String) {
+        stack = stack.withTitle(title)
     }
 
     func applyFavorite(_ isFavorite: Bool) {
+        pendingStackFavorite = isFavorite
         stack = stack.withFavorite(isFavorite)
+    }
+
+    func settleFavorite(_ isFavorite: Bool) {
+        if pendingStackFavorite == isFavorite { pendingStackFavorite = nil }
+    }
+
+    /// Optimistic member ♥ — Stack Window cards are not in `HistoryModel.records`.
+    func applyMemberFavorite(id: UUID, isFavorite: Bool) {
+        pendingMemberFavorites[id] = isFavorite
+        guard let index = members.firstIndex(where: { $0.id == id }) else { return }
+        members[index] = members[index].withFavorite(isFavorite)
+    }
+
+    func settleMemberFavorite(id: UUID, isFavorite: Bool) {
+        if pendingMemberFavorites[id] == isFavorite {
+            pendingMemberFavorites.removeValue(forKey: id)
+        }
+    }
+
+    /// Optimistic member rename — same dual-projection rule as favorite.
+    func applyMemberTitle(id: UUID, title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        pendingMemberTitles[id] = trimmed
+        guard let index = members.firstIndex(where: { $0.id == id }) else { return }
+        members[index] = members[index].withTitle(title)
+    }
+
+    func settleMemberTitle(id: UUID, title: String) {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        if pendingMemberTitles[id] == trimmed {
+            pendingMemberTitles.removeValue(forKey: id)
+        }
     }
 
     func moveMember(_ id: UUID, by delta: Int) -> [UUID]? {

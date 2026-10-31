@@ -821,6 +821,26 @@
         }
       }
     },
+    "Add this stack to Favorites": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить этот стек в избранное"
+          }
+        }
+      }
+    },
+    "Add this stack to Favorites (⌘D when nothing is selected)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить этот стек в избранное (⌘D, если ничего не выбрано)"
+          }
+        }
+      }
+    },
     "Add to Collection": {
       "localizations": {
         "ru": {
@@ -2911,6 +2931,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Избранное никогда не удаляется автоматически. Это действие нельзя отменить."
+          }
+        }
+      }
+    },
+    "Favorites are never removed automatically. You can Undo for a few seconds after deleting.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Избранное никогда не удаляется автоматически. После удаления несколько секунд доступен Undo."
           }
         }
       }
@@ -5541,6 +5571,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Удалить правило"
+          }
+        }
+      }
+    },
+    "Remove this stack from Favorites": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать этот стек из избранного"
+          }
+        }
+      }
+    },
+    "Remove this stack from Favorites (⌘D when nothing is selected)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать этот стек из избранного (⌘D, если ничего не выбрано)"
           }
         }
       }

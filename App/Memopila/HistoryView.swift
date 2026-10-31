@@ -996,7 +996,8 @@ private struct OverlayHost: View {
         case .rename(let entryID):
             switch entryID {
             case .record(let id):
-                let card = model.history.cards.first { $0.id == id }
+                // Same resolve as AppModel (History → Stack Window → open Record) — not History page alone.
+                let card = model.resolveCard(id)
                 NameOverlay(
                     title: String(localized: "Rename"),
                     prompt: String(localized: "Title (empty removes it)"),
@@ -1005,7 +1006,7 @@ private struct OverlayHost: View {
                     allowsEmpty: true
                 ) { model.rename(id, title: $0) } cancel: { model.present(nil) }
             case .stack(let id):
-                let stack = model.history.stacks.first { $0.id == id }
+                let stack = model.resolveStack(id)
                 NameOverlay(
                     title: String(localized: "Rename Stack"),
                     prompt: String(localized: "Title"),
@@ -1311,7 +1312,7 @@ private struct ConfirmDeleteOverlay: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(count == 1 ? String(localized: "Delete this favorite?") : String(localized: "Delete \(count) items, including favorites?"))
                 .font(.headline)
-            Text("Favorites are never removed automatically. This can't be undone.")
+            Text("Favorites are never removed automatically. You can Undo for a few seconds after deleting.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
             HStack {

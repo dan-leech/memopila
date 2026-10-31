@@ -66,8 +66,13 @@ enum StackKeys {
             model.openRecord(id)
             return true
         }
+        // Same rule as the panel: selection → record ♥; nothing selected → stack ♥.
         if flags == .command, key.letter == "d" {
-            model.toggleStackFavorite(state.stackID)
+            if let id = state.selectedID {
+                model.toggleFavorite(id)
+            } else {
+                model.toggleStackFavorite(state.stackID)
+            }
             return true
         }
         if flags.isEmpty, key.code == kVK_Return || key.code == kVK_ANSI_KeypadEnter {
@@ -328,11 +333,11 @@ private struct StackEditorView: View {
         .buttonStyle(.plain)
         .symbolEffect(.bounce, value: state.stack.isFavorite)
         .floatingHelp(state.stack.isFavorite
-            ? String(localized: "Remove from Favorites (⌘D)")
-            : String(localized: "Add to Favorites (⌘D)"))
+            ? String(localized: "Remove this stack from Favorites (⌘D when nothing is selected)")
+            : String(localized: "Add this stack to Favorites (⌘D when nothing is selected)"))
         .accessibilityLabel(Text(state.stack.isFavorite
-            ? String(localized: "Remove from Favorites")
-            : String(localized: "Add to Favorites")))
+            ? String(localized: "Remove this stack from Favorites")
+            : String(localized: "Add this stack to Favorites")))
     }
 
     private var loopButton: some View {
@@ -624,7 +629,9 @@ private struct StackEditorView: View {
             hasCursor: selected,
             model: model,
             onDoubleClick: { model.openRecord(card.id) },
-            moreMenu: AnyView(memberMenu)
+            moreMenu: AnyView(memberMenu),
+            accessibilityDelete: { model.removeRecord(card.id, fromStack: state.stackID) },
+            accessibilityDeleteName: "Remove from Stack"
         )
         .opacity(dragging ? 0.35 : 1)
         .frame(height: cardHeight)

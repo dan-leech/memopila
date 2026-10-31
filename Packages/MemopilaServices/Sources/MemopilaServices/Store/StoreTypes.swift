@@ -120,6 +120,26 @@ public struct StackCard: Sendable, Identifiable, Equatable {
         )
     }
 
+    /// Optimistic rename patch (Stack Window title field / Rename overlay).
+    public func withTitle(_ title: String) -> StackCard {
+        StackCard(
+            id: id,
+            title: title,
+            isFavorite: isFavorite,
+            loops: loops,
+            dealMode: dealMode,
+            createdAt: createdAt,
+            lastUsedAt: lastUsedAt,
+            useCount: useCount,
+            memberIDs: memberIDs,
+            previewRecordID: previewRecordID,
+            memberCount: memberCount,
+            collectionIDs: collectionIDs,
+            sensitiveKind: sensitiveKind,
+            preview: preview
+        )
+    }
+
     /// Optimistic playlist order patch after drag / Move in Stack (face = first UI member).
     public func withMemberIDs(
         _ memberIDs: [UUID],
@@ -284,6 +304,40 @@ public struct HistoryCard: Sendable, Identifiable, Equatable {
             sourceURL: sourceURL,
             isEdited: isEdited,
             expiresAt: isFavorite ? nil : expiresAt,
+            hasRecognizedText: hasRecognizedText,
+            storedTypes: storedTypes,
+            skippedTypes: skippedTypes,
+            hasThumbnail: hasThumbnail,
+            codeLanguage: codeLanguage
+        )
+    }
+
+    /// Optimistic rename patch. Empty → cleared custom title (store does the same).
+    public func withTitle(_ title: String) -> HistoryCard {
+        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return HistoryCard(
+            id: id,
+            displayType: displayType,
+            preview: preview,
+            customTitle: trimmed.isEmpty ? nil : trimmed,
+            textLength: textLength,
+            lineCount: lineCount,
+            sensitiveKind: sensitiveKind,
+            pixelWidth: pixelWidth,
+            pixelHeight: pixelHeight,
+            filePaths: filePaths,
+            colorHex: colorHex,
+            payloadSizeBytes: payloadSizeBytes,
+            firstCopiedAt: firstCopiedAt,
+            lastCopiedAt: lastCopiedAt,
+            copyCount: copyCount,
+            useCount: useCount,
+            isFavorite: isFavorite,
+            sourceAppBundleID: sourceAppBundleID,
+            sourceAppName: sourceAppName,
+            sourceURL: sourceURL,
+            isEdited: isEdited,
+            expiresAt: expiresAt,
             hasRecognizedText: hasRecognizedText,
             storedTypes: storedTypes,
             skippedTypes: skippedTypes,

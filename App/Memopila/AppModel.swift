@@ -208,11 +208,9 @@ final class AppModel {
             let items: [ActionItem]
             if selection.count > 1 {
                 items = ActionRegistry.selectionActions(selection, model: self)
-            } else if case .record(let id) = entryID, let card = history.cards.first(where: { $0.id == id }) {
+            } else if case .record(let id) = entryID, let card = resolveCard(id) {
                 items = ActionRegistry.cardActions(card, model: self)
-            } else if case .stack(let id) = entryID,
-                      let stack = history.stacks.first(where: { $0.id == id })
-                        ?? history.allStacks.first(where: { $0.id == id }) {
+            } else if case .stack(let id) = entryID, let stack = resolveStack(id) {
                 items = ActionRegistry.stackActions(stack, model: self)
             } else {
                 return
@@ -276,8 +274,7 @@ final class AppModel {
 
     private func openRecordAsync(_ id: UUID, focusText: Bool, closeAfterSave: Bool = false) async {
         let card: HistoryCard
-        if let local = history.cards.first(where: { $0.id == id })
-            ?? stackEditor?.members.first(where: { $0.id == id }) {
+        if let local = resolveCard(id) {
             card = local
         } else if let loaded = try? await store.card(id) {
             card = loaded
@@ -356,10 +353,15 @@ final class AppModel {
     }
 
     private func persist(_ change: (id: UUID, title: String)) async {
+        setRecordTitleLocally(id: change.id, title: change.title)
         do {
             try await store.rename(change.id, title: change.title)
+            stackEditor?.settleMemberTitle(id: change.id, title: change.title)
         } catch {
             toasts.error(error.localizedDescription)
+            reloadStackEditorIfNeeded()
+            history.storeDidChange()
+            return
         }
         history.storeDidChange()
     }
@@ -618,6 +620,9 @@ final class AppModel {
             do {
                 let next = try await store.applyRetention(limits: limits, now: Date())
                 history.storeDidChange()
+                // Age/count purge can remove stack members — History-only invalidate left Stack Window stale.
+                reloadStackEditorIfNeeded()
+                await dropOpenRecordIfGone()
                 armExpiry(next)
                 prunePreviewFiles()
             } catch {
@@ -792,7 +797,7 @@ final class AppModel {
     func copyNewText(_ text: String, from id: UUID?) {
         Task {
             let items = PasteboardWriter.plainTextItems(text)
-            let sourceBundleID = id.flatMap { id in history.cards.first { $0.id == id } }?.sourceAppBundleID
+            let sourceBundleID = id.flatMap { resolveCard($0)?.sourceAppBundleID }
             switch await ingestDerived(items, from: id) {
             case .saved(let newID):
                 switch monitor.write(items, sourceBundleID: sourceBundleID, recordID: newID) {
@@ -896,7 +901,7 @@ final class AppModel {
     /// Stores content made from a record (or from nothing) as a new record with the record's source;
     /// the secret policy applies as it does to copies from other apps (§3.10).
     private func ingestDerived(_ items: [CanonicalItem], from id: UUID?) async -> DerivedResult {
-        let original = id.flatMap { id in history.cards.first { $0.id == id } }
+        let original = id.flatMap { resolveCard($0) }
         var appSettings = original?.sourceAppBundleID.map { settings.settings(for: $0) } ?? ResolvedAppSettings()
         var sensitiveKind: SecretKind?
         if let text = TextDecoding.plainText(of: items), settings.secretPolicy != .off,
@@ -955,10 +960,10 @@ final class AppModel {
     /// keystroke lost a record for good).
     func delete(_ ids: [UUID], confirmed: Bool = false) {
         guard !ids.isEmpty else { return }
-        let favorites = history.cards.filter { ids.contains($0.id) && $0.isFavorite }
+        // Resolve via History **or** open Stack Window (members may be off the current History page).
+        let favorites = historyCards(matching: ids).filter(\.isFavorite)
         if !confirmed, !favorites.isEmpty {
-            present(.confirmDelete(ids))
-            return
+            return confirmDeleteFavorites(ids: ids)
         }
         if case .confirmDelete? = overlay { present(nil) }
         commitPendingDeletion()
@@ -967,7 +972,7 @@ final class AppModel {
         // Stack Window + stack cards keep their own lists — prune now (store cascade waits for Undo).
         // Face stays the new first UI member; deal cursor is badge-only.
         stackEditor?.removeMembers(set)
-        history.removeRecordsFromStacksLocally(set)
+        history.removeRecordsFromStacksLocally(set) { [weak self] in self?.resolveCard($0) }
         let task = Task { [weak self] in
             try? await Task.sleep(for: .seconds(6))
             guard !Task.isCancelled, let self, let pending = self.pendingDeletion else { return }
@@ -980,8 +985,9 @@ final class AppModel {
     }
 
     @ObservationIgnored private var pendingDeletion: (ids: Set<UUID>, task: Task<Void, Never>)?
-    /// Favorite Tasks: only the newest op may reconcile (rapid invert allowed; stale reloads skipped).
-    @ObservationIgnored private var favoriteOpGeneration = 0
+    /// Record vs stack favorite Tasks must not abort each other (shared gen caused silent drops).
+    @ObservationIgnored private var recordFavoriteOpGeneration = 0
+    @ObservationIgnored private var stackFavoriteOpGeneration = 0
 
     func undoDeletion() {
         guard let pending = pendingDeletion else { return }
@@ -1049,6 +1055,7 @@ final class AppModel {
                 // Editor may still show ghosts if Undo-window prune was skipped / raced.
                 stackEditor?.removeMembers(ids)
                 reloadStackEditorIfNeeded()
+                await dropOpenRecordIfGone()
                 return
             case .failure(.busy) where attempt < 3:
                 // Another delete, clear or edit is running; this one follows it.
@@ -1073,12 +1080,107 @@ final class AppModel {
         return selection.first
     }
 
+    /// History grid + Stack Window members (same resolve rule as `openRecord`).
+    private func historyCards(matching ids: [UUID]) -> [HistoryCard] {
+        let wanted = Set(ids)
+        guard !wanted.isEmpty else { return [] }
+        var byID: [UUID: HistoryCard] = [:]
+        for card in history.cards where wanted.contains(card.id) {
+            byID[card.id] = card
+        }
+        if let members = stackEditor?.members {
+            for card in members where wanted.contains(card.id) {
+                byID[card.id] = byID[card.id] ?? card
+            }
+        }
+        if let open = itemState, wanted.contains(open.id) {
+            byID[open.id] = byID[open.id] ?? open.card
+        }
+        return ids.compactMap { byID[$0] }
+    }
+
+    /// One card from any live projection (History page → Stack Window → open Record).
+    /// Public for panel overlays that must not invent a second resolve rule.
+    func resolveCard(_ id: UUID) -> HistoryCard? {
+        historyCards(matching: [id]).first
+    }
+
+    /// Stack from History grid / menus / open Stack Window (one rule).
+    func resolveStack(_ id: UUID) -> StackCard? {
+        history.stacks.first(where: { $0.id == id })
+            ?? history.allStacks.first(where: { $0.id == id })
+            ?? (stackEditor?.stackID == id ? stackEditor?.stack : nil)
+    }
+
+    private func setRecordFavoriteLocally(id: UUID, isFavorite: Bool) {
+        history.setFavoriteLocally(record: id, isFavorite: isFavorite)
+        stackEditor?.applyMemberFavorite(id: id, isFavorite: isFavorite)
+    }
+
+    private func setRecordTitleLocally(id: UUID, title: String) {
+        history.setTitleLocally(record: id, title: title)
+        stackEditor?.applyMemberTitle(id: id, title: title)
+        if let state = itemState, state.id == id {
+            let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
+            state.adoptStoredTitle(trimmed.isEmpty ? nil : trimmed)
+            windows.updateRecordTitle(state.card.withTitle(title))
+        }
+    }
+
+    /// Close Edit Record if retention / bulk delete removed the open id (stale window otherwise).
+    private func dropOpenRecordIfGone() async {
+        guard let state = itemState else { return }
+        guard (try? await store.card(state.id)) == nil else { return }
+        state.loadTask?.cancel()
+        // Nil first so closeRecord → saveTitle does not re-persist a deleted id.
+        itemState = nil
+        windows.closeRecord(returningToPanel: false)
+    }
+
+    /// Destructive confirm: sheet on key Stack Window (panel overlays are invisible there).
+    @discardableResult
+    private func confirmOnKeyStackWindow(
+        message: String,
+        informative: String,
+        confirmTitle: String,
+        onConfirm: @escaping @MainActor () -> Void
+    ) -> Bool {
+        guard windows.stackIsKey, let stackWindow = windows.stackWindowForSheet else { return false }
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.informativeText = informative
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: confirmTitle)
+        alert.addButton(withTitle: String(localized: "Cancel"))
+        alert.beginSheetModal(for: stackWindow) { response in
+            MainActor.assumeIsolated {
+                guard response == .alertFirstButtonReturn else { return }
+                onConfirm()
+            }
+        }
+        return true
+    }
+
+    private func confirmDeleteFavorites(ids: [UUID]) {
+        let count = ids.count
+        if confirmOnKeyStackWindow(
+            message: count == 1
+                ? String(localized: "Delete this favorite?")
+                : String(localized: "Delete \(count) items, including favorites?"),
+            informative: String(localized: "Favorites are never removed automatically. You can Undo for a few seconds after deleting."),
+            confirmTitle: String(localized: "Delete"),
+            onConfirm: { [weak self] in self?.delete(ids, confirmed: true) }
+        ) { return }
+        present(.confirmDelete(ids))
+    }
+
     /// ⌘D on several cards: all become favorites, or all stop being favorites when they all are.
     /// Out of Favorites, cards older than History keeps are deleted (§6), so that is asked first
     /// (review finding: an old favorite vanished at the next copy, with no warning).
     /// Heart flips in the projection immediately; store + retention run in a Task.
+    /// Resolves cards from History **or** the open Stack Window (editor members are not in `history.cards`).
     func toggleFavorites(_ ids: [UUID], confirmed: Bool = false) {
-        let cards = history.cards.filter { ids.contains($0.id) }
+        let cards = historyCards(matching: ids)
         guard !cards.isEmpty else { return }
         let makeFavorite = !cards.allSatisfy(\.isFavorite)
         let limits = settings.retentionLimits
@@ -1088,7 +1190,9 @@ final class AppModel {
         }
         if !makeFavorite, !confirmed {
             let old = cards.filter(deletableOld).count
-            if old > 0 { return present(.confirmUnfavorite(cards.map(\.id), old: old)) }
+            if old > 0 {
+                return confirmUnfavorite(ids: cards.map(\.id), old: old)
+            }
         }
         if case .confirmUnfavorite? = overlay { present(nil) }
 
@@ -1104,25 +1208,26 @@ final class AppModel {
         }()
 
         for card in changing {
-            history.setFavoriteLocally(record: card.id, isFavorite: makeFavorite)
+            setRecordFavoriteLocally(id: card.id, isFavorite: makeFavorite)
         }
         if !hideIDs.isEmpty { history.hide(hideIDs) }
 
-        favoriteOpGeneration += 1
-        let gen = favoriteOpGeneration
+        recordFavoriteOpGeneration += 1
+        let gen = recordFavoriteOpGeneration
         let target = makeFavorite
         Task { [weak self] in
             guard let self else { return }
             do {
                 for id in changingIDs {
-                    guard gen == self.favoriteOpGeneration else { return }
+                    guard gen == self.recordFavoriteOpGeneration else { return }
                     try await self.store.setFavorite(id, target, limits: limits, now: Date())
                 }
             } catch {
-                guard gen == self.favoriteOpGeneration else { return }
+                guard gen == self.recordFavoriteOpGeneration else { return }
                 self.toasts.error(error.localizedDescription)
                 for (id, card) in previous {
-                    self.history.setFavoriteLocally(record: id, isFavorite: card.isFavorite)
+                    self.setRecordFavoriteLocally(id: id, isFavorite: card.isFavorite)
+                    self.stackEditor?.settleMemberFavorite(id: id, isFavorite: card.isFavorite)
                 }
                 let pending = self.pendingDeletion?.ids ?? []
                 let restoreHide = hideIDs.subtracting(pending)
@@ -1133,11 +1238,38 @@ final class AppModel {
                 }
                 return
             }
-            guard gen == self.favoriteOpGeneration else { return }
+            guard gen == self.recordFavoriteOpGeneration else { return }
+            for id in changingIDs {
+                self.stackEditor?.settleMemberFavorite(id: id, isFavorite: target)
+            }
             let pending = self.pendingDeletion?.ids ?? []
             self.history.forgetHidden(hideIDs.subtracting(pending))
+            // Age-deleted records leave the store — prune Stack Window + stack faces (same as delete).
+            if !ageVictims.isEmpty {
+                self.stackEditor?.removeMembers(ageVictims)
+                self.history.removeRecordsFromStacksLocally(ageVictims) { [weak self] in self?.resolveCard($0) }
+                await self.dropOpenRecordIfGone()
+            }
             self.history.storeDidChange()
         }
+    }
+
+    /// Panel overlay when the panel can show it; sheet on the Stack Window otherwise.
+    private func confirmUnfavorite(ids: [UUID], old: Int) {
+        let count = ids.count
+        if confirmOnKeyStackWindow(
+            message: count == 1
+                ? String(localized: "Remove from Favorites and delete?")
+                : String(localized: "Remove \(count) items from Favorites?"),
+            informative: count == 1
+                ? String(localized: "It is older than History keeps (\(settings.maxAgeDays) days), so it is deleted. This can't be undone.")
+                : String(localized: "\(old) of them are older than History keeps (\(settings.maxAgeDays) days) and are deleted. This can't be undone."),
+            confirmTitle: count == 1
+                ? String(localized: "Remove and Delete")
+                : String(localized: "Remove"),
+            onConfirm: { [weak self] in self?.toggleFavorites(ids, confirmed: true) }
+        ) { return }
+        present(.confirmUnfavorite(ids, old: old))
     }
 
     /// Collections ▸ with several cards: adds them all, or takes them all out when they all are in.
@@ -1173,9 +1305,7 @@ final class AppModel {
     }
 
     func toggleStackFavorite(_ id: UUID) {
-        guard let stack = history.allStacks.first(where: { $0.id == id })
-            ?? history.stacks.first(where: { $0.id == id })
-            ?? (stackEditor?.stackID == id ? stackEditor?.stack : nil) else { return }
+        guard let stack = resolveStack(id) else { return }
         let makeFavorite = !stack.isFavorite
         let previous = stack
         history.setStackFavoriteLocally(id: id, isFavorite: makeFavorite)
@@ -1183,22 +1313,28 @@ final class AppModel {
         let leftFavorites = !makeFavorite && history.scope == .favorites
         if leftFavorites { history.removeStackLocally(id) }
 
-        favoriteOpGeneration += 1
-        let gen = favoriteOpGeneration
+        stackFavoriteOpGeneration += 1
+        let gen = stackFavoriteOpGeneration
         Task { [weak self] in
             guard let self else { return }
             do {
-                guard gen == self.favoriteOpGeneration else { return }
+                guard gen == self.stackFavoriteOpGeneration else { return }
                 try await self.store.setStackFavorite(id, makeFavorite)
             } catch {
-                guard gen == self.favoriteOpGeneration else { return }
+                guard gen == self.stackFavoriteOpGeneration else { return }
                 self.toasts.error(error.localizedDescription)
                 self.history.setStackFavoriteLocally(id: id, isFavorite: previous.isFavorite)
-                if self.stackEditor?.stackID == id { self.stackEditor?.applyFavorite(previous.isFavorite) }
+                if self.stackEditor?.stackID == id {
+                    self.stackEditor?.applyFavorite(previous.isFavorite)
+                    self.stackEditor?.settleFavorite(previous.isFavorite)
+                }
                 self.history.storeDidChange()
                 return
             }
-            guard gen == self.favoriteOpGeneration else { return }
+            guard gen == self.stackFavoriteOpGeneration else { return }
+            if self.stackEditor?.stackID == id {
+                self.stackEditor?.settleFavorite(makeFavorite)
+            }
             self.history.storeDidChange()
         }
     }
@@ -1315,12 +1451,16 @@ final class AppModel {
     }
 
     func renameStack(_ id: UUID, title: String) {
-        stackEditor?.applyTitle(title)
+        history.setStackTitleLocally(id: id, title: title)
         if stackEditor?.stackID == id {
+            stackEditor?.applyTitle(title)
             windows.updateStackTitle(stackEditor?.title ?? title)
         }
         Task {
             try? await store.renameStack(id, title: title)
+            if self.stackEditor?.stackID == id {
+                self.stackEditor?.settleTitle(title)
+            }
             history.storeDidChange()
         }
     }
@@ -1390,11 +1530,14 @@ final class AppModel {
 
     func rename(_ id: UUID, title: String) {
         present(nil)
+        setRecordTitleLocally(id: id, title: title)
         Task {
             do {
                 try await store.rename(id, title: title)
+                stackEditor?.settleMemberTitle(id: id, title: title)
             } catch {
                 toasts.error(error.localizedDescription)
+                reloadStackEditorIfNeeded()
             }
             history.storeDidChange()
         }
@@ -1467,7 +1610,7 @@ final class AppModel {
 
     /// The record window switches to `id`, also when the panel has not loaded that card.
     private func showRecord(_ id: UUID) async {
-        var card = history.cards.first { $0.id == id }
+        var card = resolveCard(id)
         if card == nil { card = await details(id, maxTextScalars: 0)?.card }
         guard let card else { return closeRecord() }
         let state = ItemState(card: card, focusOnLoad: false, maxBytes: settings.maxItemBytes)
@@ -1507,6 +1650,7 @@ final class AppModel {
                 prunePreviewFiles()
                 if stackSession.isArmed { stackSession.rebuildFromStore() }
                 reloadStackEditorIfNeeded()
+                await dropOpenRecordIfGone()
                 toasts.show(scope == .all ? String(localized: "History cleared") : String(localized: "History cleared except favorites"))
             case .failure(let error):
                 report(error)
@@ -1789,7 +1933,10 @@ final class AppModel {
             stackEditor?.removeMembers([recordID])
         }
         // Only this stack — the record may still belong to others.
-        history.removeRecordFromStackLocally(stackID: stackID, recordID: recordID)
+        // Face preview via resolveCard: new first may live only in Stack Window members.
+        history.removeRecordFromStackLocally(stackID: stackID, recordID: recordID) { [weak self] in
+            self?.resolveCard($0)
+        }
         Task {
             do {
                 try await store.removeStackMember(stackID, recordID: recordID)
@@ -1878,6 +2025,9 @@ final class AppModel {
             case .success(let count):
                 thumbnails.removeAll()
                 history.storeDidChange()
+                // Members from that app may have vanished — History-only invalidate left Stack Window stale.
+                reloadStackEditorIfNeeded()
+                await dropOpenRecordIfGone()
                 toasts.show(String(localized: "Deleted \(count) items from \(AppInfo.displayName(for: bundleID))"))
             case .failure(let error):
                 report(error)
