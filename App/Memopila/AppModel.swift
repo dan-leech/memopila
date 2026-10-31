@@ -1395,7 +1395,13 @@ final class AppModel {
         let previous = stack
         stackFavoriteOpGeneration += 1
         let gen = stackFavoriteOpGeneration
-        history.setStackFavoriteLocally(id: id, isFavorite: makeFavorite)
+        // A superseded unfavorite may have wiped allStacks via removeStackLocally — setFavoriteLocally
+        // alone cannot revive Favorites; reinsert from the resolved card when missing.
+        if makeFavorite, !history.allStacks.contains(where: { $0.id == id }) {
+            history.reinsertStackLocally(stack.withFavorite(true))
+        } else {
+            history.setStackFavoriteLocally(id: id, isFavorite: makeFavorite)
+        }
         if stackEditor?.stackID == id { stackEditor?.applyFavorite(makeFavorite, op: gen) }
         let leftFavorites = !makeFavorite && history.scope == .favorites
         if leftFavorites { history.removeStackLocally(id) }
