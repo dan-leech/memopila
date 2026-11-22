@@ -93,6 +93,8 @@ final class AppModel {
     private(set) var chooseBadgeWasPasted = false
     /// Armed paste-stack session (§3.11). Observable: stack cards read `isArmed` / progress live.
     private(set) var stackSession: StackSessionController!
+    /// Synthetic ⌘V delivery (third flight; panel defers while `isInFlight`).
+    private(set) var pasteDelivery: PasteDelivery!
     /// Panel card-drag SSOT (§3.11 drop contract). Not ObservationIgnored: Favorites/Collections
     /// chrome (`reorderGap` / End slot) must invalidate the History grid while dragging.
     private(set) var stackDrag = StackDragSession()
@@ -163,11 +165,21 @@ final class AppModel {
         panel = PanelController(model: self)
         windows = SecondaryWindows(model: self)
         stackSession = StackSessionController(model: self)
+        pasteDelivery = PasteDelivery(
+            memopilaUIKey: { [weak self] in self?.memopilaUIKey ?? false },
+            yieldKeyFocus: { [weak self] in self?.panel.yieldKeyFocus() }
+        )
 
         // The panel, or a window of Memopila's own while it is the active app (the record window,
         // Settings): what is copied there is Memopila's (review finding: it was Unknown).
-        monitor.panelIsKey = { [weak self] in self?.memopilaUIKey ?? false }
+        // While paste is in flight, treat Memopila as not key so capture attribution stays on the target.
+        monitor.panelIsKey = { [weak self] in
+            guard let self else { return false }
+            if self.pasteDelivery.isInFlight { return false }
+            return self.memopilaUIKey
+        }
         monitor.onSaved = { [weak self] id in self?.didSave(id) }
+        monitor.protectingRecords = { [weak self] in self?.retentionProtectedRecords ?? [] }
         monitor.onExternalClipboardChange = { [weak self] in self?.stackSession.stop(toast: true) }
         monitor.onStackIdentitySuperseded = { [weak self] in
             guard let self, self.stackSession.isArmed else { return }
@@ -354,23 +366,36 @@ final class AppModel {
         writes.run { await persist(change) }
     }
 
+    /// Latest intended title per record — concurrent persist Tasks must write this, not a stale capture.
+    @ObservationIgnored private var pendingTitles: [UUID: String] = [:]
+
     /// The changed title, marked saved at once so closing or moving on does not save it twice.
     private func takeTitleChange() -> (id: UUID, title: String)? {
         guard let state = itemState, state.titleChanged else { return nil }
         state.titleSaved()
+        pendingTitles[state.id] = state.title
         return (state.id, state.title)
     }
 
     private func persist(_ change: (id: UUID, title: String)) async {
         let gen = nextOpGeneration(for: change.id, in: &recordTitleOpGeneration)
-        setRecordTitleLocally(id: change.id, title: change.title, op: gen)
+        let title = pendingTitles[change.id] ?? change.title
+        setRecordTitleLocally(id: change.id, title: title, op: gen)
         do {
             guard gen == recordTitleOpGeneration[change.id] else { return }
-            try await store.rename(change.id, title: change.title)
-            guard gen == recordTitleOpGeneration[change.id] else { return }
-            stackEditor?.settleMemberTitle(id: change.id, title: change.title, op: gen)
+            try await store.rename(change.id, title: title)
+            // A newer rename may have been scheduled while we awaited — rewrite the latest if so.
+            if gen != recordTitleOpGeneration[change.id] {
+                if let latest = pendingTitles[change.id] {
+                    try? await store.rename(change.id, title: latest)
+                }
+                return
+            }
+            pendingTitles.removeValue(forKey: change.id)
+            stackEditor?.settleMemberTitle(id: change.id, title: title, op: gen)
         } catch {
             guard gen == recordTitleOpGeneration[change.id] else { return }
+            pendingTitles.removeValue(forKey: change.id)
             toasts.error(error.localizedDescription)
             // Drop failed optimistic title so reload does not re-paint it forever.
             stackEditor?.discardMemberTitleOverride(id: change.id, op: gen)
@@ -565,7 +590,8 @@ final class AppModel {
         refreshPreviousApp()
         purgeTask?.cancel()
         present(nil)
-        toasts.dismiss()
+        // Keep delete-Undo: dismissing it here left pendingDeletion armed with no way to Undo.
+        toasts.dismissTransient()
         history.activate(keepingState: keepingState)
         focusSearch()
     }
@@ -606,7 +632,8 @@ final class AppModel {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.thumbnails.removeAll()
-                if !self.panel.isVisible { self.history.purge() }
+                // Same gate as delayed panelDidClose purge — Stack/Record windows still need History.
+                if !self.panel.isVisible, !self.windows.isAnyVisible { self.history.purge() }
                 self.recognition.postpone()
             }
         }
@@ -629,6 +656,17 @@ final class AppModel {
         }
     }
 
+    /// Undo-window + open Edit Record — never quota/age-evict while the user can still Undo / Save.
+    private var retentionProtectedRecords: Set<UUID> {
+        var ids = Set<UUID>()
+        if let pending = pendingDeletion {
+            ids.formUnion(pending.records)
+            ids.formUnion(pending.ageVictims)
+        }
+        if let open = itemState?.id { ids.insert(open) }
+        return ids
+    }
+
     /// Age, short retention and count cap (§6); re-arms the expiry timer for the nearest `expiresAt`.
     func runRetention() {
         let limits = settings.retentionLimits
@@ -637,10 +675,13 @@ final class AppModel {
         if let armed = stackSession.armedStackID { protecting.insert(armed) }
         // Pending Undo stack deletes must not be age-deleted mid-window (stale non-favorite).
         if let pending = pendingDeletion { protecting.formUnion(pending.stacks) }
+        let protectingRecords = retentionProtectedRecords
         writes.run {
             do {
                 let next = try await store.applyRetention(
-                    limits: limits, now: Date(), protectingStacks: protecting
+                    limits: limits, now: Date(),
+                    protectingStacks: protecting,
+                    protectingRecords: protectingRecords
                 )
                 history.storeDidChange()
                 // Age/count purge can remove stack members — History-only invalidate left Stack Window stale.
@@ -766,52 +807,51 @@ final class AppModel {
             return false
         }
         guard let content = await variantContent(id, variant: .original) else { return false }
-        switch monitor.write(content.items, sourceBundleID: content.sourceBundleID, recordID: id) {
+        switch await monitor.writeAsync(content.items, sourceBundleID: content.sourceBundleID, recordID: id) {
         case .failed(let message):
             toasts.error(message)
             return false
         case .written:
-            let pastes = wantsPaste && AccessibilityBridge.isTrusted
+            let canPaste = wantsPaste && AccessibilityBridge.isTrusted
             // Memopila itself is active after a launch by hand or after Settings: the target app
             // needs a moment to take the focus back before ⌘V reaches it.
             let wasActive = NSApp.isActive
             if isPinned {
-                showChooseBadge(id, pasted: pastes)
-                // Pinned: the panel stays visible but gives the key focus back to the target app.
-                if pastes {
-                    // The panel keeps the keyboard while pinned: give it back, or ⌘V would paste
-                    // into the search field (review finding).
-                    panel.yieldKeyFocus()
-                }
+                // Badge "Pasted" only after delivery succeeds — claiming paste before deliver was
+                // the systemic lie behind "had to paste twice".
+                if canPaste { panel.yieldKeyFocus() }
             } else {
                 panel.close()
             }
-            if wantsPaste, !pastes {
+            var didPaste = false
+            if wantsPaste, !canPaste {
                 AccessibilityBridge.requestTrust()
                 toasts.error(String(localized: "To paste, allow Memopila in System Settings → Privacy & Security → Accessibility, then try again."))
-            } else if pastes {
-                await pasteIntoPreviousApp(wasActive: wasActive)
+            } else if canPaste {
+                switch await pasteIntoPreviousApp(wasActive: wasActive) {
+                case .delivered:
+                    didPaste = true
+                case .blocked, .cancelled:
+                    // Clipboard holds the item; tell the user ⌘V did not run (no silent skip).
+                    toasts.show(String(localized: "On the clipboard. Could not paste into the other app — press ⌘V there."))
+                }
             }
+            if isPinned { showChooseBadge(id, pasted: didPaste) }
             try? await store.markUsed(id, at: Date())
             history.storeDidChange()
             return true
         }
     }
 
-    /// Synthetic ⌘V into the app behind the panel. Re-yields if FocusState re-keyed the panel
-    /// after close, then pastes only when Memopila is not the key window.
-    func pasteIntoPreviousApp(wasActive: Bool) async {
-        let target = previousApp.flatMap { $0.isTerminated ? nil : $0 }
+    /// Synthetic ⌘V into the app behind the panel. Uses `PasteDelivery` ready checks (no silent skip).
+    @discardableResult
+    func pasteIntoPreviousApp(wasActive: Bool) async -> PasteDeliveryResult {
+        _ = wasActive // activation settle lives in PasteDelivery when Memopila was key/active
+        let targetApp = previousApp.flatMap { $0.isTerminated ? nil : $0 }
             ?? monitor.lastOtherApp.flatMap { $0.isTerminated ? nil : $0 }
-        guard let target else { return }
-        _ = target.activate()
-        try? await Task.sleep(for: .milliseconds(wasActive || isPinned ? 250 : 80))
-        if panel.isKey {
-            panel.yieldKeyFocus()
-            _ = target.activate()
-            try? await Task.sleep(for: .milliseconds(50))
-        }
-        if !panel.isKey { AccessibilityBridge.paste() }
+        guard let targetApp else { return .blocked(.noFrontmost) }
+        if isPinned { panel.yieldKeyFocus() }
+        return await pasteDelivery.deliver(to: PasteTarget(app: targetApp))
     }
 
     /// Text that is not a record yet (text found in an image, a source link, the Diagnostics report)
@@ -823,7 +863,7 @@ final class AppModel {
             let sourceBundleID = id.flatMap { resolveCard($0)?.sourceAppBundleID }
             switch await ingestDerived(items, from: id) {
             case .saved(let newID):
-                switch monitor.write(items, sourceBundleID: sourceBundleID, recordID: newID) {
+                switch await monitor.writeAsync(items, sourceBundleID: sourceBundleID, recordID: newID) {
                 case .written:
                     try? await store.markUsed(newID, at: Date())
                     history.storeDidChange()
@@ -833,7 +873,7 @@ final class AppModel {
                 }
             case .secretNotSaved:
                 // Copied as asked, but kept out of history like any other secret.
-                _ = monitor.write(items, sourceBundleID: sourceBundleID, recordID: nil)
+                _ = await monitor.writeAsync(items, sourceBundleID: sourceBundleID, recordID: nil)
                 toasts.show(String(localized: "Copied. Not added to history: it contains a secret."))
             case .failed(let message):
                 toasts.error(message)
@@ -957,7 +997,13 @@ final class AppModel {
             sensitiveKind: sensitiveKind
         )
         let enrichment = prepared.enrichment
-        switch await store.ingest(snapshot, readerSeq: monitor.coordinator.opSeq, enrichment: enrichment, limits: settings.retentionLimits) {
+        switch await store.ingest(
+            snapshot,
+            readerSeq: monitor.coordinator.opSeq,
+            enrichment: enrichment,
+            limits: settings.retentionLimits,
+            protectingRecords: retentionProtectedRecords
+        ) {
         case .committed(let newID), .merged(let newID):
             // As for a capture: a pending delete of the same content is undone, retention and its
             // expiry timer run (review finding).
@@ -989,13 +1035,19 @@ final class AppModel {
             return confirmDeleteFavorites(ids: ids)
         }
         if case .confirmDelete? = overlay { present(nil) }
-        enqueuePendingDeletion(records: Set(ids), stacks: [], ageVictims: [])
-        let message = ids.count == 1 ? String(localized: "Deleted") : String(localized: "Deleted \(ids.count) items")
-        toasts.showUndo(message) { [weak self] in self?.undoDeletion() }
+        let toastID = toasts.showUndo(
+            ids.count == 1 ? String(localized: "Deleted") : String(localized: "Deleted \(ids.count) items")
+        ) { [weak self] in self?.undoDeletion() }
+        enqueuePendingDeletion(records: Set(ids), stacks: [], ageVictims: [], undoToastID: toastID)
     }
 
     /// Shared Undo window for records and/or stacks.
-    private func enqueuePendingDeletion(records: Set<UUID>, stacks: Set<UUID>, ageVictims: Set<UUID>) {
+    private func enqueuePendingDeletion(
+        records: Set<UUID>,
+        stacks: Set<UUID>,
+        ageVictims: Set<UUID>,
+        undoToastID: UUID
+    ) {
         commitPendingDeletion()
         if !records.isEmpty {
             history.hide(records)
@@ -1020,10 +1072,11 @@ final class AppModel {
             await self.performDeletion(
                 records: pending.records,
                 stacks: pending.stacks,
-                ageVictims: pending.ageVictims
+                ageVictims: pending.ageVictims,
+                undoToastID: pending.undoToastID
             )
         }
-        pendingDeletion = (records, stacks, ageVictims, task)
+        pendingDeletion = (records, stacks, ageVictims, undoToastID, task)
     }
 
     /// Deferred destructive delete (Undo window): records, stacks, and age victims from stack delete.
@@ -1031,6 +1084,7 @@ final class AppModel {
         records: Set<UUID>,
         stacks: Set<UUID>,
         ageVictims: Set<UUID>,
+        undoToastID: UUID,
         task: Task<Void, Never>
     )?
     /// Per-entity gens — a ♥/rename/deal/title on B must not cancel A's in-flight write.
@@ -1056,6 +1110,7 @@ final class AppModel {
         guard let pending = pendingDeletion else { return }
         pending.task.cancel()
         pendingDeletion = nil
+        toasts.clearUndo(ifMatches: pending.undoToastID)
         if !pending.records.isEmpty { history.unhide(pending.records) }
         if !pending.stacks.isEmpty { history.unhideStacks(pending.stacks) }
         // Membership stays in the store during Undo — reorder is splice-only and will not delete
@@ -1067,14 +1122,20 @@ final class AppModel {
     /// A record waiting out its Undo period came back — copied again, merged into by an edit or a
     /// derived copy: it is not deleted after all (review finding: the new copy was lost).
     private func rescueFromPendingDeletion(_ id: UUID) {
-        guard let pending = pendingDeletion, pending.records.contains(id) else { return }
-        pendingDeletion = (
-            pending.records.subtracting([id]),
-            pending.stacks,
-            pending.ageVictims.subtracting([id]),
-            pending.task
-        )
+        guard let pending = pendingDeletion,
+              pending.records.contains(id) || pending.ageVictims.contains(id) else { return }
+        let records = pending.records.subtracting([id])
+        let ageVictims = pending.ageVictims.subtracting([id])
         history.unhide([id])
+        // Nothing left to commit — collapse so the Undo toast/timer cannot fire empty.
+        if records.isEmpty, pending.stacks.isEmpty, ageVictims.isEmpty {
+            pending.task.cancel()
+            pendingDeletion = nil
+            toasts.clearUndo(ifMatches: pending.undoToastID)
+            reloadStackEditorIfNeeded()
+            return
+        }
+        pendingDeletion = (records, pending.stacks, ageVictims, pending.undoToastID, pending.task)
         reloadStackEditorIfNeeded()
     }
 
@@ -1083,7 +1144,12 @@ final class AppModel {
         guard let pending = pendingDeletion else { return }
         pending.task.cancel()
         pendingDeletion = nil
-        await performDeletion(records: pending.records, stacks: pending.stacks, ageVictims: pending.ageVictims)
+        await performDeletion(
+            records: pending.records,
+            stacks: pending.stacks,
+            ageVictims: pending.ageVictims,
+            undoToastID: pending.undoToastID
+        )
     }
 
     /// ⌘Q: unsaved text asks first — Cancel keeps Memopila running — and a pending delete is
@@ -1098,6 +1164,8 @@ final class AppModel {
                 await self.commitPendingDeletionNow()
                 // Everything else fire-and-forget (♥, memberships, collection ops, a capture being saved).
                 await self.writes.drain()
+                // Bound capture flight; abandon ≠ force pasteboard write.
+                await self.monitor.stopAndIdle()
                 reply(true)
             }
         }
@@ -1133,11 +1201,21 @@ final class AppModel {
         pending.task.cancel()
         pendingDeletion = nil
         writes.run {
-            await performDeletion(records: pending.records, stacks: pending.stacks, ageVictims: pending.ageVictims)
+            await performDeletion(
+                records: pending.records,
+                stacks: pending.stacks,
+                ageVictims: pending.ageVictims,
+                undoToastID: pending.undoToastID
+            )
         }
     }
 
-    private func performDeletion(records: Set<UUID>, stacks: Set<UUID>, ageVictims: Set<UUID>) async {
+    private func performDeletion(
+        records: Set<UUID>,
+        stacks: Set<UUID>,
+        ageVictims: Set<UUID>,
+        undoToastID: UUID
+    ) async {
         // Also entered from the Undo timer, which is not a ledger task: ⌘Q must wait for it.
         writes.begin()
         defer { writes.end() }
@@ -1165,7 +1243,8 @@ final class AppModel {
                 }
                 reloadStackEditorIfNeeded()
                 await dropOpenRecordIfGone()
-                toasts.clearUndo()
+                // Only clear *this* delete's Undo — an overlapping newer delete keeps its toast.
+                toasts.clearUndo(ifMatches: undoToastID)
                 return
             case .failure(.busy) where attempt < 3:
                 try? await Task.sleep(for: .milliseconds(500))
@@ -1253,9 +1332,45 @@ final class AppModel {
     }
 
     /// Close Edit Record if retention / bulk delete removed the open id (stale window otherwise).
+    /// Dirty text must not vanish without a sheet — but Save cannot resurrect a missing card, so a
+    /// failed Save must still close (not leave a ghost editor via Cancel semantics).
     private func dropOpenRecordIfGone() async {
         guard let state = itemState else { return }
         guard (try? await store.card(state.id)) == nil else { return }
+        if state.isDirty {
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                windows.askToSaveRecord { [weak self] choice in
+                    guard let self else { cont.resume(); return }
+                    switch choice {
+                    case .save:
+                        Task {
+                            // editText rejects missing ids — do not map failure to Cancel/ghost.
+                            _ = await self.saveText()
+                            state.revert()
+                            self.forceCloseGoneRecord(state)
+                            cont.resume()
+                        }
+                    case .discard:
+                        let change = self.takeTitleChange()
+                        state.revert()
+                        Task {
+                            if let change { await self.persist(change) }
+                            self.forceCloseGoneRecord(state)
+                            cont.resume()
+                        }
+                    case .cancel:
+                        // Keep the window so the user can copy text out; later drops re-prompt.
+                        cont.resume()
+                    }
+                }
+            }
+            return
+        }
+        forceCloseGoneRecord(state)
+    }
+
+    private func forceCloseGoneRecord(_ state: ItemState) {
+        guard itemState === state else { return }
         state.loadTask?.cancel()
         // Nil first so closeRecord → saveTitle does not re-persist a deleted id.
         itemState = nil
@@ -1363,7 +1478,10 @@ final class AppModel {
                         continue
                     }
                     // Store is SSOT for who was actually deleted (count-cap + age of this id).
-                    let deleted = try await self.store.setFavorite(id, target, limits: limits, now: Date())
+                    let deleted = try await self.store.setFavorite(
+                        id, target, limits: limits, now: Date(),
+                        protectingRecords: self.retentionProtectedRecords
+                    )
                     written.insert(id)
                     deletedByStore.formUnion(deleted)
                 }
@@ -1585,11 +1703,13 @@ final class AppModel {
     }
 
     private func enqueueStackDelete(_ ids: [UUID], ageVictims: Set<UUID>) {
-        enqueuePendingDeletion(records: [], stacks: Set(ids), ageVictims: ageVictims)
+        // Age victims are pending records for the Undo window: hide + rescue + retention protect
+        // must treat them like an explicit delete (not a silent cascade after 6s).
         let message = ids.count == 1
             ? String(localized: "Stack deleted")
             : String(localized: "Deleted \(ids.count) stacks")
-        toasts.showUndo(message) { [weak self] in self?.undoDeletion() }
+        let toastID = toasts.showUndo(message) { [weak self] in self?.undoDeletion() }
+        enqueuePendingDeletion(records: ageVictims, stacks: Set(ids), ageVictims: [], undoToastID: toastID)
     }
 
     func toggleStackFavorite(_ id: UUID) {
@@ -1841,8 +1961,11 @@ final class AppModel {
         }
     }
 
+    @ObservationIgnored private var pendingStackTitles: [UUID: String] = [:]
+
     func renameStack(_ id: UUID, title: String) {
         let gen = nextOpGeneration(for: id, in: &stackRenameOpGeneration)
+        pendingStackTitles[id] = title
         history.setStackTitleLocally(id: id, title: title)
         if stackEditor?.stackID == id {
             stackEditor?.applyTitle(title, op: gen)
@@ -1852,13 +1975,21 @@ final class AppModel {
             do {
                 // Gen before write — a superseded keystroke must not commit an older title.
                 guard gen == self.stackRenameOpGeneration[id] else { return }
-                try await store.renameStack(id, title: title)
-                guard gen == self.stackRenameOpGeneration[id] else { return }
+                let writeTitle = self.pendingStackTitles[id] ?? title
+                try await store.renameStack(id, title: writeTitle)
+                if gen != self.stackRenameOpGeneration[id] {
+                    if let latest = self.pendingStackTitles[id] {
+                        try? await store.renameStack(id, title: latest)
+                    }
+                    return
+                }
+                self.pendingStackTitles.removeValue(forKey: id)
                 if self.stackEditor?.stackID == id {
-                    self.stackEditor?.settleTitle(title, op: gen)
+                    self.stackEditor?.settleTitle(writeTitle, op: gen)
                 }
             } catch {
                 guard gen == self.stackRenameOpGeneration[id] else { return }
+                self.pendingStackTitles.removeValue(forKey: id)
                 if self.stackEditor?.stackID == id {
                     // Clear failed optimistic title only if this op still owns pending.
                     self.stackEditor?.discardStackTitleOverride(op: gen)
@@ -1984,15 +2115,24 @@ final class AppModel {
     func rename(_ id: UUID, title: String) {
         present(nil)
         let gen = nextOpGeneration(for: id, in: &recordTitleOpGeneration)
+        pendingTitles[id] = title
         setRecordTitleLocally(id: id, title: title, op: gen)
         writes.run {
             do {
                 guard gen == self.recordTitleOpGeneration[id] else { return }
-                try await store.rename(id, title: title)
-                guard gen == self.recordTitleOpGeneration[id] else { return }
-                stackEditor?.settleMemberTitle(id: id, title: title, op: gen)
+                let writeTitle = self.pendingTitles[id] ?? title
+                try await store.rename(id, title: writeTitle)
+                if gen != self.recordTitleOpGeneration[id] {
+                    if let latest = self.pendingTitles[id] {
+                        try? await store.rename(id, title: latest)
+                    }
+                    return
+                }
+                self.pendingTitles.removeValue(forKey: id)
+                stackEditor?.settleMemberTitle(id: id, title: writeTitle, op: gen)
             } catch {
                 guard gen == self.recordTitleOpGeneration[id] else { return }
+                self.pendingTitles.removeValue(forKey: id)
                 toasts.error(error.localizedDescription)
                 stackEditor?.discardMemberTitleOverride(id: id, op: gen)
                 reloadStackEditorIfNeeded()
