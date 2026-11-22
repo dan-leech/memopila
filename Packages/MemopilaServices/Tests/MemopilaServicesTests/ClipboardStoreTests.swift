@@ -131,6 +131,47 @@ struct ClipboardStoreTests {
         #expect(previews == ["4", "3", "1"])
     }
 
+    @Test func should_not_evict_protectingRecords_on_ingest_or_retention() async throws {
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits(maxCount: 1)
+        guard case .committed(let protected) = await ingest(store, snapshot("keep", at: 1), limits: limits) else { return }
+        let result = await store.ingest(
+            snapshot("new", at: 2),
+            readerSeq: 0,
+            enrichment: IngestEnrichment.make(for: [CanonicalItem([.bytes(.utf8PlainText, Data("new".utf8))])], sourceAppName: "Editor"),
+            limits: limits,
+            protectingRecords: [protected]
+        )
+        guard case .committed = result else { Issue.record("\(result)"); return }
+        #expect(try await store.card(protected) != nil, "Undo/open-editor protect must survive quota ingest")
+        try await store.applyRetention(
+            limits: limits, now: Date(timeIntervalSince1970: 10_000), protectingRecords: [protected]
+        )
+        #expect(try await store.card(protected) != nil, "protect must survive age/count retention")
+    }
+
+    @Test func should_not_evict_protectingRecords_on_unfavorite() async throws {
+        let store = try ClipboardStore(url: nil)
+        let limits = RetentionLimits(maxCount: 1)
+        guard case .committed(let kept) = await ingest(store, snapshot("kept", at: 1), limits: limits) else { return }
+        // Second ingest would normally evict `kept` — protect it so both exist for the unfavorite case.
+        let favResult = await store.ingest(
+            snapshot("fav", at: 2),
+            readerSeq: 0,
+            enrichment: IngestEnrichment.make(for: [CanonicalItem([.bytes(.utf8PlainText, Data("fav".utf8))])], sourceAppName: "Editor"),
+            limits: limits,
+            protectingRecords: [kept]
+        )
+        guard case .committed(let fav) = favResult else { Issue.record("\(favResult)"); return }
+        try await store.setFavorite(fav, true, limits: limits, now: Date(timeIntervalSince1970: 3))
+        // Unfavorite at maxCount would otherwise delete `kept` as a count-cap victim.
+        let deleted = try await store.setFavorite(
+            fav, false, limits: limits, now: Date(timeIntervalSince1970: 4), protectingRecords: [kept]
+        )
+        #expect(!deleted.contains(kept))
+        #expect(try await store.card(kept) != nil)
+    }
+
     @Test func storageQuotaRejectsWithoutDeletingFavorites() async throws {
         let store = try ClipboardStore(url: nil)
         let limits = RetentionLimits(maxStorageBytes: 10)
@@ -420,9 +461,38 @@ struct ClipboardStoreTests {
         #expect(try await store.stackMemberIDs(stackID) == [b], "delete cascades StackMember")
 
         try await store.removeStackMember(stackID, recordID: b)
+        #expect(try await store.stack(stackID) == nil, "last member removal drops the stack shell")
         #expect(try await store.stackMemberIDs(stackID).isEmpty)
         // Leaving the last stack does not restore expiresAt (§6).
         #expect(try await store.card(b)?.expiresAt == nil)
+    }
+
+    @Test func should_delete_stack_shell_when_last_member_record_deleted() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let a) = await ingest(store, snapshot("solo", at: 1)) else { return }
+        let stackID = try await store.createStack(title: "Solo", recordIDs: [a])
+        try await store.delete([a], opSeq: 1)
+        #expect(try await store.stack(stackID) == nil)
+        // Intentionally empty stacks (created with no members) are not swept by unrelated deletes.
+        let emptyID = try await store.createStack(title: "Empty", recordIDs: [])
+        guard case .committed(let other) = await ingest(store, snapshot("other", at: 2)) else { return }
+        try await store.delete([other], opSeq: 2)
+        #expect(try await store.stack(emptyID) != nil)
+    }
+
+    @Test func should_keep_payload_readable_across_editText_external_swap() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "memopila-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try ClipboardStore(url: directory.appending(path: "History.store"))
+        // Large enough to land in `_EXTERNAL_DATA` so the staged-swap path is exercised.
+        let original = String(repeating: "a", count: 256 * 1024)
+        let edited = String(repeating: "b", count: 256 * 1024)
+        guard case .committed(let id) = await ingest(store, snapshot(original)) else {
+            Issue.record("not committed")
+            return
+        }
+        #expect(try await store.editText(id, text: edited, opSeq: 1, maxBytes: edited.utf8.count + 1) == .updated)
+        #expect(try await store.payload(for: id).text == edited)
     }
 
     @Test func mergeRetargetsStackMembers() async throws {
@@ -569,6 +639,33 @@ struct ClipboardStoreTests {
         try await reopened.delete([id], opSeq: 1)
         #expect(try await reopened.count(HistoryQuery()) == 0)
         await #expect(throws: StoreError.notFound) { try await reopened.payload(for: id) }
+    }
+
+    /// Retention eviction must not share a save with new `@Attribute(.externalStorage)` inserts —
+    /// that race logged "Failed to clone … .interim" in production.
+    @Test func should_evict_large_external_payloads_and_keep_survivors_readable() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "memopila-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try ClipboardStore(url: directory.appending(path: "History.store"))
+        // Above SwiftData's typical inline threshold so blobs land in `_EXTERNAL_DATA`.
+        let chunk = 256 * 1024
+        let limits = RetentionLimits(maxCount: 2, maxStorageBytes: 50 * FormatPolicy.mebibyte)
+        for i in 0..<4 {
+            var bytes = Data(repeating: UInt8(i + 1), count: chunk)
+            bytes[0] = UInt8(i)
+            let items = [CanonicalItem([.bytes("com.example.big", bytes)])]
+            let result = await ingest(store, snapshot("", at: TimeInterval(1_000 + i), items: items), limits: limits)
+            guard case .committed = result else {
+                Issue.record("ingest \(i) → \(result)")
+                return
+            }
+        }
+        let cards = try await store.page(HistoryQuery(), offset: 0, limit: 10)
+        #expect(cards.count == 2)
+        for card in cards {
+            let payload = try await store.payload(for: card.id)
+            #expect(payload.items.first?.representations.first?.byteCount == chunk)
+        }
     }
 
     // MARK: Pinboard order (Favorites / Collections)

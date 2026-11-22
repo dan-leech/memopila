@@ -112,7 +112,8 @@ public actor ClipboardStore {
         _ snapshot: OwnedSnapshot,
         readerSeq: Int,
         enrichment: IngestEnrichment,
-        limits: RetentionLimits
+        limits: RetentionLimits,
+        protectingRecords: Set<UUID> = []
     ) -> IngestResult {
         if staleGuard.isStale(contentHash: snapshot.contentHash, readerSeq: readerSeq) { return .dropped }
         let context = makeContext()
@@ -133,7 +134,8 @@ public actor ClipboardStore {
                 return .merged(existing.id)
             }
 
-            let candidates = try retentionCandidates(in: context)
+            // Undo-window / open-editor ids are treated as pinned so quota cannot erase them.
+            let candidates = Self.pinProtected(try retentionCandidates(in: context), protectingRecords)
             let plan = RetentionPlanner.planIngest(
                 existing: candidates,
                 newPayloadBytes: snapshot.payloadSizeBytes,
@@ -185,8 +187,15 @@ public actor ClipboardStore {
                 model.record = record
                 record.hasThumbnail = true
             }
-            try deleteRecords(ids: victims, in: context)
+            // Two saves on purpose. External storage writes `UUID.interim` then renames; deleting
+            // other external blobs in the *same* save races that rename. (Bare "Failed to clone
+            // … .interim" with the final `UUID` file present is often spurious CoreData noise —
+            // DTS; the dangerous case is insert+delete competing in one transaction.)
             try context.save()
+            if !victims.isEmpty {
+                try deleteRecords(ids: victims, in: context)
+                try context.save()
+            }
             return .committed(record.id)
         } catch {
             context.rollback()
@@ -519,8 +528,15 @@ public actor ClipboardStore {
 
     /// Favorite on / off with the count cap and age rules of §6. Favorites pinboard: join at front.
     /// Returns ids deleted by this call (count-cap eviction and/or age of *this* record only).
+    /// `protectingRecords` — Undo-window / open editor ids must not be collateral victims.
     @discardableResult
-    public func setFavorite(_ id: UUID, _ isFavorite: Bool, limits: RetentionLimits, now: Date) throws -> Set<UUID> {
+    public func setFavorite(
+        _ id: UUID,
+        _ isFavorite: Bool,
+        limits: RetentionLimits,
+        now: Date,
+        protectingRecords: Set<UUID> = []
+    ) throws -> Set<UUID> {
         let context = makeContext()
         guard let record = try fetchRecord(id, in: context) else { return [] }
         var deleted = Set<UUID>()
@@ -532,7 +548,7 @@ public actor ClipboardStore {
                 return
             }
             try Self.removeFavoriteSlot(kind: .record, entryID: id, in: context)
-            let candidates = try retentionCandidates(in: context)
+            let candidates = Self.pinProtected(try retentionCandidates(in: context), protectingRecords)
             var victims = RetentionPlanner.planUnfavorite(id, existing: candidates, maxCount: limits.maxCount)
             // Age-delete only the unfavorited record (UI asks for it) — never every aged non-pinned.
             let planned = Set(victims)
@@ -621,35 +637,55 @@ public actor ClipboardStore {
             return .merged(into: survivor.id)
         }
 
-        try saveOrRollback(context) {
-            for row in record.representations { context.delete(row) }
-            record.representations = []
-            insertRepresentations(of: items, for: record, in: context)
-            record.contentHash = hash
-            record.payloadSizeBytes = size
-            // As for a copy: formatting that says nothing makes it text (`FormattingSignificance`).
-            record.displayTypeRaw = DisplayType.classify(items).rawValue
-            record.textIndex = TextDecoding.prefix(text, maxScalars: IngestEnrichment.searchScalars)
-            record.textLength = text.count
-            record.lineCount = TextStats.lineCount(text)
-            // Edited text is checked like a copy: a token typed in is masked, and expires under
-            // *Delete after* (review findings).
-            let secret = secretPolicy == .off ? nil : SecretDetector.detectMatch(text, kinds: secretKinds)
-            if let secret, secret.isEmbedded {
-                record.cardPreview = TextDecoding.prefix(secret.matched, maxScalars: IngestEnrichment.cardPreviewScalars)
-            } else {
-                record.cardPreview = TextDecoding.prefix(text, maxScalars: IngestEnrichment.cardPreviewScalars)
+        // Stage new external blobs unlinked, then swap in a second save. Rules:
+        // 1) Never insert+delete external storage in one save (interim/rename race).
+        // 2) Every committed save must leave the record PayloadIntegrity-verifiable — so do not
+        //    attach new rows or rewrite hash/size while obsolete rows still hang off the record.
+        let obsolete = Array(record.representations)
+        let staged = stageRepresentations(of: items, in: context)
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
+        do {
+            try saveOrRollback(context) {
+                for row in obsolete { context.delete(row) }
+                for model in staged {
+                    model.record = record
+                }
+                record.contentHash = hash
+                record.payloadSizeBytes = size
+                // As for a copy: formatting that says nothing makes it text (`FormattingSignificance`).
+                record.displayTypeRaw = DisplayType.classify(items).rawValue
+                record.textIndex = TextDecoding.prefix(text, maxScalars: IngestEnrichment.searchScalars)
+                record.textLength = text.count
+                record.lineCount = TextStats.lineCount(text)
+                // Edited text is checked like a copy: a token typed in is masked, and expires under
+                // *Delete after* (review findings).
+                let secret = secretPolicy == .off ? nil : SecretDetector.detectMatch(text, kinds: secretKinds)
+                if let secret, secret.isEmbedded {
+                    record.cardPreview = TextDecoding.prefix(secret.matched, maxScalars: IngestEnrichment.cardPreviewScalars)
+                } else {
+                    record.cardPreview = TextDecoding.prefix(text, maxScalars: IngestEnrichment.cardPreviewScalars)
+                }
+                record.sensitiveKind = secret?.kind.rawValue
+                let pinned = try record.isFavorite || stackedRecordIDs(in: context).contains(id)
+                if secret != nil, case .deleteAfter(let minutes) = secretPolicy, !pinned {
+                    let expiry = now.addingTimeInterval(TimeInterval(minutes) * 60)
+                    record.expiresAt = min(record.expiresAt ?? expiry, expiry)
+                }
+                record.editedAt = Date()
+                record.storedTypes = representations.map(\.type.rawValue)
+                record.skippedTypes = []
+                record.searchText = Self.searchText(for: record)
             }
-            record.sensitiveKind = secret?.kind.rawValue
-            let pinned = try record.isFavorite || stackedRecordIDs(in: context).contains(id)
-            if secret != nil, case .deleteAfter(let minutes) = secretPolicy, !pinned {
-                let expiry = now.addingTimeInterval(TimeInterval(minutes) * 60)
-                record.expiresAt = min(record.expiresAt ?? expiry, expiry)
-            }
-            record.editedAt = Date()
-            record.storedTypes = representations.map(\.type.rawValue)
-            record.skippedTypes = []
-            record.searchText = Self.searchText(for: record)
+        } catch {
+            // Save #1 already committed staged blobs; drop them so a failed swap does not leak.
+            for model in staged where model.record == nil { context.delete(model) }
+            try? context.save()
+            throw error
         }
         return .updated
     }
@@ -657,11 +693,13 @@ public actor ClipboardStore {
     /// Age, short retention and count cap (§6). Returns when the next expiry is due.
     /// Also age-deletes non-favorite stacks whose freshest activity is older than `maxAge`.
     /// `protectingStacks` — open editor / armed Choose must not vanish under the user.
+    /// `protectingRecords` — Undo-window / open Edit Record ids must not be purged mid-window.
     @discardableResult
     public func applyRetention(
         limits: RetentionLimits,
         now: Date,
-        protectingStacks: Set<UUID> = []
+        protectingStacks: Set<UUID> = [],
+        protectingRecords: Set<UUID> = []
     ) throws -> Date? {
         let context = makeContext()
         var next: Date?
@@ -669,7 +707,7 @@ public actor ClipboardStore {
             try ageDeleteStaleStacks(
                 maxAge: limits.maxAge, now: now, protecting: protectingStacks, in: context
             )
-            let candidates = try retentionCandidates(in: context)
+            let candidates = Self.pinProtected(try retentionCandidates(in: context), protectingRecords)
             var victims = RetentionPlanner.planAge(existing: candidates, now: now, maxAge: limits.maxAge)
             victims += RetentionPlanner.planExpired(existing: candidates, now: now)
             // The count and the storage limit apply to what is left, not to records already going.
@@ -687,6 +725,25 @@ public actor ClipboardStore {
             next = RetentionPlanner.nextExpiry(existing: candidates.filter { !removed.contains($0.id) })
         }
         return next
+    }
+
+    /// Undo / open-editor protection: same exclusion as favorites for victim planning.
+    private static func pinProtected(
+        _ candidates: [RetentionCandidate],
+        _ protecting: Set<UUID>
+    ) -> [RetentionCandidate] {
+        guard !protecting.isEmpty else { return candidates }
+        return candidates.map { candidate in
+            guard protecting.contains(candidate.id), !candidate.isPinned else { return candidate }
+            return RetentionCandidate(
+                id: candidate.id,
+                isFavorite: candidate.isFavorite,
+                lastCopiedAt: candidate.lastCopiedAt,
+                payloadSizeBytes: candidate.payloadSizeBytes,
+                expiresAt: candidate.expiresAt,
+                isPinned: true
+            )
+        }
     }
 
     /// Non-favorite stacks with `freshAt < now - maxAge` go as a unit; cascade former members
@@ -1159,12 +1216,14 @@ public actor ClipboardStore {
         context.insert(copy)
 
         for row in source.representations {
+            // Materialize away from external-storage CoW: assigning the faulted `Data` directly
+            // makes CoreData clone `UUID` → `UUID.interim` and can race the safeguard copy.
             let rep = PayloadRepresentation(
                 itemIndex: row.itemIndex,
                 repIndex: row.repIndex,
                 uti: row.uti,
                 kindRaw: row.kindRaw,
-                bytes: row.bytes,
+                bytes: row.bytes.map { Data($0) },
                 paths: row.paths,
                 byteCount: row.byteCount
             )
@@ -1172,7 +1231,7 @@ public actor ClipboardStore {
             rep.record = copy
         }
         if let thumb = source.thumbnail {
-            let model = RecordThumbnail(data: thumb.data)
+            let model = RecordThumbnail(data: Data(thumb.data))
             context.insert(model)
             model.record = copy
             copy.hasThumbnail = true
@@ -1192,6 +1251,7 @@ public actor ClipboardStore {
     }
 
     /// Drop one member; compact UI positions. Does not restore `expiresAt` (§6 / P36).
+    /// Removing the last member deletes the stack shell (favorites / collection slots included).
     public func removeStackMember(_ stackID: UUID, recordID: UUID) throws {
         let context = makeContext()
         let rows = try context.fetch(FetchDescriptor<StackMember>(
@@ -1203,9 +1263,13 @@ public actor ClipboardStore {
             predicate: #Predicate { $0.stackID == stackID },
             sortBy: [SortDescriptor(\.position)]
         ))
-        for (index, member) in ordered.enumerated() { member.position = index }
-        if let stack = try fetchStack(stackID, in: context) {
-            touchStackActivity(stack)
+        if ordered.isEmpty {
+            try deleteStackRows(ids: [stackID], in: context)
+        } else {
+            for (index, member) in ordered.enumerated() { member.position = index }
+            if let stack = try fetchStack(stackID, in: context) {
+                touchStackActivity(stack)
+            }
         }
         try context.save()
     }
@@ -1570,16 +1634,30 @@ public actor ClipboardStore {
     }
 
     private func insertRepresentations(of items: [CanonicalItem], for record: ClipboardRecord, in context: ModelContext) {
-        for row in StoredRepresentation.rows(for: items) {
+        for model in stageRepresentations(of: items, in: context) {
+            model.record = record
+        }
+    }
+
+    /// New payload rows with `record == nil` so a first save can write external blobs without
+    /// changing an existing record's verifyable representation set.
+    private func stageRepresentations(of items: [CanonicalItem], in context: ModelContext) -> [PayloadRepresentation] {
+        StoredRepresentation.rows(for: items).map { row in
             let model: PayloadRepresentation
             switch row.payload {
             case .bytes(let data):
-                model = PayloadRepresentation(itemIndex: row.itemIndex, repIndex: row.repIndex, uti: row.type.rawValue, kindRaw: 0, bytes: data, paths: nil, byteCount: row.byteCount)
+                model = PayloadRepresentation(
+                    itemIndex: row.itemIndex, repIndex: row.repIndex, uti: row.type.rawValue,
+                    kindRaw: 0, bytes: data, paths: nil, byteCount: row.byteCount
+                )
             case .filePaths(let paths):
-                model = PayloadRepresentation(itemIndex: row.itemIndex, repIndex: row.repIndex, uti: row.type.rawValue, kindRaw: 1, bytes: nil, paths: paths, byteCount: row.byteCount)
+                model = PayloadRepresentation(
+                    itemIndex: row.itemIndex, repIndex: row.repIndex, uti: row.type.rawValue,
+                    kindRaw: 1, bytes: nil, paths: paths, byteCount: row.byteCount
+                )
             }
             context.insert(model)
-            model.record = record
+            return model
         }
     }
 
@@ -1796,8 +1874,14 @@ public actor ClipboardStore {
     }
 
     /// Records, their representations and thumbnails (cascade) and memberships, in the caller's transaction.
+    /// Stacks that lose their last member here are removed (intentional empty stacks created via
+    /// `createStack(recordIDs: [])` are untouched — they were never in `touchedStacks`).
     private func deleteRecords(ids: [UUID], in context: ModelContext) throws {
         guard !ids.isEmpty else { return }
+        let memberRows = try context.fetch(FetchDescriptor<StackMember>(
+            predicate: #Predicate { ids.contains($0.recordID) }
+        ))
+        let touchedStacks = Set(memberRows.map(\.stackID))
         let records = try context.fetch(FetchDescriptor<ClipboardRecord>(predicate: #Predicate { ids.contains($0.id) }))
         records.forEach { context.delete($0) }
         try context.delete(model: RecordTag.self, where: #Predicate { ids.contains($0.recordID) })
@@ -1807,6 +1891,20 @@ public actor ClipboardStore {
         try context.delete(model: CollectionSlot.self, where: #Predicate { $0.entryKindRaw == kind && ids.contains($0.entryID) })
         try Self.compactFavoriteSlots(in: context)
         try Self.compactAllCollectionSlots(in: context)
+        try pruneStacksIfEmpty(touchedStacks, in: context)
+    }
+
+    /// Drop stack shells that this mutation emptied — not globally (empty-by-create stays).
+    private func pruneStacksIfEmpty(_ stackIDs: Set<UUID>, in context: ModelContext) throws {
+        guard !stackIDs.isEmpty else { return }
+        let ids = Array(stackIDs)
+        let remaining = try context.fetch(FetchDescriptor<StackMember>(
+            predicate: #Predicate { ids.contains($0.stackID) }
+        ))
+        let populated = Set(remaining.map(\.stackID))
+        let empty = stackIDs.subtracting(populated)
+        guard !empty.isEmpty else { return }
+        try deleteStackRows(ids: Array(empty), in: context)
     }
 
     private func saveOrRollback(_ context: ModelContext, _ changes: () throws -> Void) throws {
