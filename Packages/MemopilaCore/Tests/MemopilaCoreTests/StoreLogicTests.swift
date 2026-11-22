@@ -191,8 +191,20 @@ private final class CoordinatorHarness {
     var coordinator = CaptureCoordinator()
     let start = Date(timeIntervalSince1970: 1_000)
 
-    func tick(_ count: Int, after seconds: TimeInterval = 0, access: Bool = true) -> CaptureCoordinator.TickDecision {
+    func tick(_ count: Int, after seconds: TimeInterval = 0, access: Bool = true) -> TickPhaseA {
         coordinator.tick(accessAllowed: access, now: start + seconds) { count }
+    }
+
+    @discardableResult
+    func peek(_ count: Int, _ types: TypesPeek = .hasContent) -> ApplyPeekResult {
+        coordinator.applyPeek(types, changeCount: count)
+    }
+
+    /// Phase A + Phase B for hasContent (legacy one-shot reader start).
+    @discardableResult
+    func capture(_ count: Int, after seconds: TimeInterval = 0) -> ApplyPeekResult? {
+        guard case .needsPeek(let n) = tick(count, after: seconds) else { return nil }
+        return peek(n, .hasContent)
     }
 
     func finish(_ count: Int?) { coordinator.captureFinished(handledChangeCount: count) }
@@ -204,7 +216,7 @@ private final class CoordinatorHarness {
 struct CaptureCoordinatorTests {
     @Test func unchangedTicksDoNotRead() {
         let h = CoordinatorHarness()
-        #expect(h.tick(5) == .startReader(readerSeq: 0))
+        #expect(h.capture(5) == .startReader(readerSeq: 0))
         h.finish(5)
         for _ in 0..<10 {
             #expect(h.tick(5) == .idle(.unchanged))
@@ -213,17 +225,24 @@ struct CaptureCoordinatorTests {
 
     @Test func singleFlight() {
         let h = CoordinatorHarness()
-        #expect(h.tick(1) == .startReader(readerSeq: 0))
+        #expect(h.capture(1) == .startReader(readerSeq: 0))
         #expect(h.tick(2) == .idle(.busy))
         h.finish(1)
-        #expect(h.tick(2) == .startReader(readerSeq: 0))
+        #expect(h.capture(2) == .startReader(readerSeq: 0))
+    }
+
+    @Test func needsPeekWithoutApplyDoesNotStartReader() {
+        let h = CoordinatorHarness()
+        #expect(h.tick(1) == .needsPeek(changeCount: 1))
+        #expect(h.coordinator.flight.isIdle)
+        #expect(h.tick(1) == .needsPeek(changeCount: 1))
     }
 
     @Test func unstableReadLeavesTheCountEligible() {
         let h = CoordinatorHarness()
-        _ = h.tick(1)
+        _ = h.capture(1)
         h.finish(nil)
-        #expect(h.tick(1) == .startReader(readerSeq: 0))
+        #expect(h.capture(1) == .startReader(readerSeq: 0))
     }
 
     @Test func noAccessMeansNoCounterRead() {
@@ -237,23 +256,23 @@ struct CaptureCoordinatorTests {
     @Test func confirmedRestoreIsSuppressedOnce() {
         let h = CoordinatorHarness()
         h.coordinator.publishToken(9)
-        #expect(h.tick(9) == .suppressedOwnWrite(changeCount: 9))
+        #expect(h.tick(9) == .suppressedOwnWrite(9))
         #expect(h.tick(9) == .idle(.unchanged))
-        #expect(h.tick(10) == .startReader(readerSeq: 0))
+        #expect(h.capture(10) == .startReader(readerSeq: 0))
     }
 
     @Test func wrongTokenNeverSuppressesAnExternalChange() {
         let h = CoordinatorHarness()
         h.coordinator.publishToken(9)
-        #expect(h.tick(10) == .startReader(readerSeq: 0))
+        #expect(h.capture(10) == .startReader(readerSeq: 0))
         #expect(h.coordinator.token == nil)
     }
 
     @Test func lateReaderDoesNotReopenANewerHandledCount() {
         let h = CoordinatorHarness()
-        _ = h.tick(1)
+        _ = h.capture(1)
         h.coordinator.publishToken(2)
-        #expect(h.tick(2) == .suppressedOwnWrite(changeCount: 2))
+        #expect(h.tick(2) == .suppressedOwnWrite(2))
         h.finish(1)
         #expect(h.coordinator.lastHandledChangeCount == 2)
         #expect(h.tick(2) == .idle(.unchanged))
@@ -262,43 +281,56 @@ struct CaptureCoordinatorTests {
     @Test func skipNextCopySkipsExactlyOneExternalChange() {
         let h = CoordinatorHarness()
         h.coordinator.armSkip()
-        #expect(h.tick(3) == .skipped(changeCount: 3))
-        #expect(h.tick(4) == .startReader(readerSeq: 0))
+        #expect(h.tick(3) == .needsPeek(changeCount: 3))
+        #expect(h.peek(3, .hasContent) == .skip(.consume(changeCount: 3, reason: .skipArmed)))
+        #expect(h.capture(4) == .startReader(readerSeq: 0))
+    }
+
+    @Test func skipKeepsArmedOnEmptyAndEphemeral() {
+        let h = CoordinatorHarness()
+        h.coordinator.armSkip()
+        #expect(h.peek(3, .empty) == .skip(.keepArmed(.empty)))
+        #expect(h.coordinator.skipArmed)
+        #expect(h.peek(3, .ephemeralPrivacy("org.nspasteboard.TransientType")) == .skip(.keepArmed(.ephemeralPrivacy("org.nspasteboard.TransientType"))))
+        #expect(h.coordinator.skipArmed)
+        #expect(h.peek(3, .hasContent) == .skip(.consume(changeCount: 3, reason: .skipArmed)))
     }
 
     @Test func skipWaitsForTheChangeAlreadyBeingRead() {
         let h = CoordinatorHarness()
-        #expect(h.tick(3) == .startReader(readerSeq: 0))
+        #expect(h.capture(3) == .startReader(readerSeq: 0))
         h.coordinator.armSkip()
         #expect(h.tick(4) == .idle(.busy))
         h.finish(3)
-        #expect(h.tick(4) == .skipped(changeCount: 4))
+        #expect(h.tick(4) == .needsPeek(changeCount: 4))
+        #expect(h.peek(4, .hasContent) == .skip(.consume(changeCount: 4, reason: .skipArmed)))
     }
 
     @Test func restoreWhileSkipIsArmedLeavesSkipArmed() {
         let h = CoordinatorHarness()
         h.coordinator.armSkip()
         h.coordinator.publishToken(3)
-        #expect(h.tick(3) == .suppressedOwnWrite(changeCount: 3))
+        #expect(h.tick(3) == .suppressedOwnWrite(3))
         #expect(h.coordinator.skipArmed)
-        #expect(h.tick(4) == .skipped(changeCount: 4))
+        #expect(h.tick(4) == .needsPeek(changeCount: 4))
+        #expect(h.peek(4, .hasContent) == .skip(.consume(changeCount: 4, reason: .skipArmed)))
     }
 
-    @Test func copiesDuringATimedPauseAreNeverCaptured() {
+    @Test func timedPauseEndsWithoutMarkingHandled() {
         let h = CoordinatorHarness()
         h.coordinator.pause(until: h.start + 60)
         #expect(h.tick(7) == .idle(.paused))
-        #expect(h.tick(8, after: 61) == .resumed(changeCount: 8))
-        #expect(h.tick(8, after: 62) == .idle(.unchanged))
-        #expect(h.tick(9, after: 63) == .startReader(readerSeq: 0))
+        #expect(h.tick(8, after: 61) == .pauseEnded(changeCount: 8))
+        #expect(h.coordinator.lastHandledChangeCount == nil)
+        #expect(!h.coordinator.isPaused)
     }
 
-    @Test func indefinitePauseAndManualResume() {
+    @Test func indefinitePauseAndManualEndPauseLeavesOpen() {
         let h = CoordinatorHarness()
         h.coordinator.pauseIndefinitely()
         #expect(h.tick(7, after: 10_000) == .idle(.paused))
-        h.coordinator.resume(currentChangeCount: 7)
-        #expect(h.tick(7) == .idle(.unchanged))
+        h.coordinator.endPause()
+        #expect(h.tick(7) == .needsPeek(changeCount: 7))
     }
 
     @Test func destructiveOperationsAreSerializedAndBlockNewReaders() {
@@ -307,7 +339,7 @@ struct CaptureCoordinatorTests {
         #expect(h.beginDestructive() == nil, "second Clear/Delete is busy")
         #expect(h.tick(1) == .idle(.busy))
         h.coordinator.endDestructive()
-        #expect(h.tick(1) == .startReader(readerSeq: 1))
+        #expect(h.capture(1) == .startReader(readerSeq: 1))
     }
 
     @Test func threeConsecutiveSaveFailuresPause() {
@@ -318,6 +350,111 @@ struct CaptureCoordinatorTests {
         #expect(!h.saveFailed())
         #expect(!h.saveFailed())
         #expect(h.saveFailed())
+    }
+
+    @Test func emptyProvisionalThenQuietOpenNeverMarksHandled() {
+        let h = CoordinatorHarness()
+        #expect(h.tick(5) == .needsPeek(changeCount: 5))
+        #expect(h.peek(5, .empty) == .empty(.provisional(hits: 1)))
+        #expect(h.coordinator.lastHandledChangeCount == nil)
+        #expect(h.peek(5, .empty) == .empty(.quietOpen))
+        #expect(h.peek(5, .empty) == .empty(.quietOpen))
+        #expect(h.coordinator.lastHandledChangeCount == nil)
+        #expect(h.peek(5, .hasContent) == .startReader(readerSeq: 0))
+    }
+
+    @Test func confidentialStableRequiresTwoHits() {
+        let h = CoordinatorHarness()
+        let type: PasteboardType = "org.nspasteboard.ConcealedType"
+        #expect(h.peek(2, .confidential(type)) == .confidentialProgress(hits: 1))
+        #expect(h.coordinator.lastHandledChangeCount == nil)
+        #expect(h.peek(2, .confidential(type)) == .confidentialStable(2, type))
+        #expect(h.coordinator.lastHandledChangeCount == 2)
+    }
+
+    @Test func ephemeralLeaveOpenForever() {
+        let h = CoordinatorHarness()
+        #expect(h.peek(4, .ephemeralPrivacy("org.nspasteboard.TransientType")) == .ephemeralLeaveOpen)
+        #expect(h.coordinator.lastHandledChangeCount == nil)
+        #expect(h.tick(4) == .needsPeek(changeCount: 4))
+    }
+
+    @Test func beginLeaseRequiresIdleFlight() {
+        let h = CoordinatorHarness()
+        _ = h.capture(1)
+        #expect(h.coordinator.beginLease(kind: .ownedWrite) == nil)
+        h.finish(1)
+        let lease = h.coordinator.beginLease(kind: .ownedWrite)
+        #expect(lease?.kind == .ownedWrite)
+        #expect(h.tick(2) == .idle(.busy))
+        if let lease { h.coordinator.endLease(lease) }
+        #expect(h.capture(2) == .startReader(readerSeq: lease!.opSeq))
+    }
+
+    @Test func beginReadingTakesFlightWithoutPeek() {
+        let h = CoordinatorHarness()
+        #expect(h.coordinator.beginReading() == 0)
+        #expect(h.tick(1) == .idle(.busy))
+        h.finish(nil)
+        #expect(h.capture(1) == .startReader(readerSeq: 0))
+    }
+}
+
+@Suite("PasteboardTypesClassifier")
+struct PasteboardTypesClassifierTests {
+    @Test func priorityConfidentialOverEphemeralAndContent() {
+        let types: [[PasteboardType]] = [[
+            "public.utf8-plain-text",
+            "org.nspasteboard.TransientType",
+            "org.nspasteboard.ConcealedType",
+        ]]
+        #expect(PasteboardTypesClassifier.peek(types) == .confidential("org.nspasteboard.ConcealedType"))
+    }
+
+    @Test func ephemeralBeatsContent() {
+        let types: [[PasteboardType]] = [["public.utf8-plain-text", "org.nspasteboard.TransientType"]]
+        #expect(PasteboardTypesClassifier.peek(types) == .ephemeralPrivacy("org.nspasteboard.TransientType"))
+    }
+
+    @Test func metadataOnlyIsEmpty() {
+        #expect(PasteboardTypesClassifier.peek([[.source]]) == .empty)
+        #expect(PasteboardTypesClassifier.peek([]) == .empty)
+    }
+
+    @Test func hasContentWhenNonMetadataPresent() {
+        #expect(PasteboardTypesClassifier.peek([["public.utf8-plain-text"]]) == .hasContent)
+    }
+}
+
+@Suite("ResumePolicy")
+struct ResumePolicyTests {
+    @Test func leaveOpenForEmptyEphemeralAndPeekFailed() {
+        #expect(ResumePolicy.decide(.empty, changeCount: 1) == .leaveOpen)
+        #expect(ResumePolicy.decide(.ephemeralPrivacy("org.nspasteboard.TransientType"), changeCount: 1) == .leaveOpen)
+        #expect(ResumePolicy.decide(.peekFailed, changeCount: 1) == .leaveOpen)
+    }
+
+    @Test func markHandledForContentAndConfidential() {
+        #expect(ResumePolicy.decide(.hasContent, changeCount: 3) == .markHandled(changeCount: 3))
+        #expect(ResumePolicy.decide(.confidential("org.nspasteboard.ConcealedType"), changeCount: 4) == .markHandled(changeCount: 4))
+    }
+}
+
+@Suite("OpenGeneration")
+struct OpenGenerationTests {
+    @Test func emptyHitsAreProvisionalThenQuiet() {
+        var gen = OpenGeneration()
+        #expect(gen.noteEmpty(1) == .provisional(hits: 1))
+        #expect(gen.hasProvisionalHeat)
+        #expect(gen.noteEmpty(1) == .quietOpen)
+        #expect(!gen.hasProvisionalHeat)
+        #expect(gen.noteEmpty(1) == .quietOpen)
+    }
+
+    @Test func newChangeCountResetsHits() {
+        var gen = OpenGeneration()
+        _ = gen.noteEmpty(1)
+        #expect(gen.noteEmpty(2) == .provisional(hits: 1))
     }
 }
 

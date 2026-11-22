@@ -143,6 +143,11 @@ public struct OwnedSnapshot: Sendable, Equatable {
     }
 }
 
+public enum HandlePolicy: Sendable, Equatable {
+    case markHandled(Int)
+    case leaveOpen
+}
+
 public enum SnapshotReadOutcome: Sendable, Equatable {
     /// `changeCount` moved during the attempt: discard, do not mark handled.
     case unstable
@@ -150,10 +155,28 @@ public enum SnapshotReadOutcome: Sendable, Equatable {
     case notSaved(changeCount: Int, reason: NotSavedReason, change: UnsavedChange)
     case captured(OwnedSnapshot)
 
-    /// Whether the monitor marks the change handled (outcome table, §3.2).
-    public var marksHandled: Bool {
-        if case .unstable = self { return false }
-        return true
+    /// Empty / ephemeral leave the generation open; non-empty terminals mark handled.
+    public var handlePolicy: HandlePolicy {
+        switch self {
+        case .unstable:
+            return .leaveOpen
+        case .skipped(let changeCount, let reason):
+            switch reason {
+            case .empty:
+                return .leaveOpen
+            case .privacyMarker(let type):
+                if PrivacyMarker.kind(of: type) == .confidential {
+                    return .markHandled(changeCount)
+                }
+                return .leaveOpen
+            case .dontSave, .strictIdentity, .remoteClipboard, .secret:
+                return .markHandled(changeCount)
+            }
+        case .notSaved(let changeCount, _, _):
+            return .markHandled(changeCount)
+        case .captured(let snapshot):
+            return .markHandled(snapshot.changeCount)
+        }
     }
 
     public var changeCount: Int? {
@@ -185,8 +208,12 @@ public struct SnapshotReader: Sendable {
             pasteboard.changeCount == initialCount ? outcome(initialCount) : .unstable
         }
 
-        if let hit = PrivacyMarker.firstHit(in: itemTypes) {
-            return finish { .skipped(changeCount: $0, reason: .privacyMarker(hit.type)) }
+        // Same priority as tick/Skip/resume peeks (confidential ≻ ephemeral ≻ content ≻ empty).
+        switch PasteboardTypesClassifier.peek(itemTypes) {
+        case .confidential(let type), .ephemeralPrivacy(let type):
+            return finish { .skipped(changeCount: $0, reason: .privacyMarker(type)) }
+        case .empty, .hasContent, .peekFailed:
+            break
         }
         if context.ignoreRemoteClipboard, itemTypes.contains(where: { $0.contains(.remoteClipboard) }) {
             return finish { .skipped(changeCount: $0, reason: .remoteClipboard) }

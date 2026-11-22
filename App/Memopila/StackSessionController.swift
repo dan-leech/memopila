@@ -26,8 +26,12 @@ final class StackSessionController {
     private var writeTask: Task<Void, Never>?
     /// Bumped on every Choose/advance start and on Stop — in-flight bodies abort after `await` (P21/P34).
     private var writeGeneration = 0
-    /// Ignore ⌘V observer until this time (P5: synthetic paste must not double-advance).
+    /// Absorb late synthetic keyUps after `advanceGate` clears (not the primary suppress).
     private var ignoreCommandVUntil: Date = .distantPast
+    /// Coalesce ⌘V settle → advance (session flight; set before deliver / manual advance).
+    /// Also the SSOT suppress for synthetic ⌘V — time-based ignore alone caused double-advance
+    /// when `writeAsync` outlived a 0.5s window.
+    private var advanceGate = false
 
     init(model: AppModel) {
         self.model = model
@@ -157,17 +161,24 @@ final class StackSessionController {
                 model.toasts.show(String(localized: "Stack armed — Esc to stop"))
             }
             let wantsPaste = paste ?? model.settings.pasteAfterCopy
-            let pastes = wantsPaste && AccessibilityBridge.isTrusted
-            if model.isPinned {
-                model.showStackChooseBadge(stackID, pasted: pastes)
-            } else {
+            let canPaste = wantsPaste && AccessibilityBridge.isTrusted
+            if !model.isPinned {
                 model.panel.close()
+            } else if canPaste {
+                model.panel.yieldKeyFocus()
             }
-            if wantsPaste, !pastes {
+            if wantsPaste, !canPaste {
                 AccessibilityBridge.requestTrust()
                 model.toasts.error(String(localized: "To paste, allow Memopila in System Settings → Privacy & Security → Accessibility, then try again."))
-            } else if pastes {
-                await self.syntheticPasteThenAdvance(generation: generation)
+                if model.isPinned { model.showStackChooseBadge(stackID, pasted: false) }
+            } else if canPaste {
+                let delivered = await self.syntheticPasteThenAdvance(generation: generation)
+                if model.isPinned { model.showStackChooseBadge(stackID, pasted: delivered) }
+                if !delivered {
+                    model.toasts.show(String(localized: "On the clipboard. Could not paste into the other app — press ⌘V there."))
+                }
+            } else if model.isPinned {
+                model.showStackChooseBadge(stackID, pasted: false)
             }
         }
         return outcome
@@ -181,6 +192,7 @@ final class StackSessionController {
     func stop(toast: Bool = true) {
         // Invalidate in-flight Choose/advance, then tear down immediately (P27/P34).
         writeGeneration += 1
+        advanceGate = false
         disarmInternal(toast: toast)
     }
 
@@ -201,7 +213,7 @@ final class StackSessionController {
                 guard let rebuilt = DealEngine.rebuild(current, uiOrder: members) else {
                     // Same clipboard policy as exhaust: nothing left to paste.
                     self.disarmInternal(toast: false)
-                    model.monitor.clearOwnedClipboard()
+                    await model.monitor.clearOwnedClipboardAsync()
                     model.toasts.show(String(localized: "Stack stopped — no members left."))
                     return
                 }
@@ -236,7 +248,7 @@ final class StackSessionController {
                     current, uiOrder: members, dealMode: dealMode, loops: loops
                 ) else {
                     self.disarmInternal(toast: false)
-                    model.monitor.clearOwnedClipboard()
+                    await model.monitor.clearOwnedClipboardAsync()
                     model.toasts.show(String(localized: "Stack stopped — no members left."))
                     return
                 }
@@ -284,6 +296,9 @@ final class StackSessionController {
 
     private func advanceAfterPaste() async {
         await runSessionWrite { [self] generation in
+            guard !self.advanceGate else { return }
+            self.advanceGate = true
+            defer { self.advanceGate = false }
             await self.performAdvance(generation: generation)
         }
     }
@@ -303,25 +318,31 @@ final class StackSessionController {
         case .exhausted:
             // Disarm first so the clear is not treated as an external pasteboard change.
             disarmInternal(toast: false)
-            model?.monitor.clearOwnedClipboard()
+            await model?.monitor.clearOwnedClipboardAsync()
             model?.toasts.show(String(localized: "Stack finished"))
         }
     }
 
-    private func syntheticPasteThenAdvance(generation: Int) async {
-        guard let model, generationOK(generation), isArmed else { return }
-        let wasActive = NSApp.isActive
+    /// - Returns: `true` when synthetic paste delivered (advance may have run).
+    @discardableResult
+    private func syntheticPasteThenAdvance(generation: Int) async -> Bool {
+        guard let model, generationOK(generation), isArmed else { return false }
+        // Gate covers the whole deliver + advance: keyUp must not queue a second advance
+        // that runs after this gate clears (root cause of stack member skip).
+        advanceGate = true
+        defer {
+            advanceGate = false
+            // Late CGEvent keyUps can arrive after defer; absorb briefly.
+            ignoreCommandVUntil = Date().addingTimeInterval(0.3)
+        }
         if model.isPinned {
             model.panel.yieldKeyFocus()
         }
-        // P5: CGEvent ⌘V keyUp would also hit the global monitor — suppress it.
-        ignoreCommandVUntil = Date().addingTimeInterval(0.5)
-        await model.pasteIntoPreviousApp(wasActive: wasActive)
-        guard generationOK(generation), isArmed else { return }
-        // P1: delay after synthetic paste before advance.
-        try? await Task.sleep(for: .milliseconds(80))
-        guard generationOK(generation), isArmed else { return }
+        let result = await model.pasteIntoPreviousApp(wasActive: NSApp.isActive)
+        guard generationOK(generation), isArmed else { return false }
+        guard case .delivered = result else { return false }
         await performAdvance(generation: generation)
+        return true
     }
 
     @discardableResult
@@ -329,7 +350,7 @@ final class StackSessionController {
         guard let model else { return false }
         do {
             let payload = try await model.store.payload(for: recordID)
-            switch model.monitor.write(
+            switch await model.monitor.writeAsync(
                 payload.items,
                 sourceBundleID: payload.sourceBundleID,
                 recordID: recordID,
@@ -403,13 +424,15 @@ final class StackSessionController {
             guard let self else { return }
             Task { @MainActor in
                 guard self.isArmed, !self.memopilaUIKey else { return }
+                // Primary suppress: session/delivery flight — not a wall clock.
+                guard !self.advanceGate else { return }
+                if self.model?.pasteDelivery.isInFlight == true { return }
                 guard Date() >= self.ignoreCommandVUntil else { return }
                 // Caps Lock / fn must not block; only reject ⇧⌥⌃ with ⌘ (P25).
                 let mods = event.modifierFlags.intersection([.command, .shift, .option, .control])
                 guard mods == .command else { return }
                 guard event.keyCode == vCode else { return }
-                try? await Task.sleep(for: .milliseconds(80))
-                guard self.isArmed, Date() >= self.ignoreCommandVUntil else { return }
+                guard self.isArmed, !self.advanceGate, Date() >= self.ignoreCommandVUntil else { return }
                 self.onPasteCompleted()
             }
         }

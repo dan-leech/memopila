@@ -146,7 +146,7 @@ struct SecretDetectorTests {
     @Test func dontSaveSkipsWithoutAContentCard() {
         let outcome = reader(secretPolicy: .dontSave).read(jwtPasteboard())
         #expect(outcome == .skipped(changeCount: 1, reason: .secret(.jwt)))
-        #expect(outcome.marksHandled)
+        #expect(outcome.handlePolicy == .markHandled(1))
     }
 
     @Test func deleteAfterKeepsTheSecretWithExpiry() throws {

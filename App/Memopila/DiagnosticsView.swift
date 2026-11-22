@@ -19,7 +19,7 @@ struct DiagnosticsView: View {
                 row("Capture access", "\(monitor.access)")
                 row("Silent default verified on", model.settings.silentDefaultVerifiedOSBuild ?? "—")
                 row("changeCount handled", monitor.coordinator.lastHandledChangeCount.map(String.init) ?? "—")
-                row("Reading / destructive", "\(monitor.coordinator.isCapturing) / \(monitor.coordinator.destructiveInProgress)")
+                row("Flight / destructive", "\(String(describing: monitor.coordinator.flight)) / \(monitor.coordinator.destructiveInProgress)")
                 row("Token / skip armed", "\(monitor.coordinator.token.map(String.init) ?? "—") / \(monitor.coordinator.skipArmed)")
                 row("Paused", monitor.isPaused ? (monitor.pausedUntil?.formatted() ?? "until resumed") : "no")
                 row("Records in store", recordCount.map(String.init) ?? "—")

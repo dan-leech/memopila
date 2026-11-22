@@ -23,8 +23,20 @@ struct SnapshotReaderTests {
         ])
         let outcome = reader().read(pasteboard)
         #expect(outcome == .skipped(changeCount: 1, reason: .privacyMarker("org.nspasteboard.ConcealedType")))
-        #expect(outcome.marksHandled)
+        #expect(outcome.handlePolicy == .markHandled(1))
         #expect(pasteboard.reads.isEmpty)
+    }
+
+    @Test func confidentialBeatsEarlierTransientInReader() {
+        // firstHit would return Transient; classifier priority must win (SSOT with tick peek).
+        let pasteboard = FakePasteboard(items: [[
+            ("org.nspasteboard.TransientType", Data()),
+            (.utf8PlainText, utf8("x")),
+            ("org.nspasteboard.ConcealedType", Data()),
+        ]])
+        let outcome = reader().read(pasteboard)
+        #expect(outcome == .skipped(changeCount: 1, reason: .privacyMarker("org.nspasteboard.ConcealedType")))
+        #expect(outcome.handlePolicy == .markHandled(1))
     }
 
     @Test func changeDuringReadDiscardsEverything() {
@@ -32,7 +44,22 @@ struct SnapshotReaderTests {
         pasteboard.onRead = { pasteboard, type in if type == .html { pasteboard.changeCount += 1 } }
         let outcome = reader().read(pasteboard)
         #expect(outcome == .unstable)
-        #expect(!outcome.marksHandled)
+        #expect(outcome.handlePolicy == .leaveOpen)
+    }
+
+    @Test func emptySkipLeavesGenerationOpen() {
+        let outcome = reader().read(FakePasteboard(items: []))
+        #expect(outcome == .skipped(changeCount: 1, reason: .empty))
+        #expect(outcome.handlePolicy == .leaveOpen)
+    }
+
+    @Test func transientPrivacyLeavesGenerationOpen() {
+        let pasteboard = FakePasteboard(items: [
+            [(.utf8PlainText, utf8("x")), ("org.nspasteboard.TransientType", Data())],
+        ])
+        let outcome = reader().read(pasteboard)
+        #expect(outcome == .skipped(changeCount: 1, reason: .privacyMarker("org.nspasteboard.TransientType")))
+        #expect(outcome.handlePolicy == .leaveOpen)
     }
 
     @Test func skipOutcomesStillCheckStability() {
@@ -98,7 +125,7 @@ struct SnapshotReaderTests {
     @Test func declaredRepresentationReadFailureDiscardsTheSnapshot() {
         let pasteboard = FakePasteboard(items: [[(.utf8PlainText, utf8("a")), (.html, nil)]])
         let outcome = reader().read(pasteboard)
-        #expect(outcome.marksHandled)
+        #expect(outcome.handlePolicy == .markHandled(1))
         guard case .notSaved(1, .readFailed(.html), _) = outcome else {
             Issue.record("unexpected \(outcome)")
             return

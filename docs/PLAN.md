@@ -179,9 +179,11 @@ All observation for one change — types, markers, app identity, per-app setting
 
 | Outcome | Mark `changeCount` handled? | Current card (§3.2.3) |
 |---------|------------------------------|-----------------------|
-| Marker skip / app set to *Don't save* / Strict-mode skip | Yes | None (content never shown) — except a **concealed** marker (password managers): the password card below |
-| Skip next copy armed (§3.7) | Yes, without any read | None |
-| Empty pasteboard | Yes | None |
+| Confidential marker (peek, stable ×2) | Yes | Password card (never read) |
+| Transient / auto-generated (ephemeral) peek | **No** (leave open; forever cheap types peek) | None |
+| App set to *Don't save* / Strict-mode skip | Yes | None (content never shown) |
+| Skip next copy armed (§3.7) | Yes on **hasContent** / confidential-stable peek only (empty/ephemeral keep skip armed) | None |
+| Empty pasteboard | **No** (provisional 2 hits → quiet-open; never markHandled empty — clear→write gap) | None |
 | Only unsupported / rule-skipped types | Yes | Red *No supported formats* (lists types; **Keep formats…**) |
 | Oversize | Yes | Red *Larger than N MiB* (**Save anyway**, **Raise limit for app…**) |
 | Declared representation read fails (nil, error, ObjC exception) | Yes (no retry loop) | Red *Read failed* (**Save anyway**) |
@@ -197,16 +199,17 @@ All observation for one change — types, markers, app identity, per-app setting
 
 **Isolation:**
 
-- `ClipboardMonitor` is `@MainActor`: timer, access checks, pause and skip state (§3.7), `lastHandledChangeCount`, single-flight flag `isCapturing`, `destructiveInProgress`, operation sequence `opSeq`, Restore suppression token (§3.4), `CurrentClipboard` state (§3.2.3).
+- `ClipboardMonitor` is `@MainActor`: timer, access checks, pause and skip state (§3.7), `lastHandledChangeCount`, `CaptureFlight` (`idle` / `reading` / `ingesting` / `leased`), `destructiveInProgress` (store-only), `opSeq`, Restore suppression token (§3.4), `OpenGeneration`, `CurrentClipboard` state (§3.2.3). Pure decisions live in `CaptureCoordinator` (MemopilaCore).
 - `SnapshotReader` runs off the main actor (detached task) and returns a `Sendable` owned snapshot. Off-main `NSPasteboard` reads **(spike)**; fallback: read on the main actor, one representation per run-loop turn, so a slow lazy provider in the source app cannot freeze the UI for the whole snapshot.
 - `ClipboardStore` is an actor (a fresh `ModelContext` per call, §7.3) and the only mutation owner of history (§3.5).
+- **Three flights (SSOT):** `CaptureFlight` (pasteboard read/ingest/lease), session `advanceGate` (⌘V settle → advance), `PasteDelivery.isInFlight` (panel defer during synthetic paste). Tick busy = `flight != idle || destructiveInProgress`.
 
 **Rules:**
 
-1. **Tick order** (synchronously on the main actor, no `await` until a reader starts): access check (§3.1) → user pause (§3.7) → read `changeCount`; equal to `lastHandledChangeCount` → done → suppression token (§3.4): match → handled, consume, done → `!isCapturing` (a change still being read is not the next copy; review finding) → Skip next copy armed (§3.7): handled, disarm, done → `!destructiveInProgress` → `isCapturing = true`, `readerSeq = opSeq`, start the reader.
-2. **Completion.** Reader returns → main actor: post-read gate → `await store.ingest(snapshot, readerSeq)` → apply the outcome table → `isCapturing = false`.
+1. **Tick (two-phase, pure Core):** Phase A `tick` — access (§3.1) → user pause (§3.7) → `changeCount`; equal to `lastHandledChangeCount` → idle → suppression token (§3.4): match → handled, consume → flight busy / destructive → else `needsPeek`. Timed pause end → `pauseEnded` (no markHandled in Core). Phase B: Monitor types-peek I/O → `applyPeek` → execute (`empty` leave-open, `ephemeralLeaveOpen`, confidential ×2, Skip peek, or `startReader` / `CaptureFlight.reading`). Never markHandled empty or ephemeral.
+2. **Completion.** Reader returns → main actor: post-read gate → `HandlePolicy` (empty/ephemeral → leaveOpen) → ingest under `ingesting` → `captureFinished`. Owned writes: await reading|ingesting idle → CAS `leased` → token iff confirmed owned count.
 3. **Save failure.** The store rolls back and returns `failed(error)`. The monitor retries the same snapshot **once** after ~1 s. A second failure → drop the snapshot (no payload bytes are kept in RAM), mark handled, red Current card with **Save anyway** (re-reads the pasteboard only if `changeCount` is unchanged). Capture continues with later changes. After **3 consecutive** failed snapshots → *Capture paused: storage error* banner with **Resume**.
-4. **No pending queue, no crash durability.** If the app dies mid-capture, that observation is lost. `lastHandledChangeCount` is process-local and not persisted: after launch the current pasteboard is captured as one normal observation (if unchanged content was saved before, dedup may bump `copyCount` — accepted). Do not invent a "skip whatever is on the pasteboard at launch" rule.
+4. **No pending queue, no crash durability.** If the app dies mid-capture, that observation is lost. `lastHandledChangeCount` is process-local and not persisted: after launch the current pasteboard is captured as one normal observation (if unchanged content was saved before, dedup may bump `copyCount` — accepted). Empty at `launchChangeCount` clears the launch marker. Quit: `stopAndIdle` bounds the capture flight; abandon ≠ force write.
 5. **Clear / Delete / Edit vs an in-flight capture.**
    - The user starts the operation on the main actor: `opSeq += 1`; `destructiveInProgress = true` (no new reader, **Save anyway** disabled); the store call carries `opSeq`. A second Clear/Delete while one runs → **busy** (UI disabled, no queue).
    - The store keeps `lastClearSeq` and a small in-memory tombstone list `{contentHash, opSeq}` (last 64 entries) for Delete and Edit.
@@ -214,7 +217,7 @@ All observation for one change — types, markers, app identity, per-app setting
    - The monitor marks `dropped(stale)` as handled. This is safe: a reader can only be in flight if it started before the operation; content copied during the operation either makes that read unstable (re-read later with a newer `readerSeq`) or appears as a newer `changeCount`.
    - `destructiveInProgress = false` when the store returns (success or failure). On failure: UI error, history unchanged.
    - Result: cleared, deleted or pre-edit content is never resurrected by an in-flight capture; unrelated content captured concurrently with a Delete is kept; content copied after the operation started is captured.
-6. **Polling:** one timer, **250 ms** (tolerance ~50 ms; not user-configurable), only while capture is allowed and not paused. Polling observes discrete samples: several copies between two polls collapse into one observation. Timer cadence for an accessory app with the window closed (App Nap, Low Power Mode) **(spike)**: if ticks are delayed beyond 1 s, hold a `ProcessInfo` activity while capture is enabled.
+6. **Polling:** one timer, **250 ms** (tolerance ~50 ms; not user-configurable), only while capture is allowed and not paused. Polling observes discrete samples: several copies between two polls collapse into one observation. Hold a `ProcessInfo` activity while provisional empty heat, skip is armed, or `CaptureFlight` ≠ idle (App Nap / Low Power Mode).
 
 **Clear History scopes** (explicit Store argument): **`.nonFavorites`** (UI default) deletes all non-favorite records; **`.all`** deletes all records. Representations, thumbnails and `RecordTag` rows of deleted records go in the **same** transaction.
 
@@ -398,7 +401,7 @@ User-facing name: **Choose for Clipboard** (internally Restore).
 - **Restore:** all stored representations; the record gets the green clipboard line.
 - **New text** (`copyNewText`): the text found in an image (the selection, else all of it), a source link (⌥-click), the Diagnostics report. Stored as a new record with the original's source (secret policy applies, §3.10), then written like a restore — never a clipboard write that history does not show. The window stays open: this copies part of an item, like ⌘C in its text.
 - Text actions and other transformations do not copy: they create a new card (*Duplicate As*, §3.9). No *Copy as plain text*: ⇧⌘V (Paste and Match Style) in the target app does it.
-- **Auto-paste** (Settings → General → *Auto-Paste After Choosing*, off by default): once the panel has given up key status (it closes; when pinned it resigns key and stays visible), post ⌘V through the session event tap, on the key that types *v* in the current Latin layout (Dvorak, AZERTY) and with only ⌘ set. Requires Accessibility; without it items are only put on the clipboard.
+- **Auto-paste** (Settings → General → *Auto-Paste After Choosing*, off by default): `PasteDelivery` activates the previous app, requires Ready (frontmost ∧ !`memopilaUIKey`), rechecks before keyDown/keyUp, then posts ⌘V through the session event tap on the key that types *v* in the current Latin layout (Dvorak, AZERTY) with only ⌘ set. Returns `.delivered` / `.blocked` / `.cancelled` — never a silent skip. Armed stacks set `advanceGate` **before** deliver and advance only on `.delivered`. Requires Accessibility; without it items are only put on the clipboard.
 
 **After any confirmed write** (Restore or a variant): the store moves the source record to the top of **History** (and other recency scopes): `lastCopiedAt = max(lastCopiedAt, restoreTime)`; `useCount += 1`; `copyCount` unchanged. Choosing a stack bumps `stack.useCount` / `lastUsedAt` the same way. **Favorites** and **Collections** are ordered pinboards (`FavoriteSlot` / tag `position`) — Choose does **not** change their board order. The written content is suppressed by the token, so variant outputs (plain text, text actions, recognized text) are **not** added to history; to keep a transformed text, apply the action in the editor and save (§3.6).
 
@@ -515,15 +518,15 @@ If a mandatory gate fails → amend this PLAN with a fallback (layout, commit or
 
 - While paused: no content reads and no capture; the timer only checks whether the pause ended. Status icon shows the paused state; the window shows *Capture paused until 14:35 — Resume*.
 - Persisted (`pausedUntil` / `pausedIndefinitely`), so a relaunch or reboot does not silently resume.
-- **Resume** (manual or timer): read the current `changeCount` (counter only) and mark it handled, so content copied during the pause is **never** captured. Discard any suppression token.
+- **Resume** (manual or timer): `endPause` clears pause flags and the suppression token; a types peek + `ResumePolicy` decides — **leaveOpen** for empty / ephemeral / peekFailed (so a clear→write gap is not swallowed); **markHandled** for hasContent / confidential. Content that finished writing during the pause is therefore not captured; an empty gap stays eligible.
 - Independent of the access-policy pause (§3.1); both can be shown.
 
 **Skip next copy** — menu bar menu and an optional global hotkey.
 
-- Arms a one-shot flag (status icon shows it). The next **new** `changeCount` that is not Memopila's own write (token, §3.4) is marked handled **without any content read**; then the flag clears.
+- Arms a one-shot flag (status icon shows it). Types peek on the next eligible `changeCount` that is not Memopila's own write (token, §3.4): **hasContent** → mark handled without payload read and disarm; **empty / ephemeral / peekFailed** → keep armed; **confidential** → wait for stable ×2 then consume. Cancel skip resets `OpenGeneration`.
 - *Cancel skip* disarms. Process-local: quitting disarms it.
 
-**Tests:** copies during a pause are not captured after resume; timed pause ends on time and survives relaunch; Skip next skips exactly one external change with no read calls; a Restore while Skip is armed is suppressed by the token and leaves Skip armed.
+**Tests:** copies during a pause are not captured after resume when ResumePolicy marks handled; empty/ephemeral at resume leave open; timed pause ends on time and survives relaunch; Skip next skips exactly one content change with no payload read; a Restore while Skip is armed is suppressed by the token and leaves Skip armed.
 
 ### 3.8 Text in images (on-device recognition)
 

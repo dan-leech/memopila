@@ -15,11 +15,19 @@ public final class GeneralPasteboardSource: PasteboardSource {
     public var changeCount: Int { pasteboard.changeCount }
 
     public func itemTypes() -> [[PasteboardType]] {
+        (try? itemTypesStrict()) ?? []
+    }
+
+    /// Declared types only; throws when the pasteboard raised (monitor maps to `.peekFailed`).
+    public func itemTypesStrict() throws -> [[PasteboardType]] {
         var types: [[PasteboardType]] = []
-        _ = MPLCatchException({
+        var failed = false
+        let ok = MPLCatchException({
             items = pasteboard.pasteboardItems ?? []
             types = items.map { $0.types.map { PasteboardType($0.rawValue) } }
         }, nil)
+        if !ok { failed = true }
+        if failed { throw PasteboardPeekError.failed }
         return types
     }
 
@@ -37,6 +45,21 @@ public final class GeneralPasteboardSource: PasteboardSource {
         let item = items[index]
         guard MPLCatchException({ string = item.string(forType: NSPasteboard.PasteboardType(type.rawValue)) }, nil) else { return nil }
         return string
+    }
+}
+
+public enum PasteboardPeekError: Error {
+    case failed
+}
+
+/// Cheap types-only peek for capture Phase B / resume (pass 16).
+public enum PasteboardTypesPeek {
+    public static func read(from pasteboard: NSPasteboard = .general) -> TypesPeek {
+        do {
+            return PasteboardTypesClassifier.peek(try GeneralPasteboardSource(pasteboard).itemTypesStrict())
+        } catch {
+            return .peekFailed
+        }
     }
 }
 

@@ -1,29 +1,46 @@
 import Foundation
 
+public enum IdleReason: Sendable, Equatable {
+    case accessNotAllowed
+    case paused
+    case unchanged
+    case busy
+}
+
+public enum SkipConsumeReason: Sendable, Equatable {
+    case skipArmed
+    case confidentialStable
+}
+
+public enum SkipTickResult: Sendable, Equatable {
+    case keepArmed(TypesPeek)
+    case consume(changeCount: Int, reason: SkipConsumeReason)
+}
+
+public enum TickPhaseA: Sendable, Equatable {
+    case idle(IdleReason)
+    case suppressedOwnWrite(Int)
+    /// Timed pause ended — Monitor peeks then ResumePolicy; Core does not markHandled here.
+    case pauseEnded(changeCount: Int)
+    case needsPeek(changeCount: Int)
+}
+
+public enum ApplyPeekResult: Sendable, Equatable {
+    case skip(SkipTickResult)
+    case empty(EmptyDisposition)
+    case ephemeralLeaveOpen
+    case peekFailedLeaveOpen
+    case confidentialProgress(hits: Int)
+    case confidentialStable(Int, PasteboardType)
+    case startReader(readerSeq: Int)
+}
+
 /// The monitor's capture state machine (PLAN §3.2 "Capture coordination", §3.4 token, §3.7 pause/skip).
-/// Pure value type; the app owns one instance on the main actor and calls it synchronously,
-/// so every decision up to starting a reader happens without an `await`.
+/// Pure value type; Phase A (`tick`) and Phase B (`applyPeek`) are peek-free.
 public struct CaptureCoordinator: Sendable, Equatable {
-    public enum IdleReason: Sendable, Equatable {
-        case accessNotAllowed
-        case paused
-        case unchanged
-        case busy
-    }
-
-    public enum TickDecision: Sendable, Equatable {
-        case idle(IdleReason)
-        /// Our own confirmed write: handled once, no reader.
-        case suppressedOwnWrite(changeCount: Int)
-        /// Skip next copy consumed this change without any read.
-        case skipped(changeCount: Int)
-        /// A timed pause ended; the current count was marked handled.
-        case resumed(changeCount: Int)
-        case startReader(readerSeq: Int)
-    }
-
     public private(set) var lastHandledChangeCount: Int?
-    public private(set) var isCapturing = false
+    public private(set) var flight: CaptureFlight = .idle
+    /// Store mutation serialisation (Clear / Delete / Edit). Independent of pasteboard `flight`.
     public private(set) var destructiveInProgress = false
     public private(set) var opSeq = 0
     public private(set) var token: Int?
@@ -31,6 +48,7 @@ public struct CaptureCoordinator: Sendable, Equatable {
     public private(set) var pausedUntil: Date?
     public private(set) var pausedIndefinitely = false
     public private(set) var consecutiveSaveFailures = 0
+    public private(set) var openGeneration = OpenGeneration()
 
     public static let saveFailuresBeforePause = 3
 
@@ -41,17 +59,27 @@ public struct CaptureCoordinator: Sendable, Equatable {
 
     public var isPaused: Bool { pausedIndefinitely || pausedUntil != nil }
 
-    // MARK: Tick
+    public var isBusy: Bool { !flight.isIdle || destructiveInProgress }
 
-    /// Tick order (§3.2 rule 1): access → pause → unchanged → token → single flight → skip → reader.
-    public mutating func tick(accessAllowed: Bool, now: Date, changeCount readChangeCount: () -> Int) -> TickDecision {
+    /// Compatibility for diagnostics that still ask "is a reader running?".
+    public var isCapturing: Bool {
+        switch flight {
+        case .reading, .ingesting: true
+        case .idle, .leased: false
+        }
+    }
+
+    // MARK: Phase A
+
+    /// Tick order (§3.2 rule 1): access → pause → unchanged → token → flight busy → needsPeek.
+    public mutating func tick(accessAllowed: Bool, now: Date, changeCount readChangeCount: () -> Int) -> TickPhaseA {
         guard accessAllowed else { return .idle(.accessNotAllowed) }
         if pausedIndefinitely { return .idle(.paused) }
         if let pausedUntil {
             guard now >= pausedUntil else { return .idle(.paused) }
             let count = readChangeCount()
-            resume(currentChangeCount: count)
-            return .resumed(changeCount: count)
+            endPause()
+            return .pauseEnded(changeCount: count)
         }
 
         let count = readChangeCount()
@@ -61,27 +89,103 @@ public struct CaptureCoordinator: Sendable, Equatable {
             self.token = nil
             if count == token {
                 markHandled(count)
-                return .suppressedOwnWrite(changeCount: count)
+                openGeneration.reset()
+                return .suppressedOwnWrite(count)
             }
         }
-        // A change already being read is not the next copy: *Skip Next Copy* waits for the one
-        // after it (review finding: a slow read used the skip up and the password was saved).
-        guard !isCapturing else { return .idle(.busy) }
-        if skipArmed {
-            skipArmed = false
-            markHandled(count)
-            return .skipped(changeCount: count)
-        }
+
+        guard flight.isIdle else { return .idle(.busy) }
         guard !destructiveInProgress else { return .idle(.busy) }
-        isCapturing = true
-        return .startReader(readerSeq: opSeq)
+        return .needsPeek(changeCount: count)
+    }
+
+    // MARK: Phase B
+
+    public mutating func applyPeek(_ peek: TypesPeek, changeCount: Int) -> ApplyPeekResult {
+        if skipArmed {
+            return .skip(applySkipPeek(peek, changeCount: changeCount))
+        }
+        switch peek {
+        case .empty:
+            return .empty(openGeneration.noteEmpty(changeCount))
+        case .ephemeralPrivacy:
+            openGeneration.reset()
+            return .ephemeralLeaveOpen
+        case .peekFailed:
+            return .peekFailedLeaveOpen
+        case .confidential(let type):
+            switch openGeneration.noteConfidential(changeCount, type: type) {
+            case .progress(let hits):
+                return .confidentialProgress(hits: hits)
+            case .stable(let stableType):
+                markHandled(changeCount)
+                openGeneration.reset()
+                return .confidentialStable(changeCount, stableType)
+            }
+        case .hasContent:
+            openGeneration.reset()
+            flight = .reading(readerSeq: opSeq)
+            return .startReader(readerSeq: opSeq)
+        }
+    }
+
+    private mutating func applySkipPeek(_ peek: TypesPeek, changeCount: Int) -> SkipTickResult {
+        switch peek {
+        case .empty, .ephemeralPrivacy, .peekFailed:
+            return .keepArmed(peek)
+        case .hasContent:
+            skipArmed = false
+            markHandled(changeCount)
+            openGeneration.reset()
+            return .consume(changeCount: changeCount, reason: .skipArmed)
+        case .confidential(let type):
+            switch openGeneration.noteConfidential(changeCount, type: type) {
+            case .progress:
+                return .keepArmed(peek)
+            case .stable:
+                skipArmed = false
+                markHandled(changeCount)
+                openGeneration.reset()
+                return .consume(changeCount: changeCount, reason: .confidentialStable)
+            }
+        }
+    }
+
+    // MARK: Flight lifecycle
+
+    /// Take the reading flight without a peek (Save anyway of an already-handled change).
+    public mutating func beginReading() -> Int? {
+        guard case .idle = flight else { return nil }
+        flight = .reading(readerSeq: opSeq)
+        return opSeq
+    }
+
+    public mutating func beginIngest(changeCount: Int) {
+        flight = .ingesting(changeCount: changeCount)
     }
 
     /// Reader and store finished (§3.2 rule 2). `handledChangeCount` is `nil` when the outcome
-    /// must not mark the change handled (unstable read, failed post-read gate).
+    /// must not mark the change handled (unstable read, leaveOpen).
     public mutating func captureFinished(handledChangeCount: Int?) {
-        isCapturing = false
-        if let handledChangeCount { markHandled(handledChangeCount) }
+        flight = .idle
+        if let handledChangeCount {
+            markHandled(handledChangeCount)
+            openGeneration.reset()
+        }
+    }
+
+    /// Await reading|ingesting, then CAS `idle → leased`. Returns nil if CAS fails.
+    public mutating func beginLease(kind: PasteboardLeaseKind) -> PasteboardLease? {
+        guard case .idle = flight else { return nil }
+        opSeq += 1
+        let lease = PasteboardLease(kind: kind, opSeq: opSeq)
+        flight = .leased(lease)
+        return lease
+    }
+
+    public mutating func endLease(_ lease: PasteboardLease) {
+        guard case .leased(let current) = flight, current == lease else { return }
+        flight = .idle
     }
 
     // MARK: Save failures (§3.2 rule 3)
@@ -96,7 +200,6 @@ public struct CaptureCoordinator: Sendable, Equatable {
 
     // MARK: Restore token (§3.4)
 
-    /// Publish only a confirmed `ownedCount`.
     public mutating func publishToken(_ ownedCount: Int) { token = ownedCount }
 
     // MARK: Pause and skip (§3.7)
@@ -111,16 +214,24 @@ public struct CaptureCoordinator: Sendable, Equatable {
         pausedIndefinitely = true
     }
 
-    /// Content copied during the pause is never captured: the current count becomes handled.
-    public mutating func resume(currentChangeCount: Int) {
+    /// Clears pause flags only. Peek + ResumePolicy decide markHandled vs leaveOpen.
+    public mutating func endPause() {
         pausedUntil = nil
         pausedIndefinitely = false
         token = nil
-        markHandled(currentChangeCount)
+    }
+
+    public mutating func markHandled(_ count: Int) {
+        lastHandledChangeCount = max(lastHandledChangeCount ?? count, count)
+        openGeneration.reset()
     }
 
     public mutating func armSkip() { skipArmed = true }
-    public mutating func cancelSkip() { skipArmed = false }
+
+    public mutating func cancelSkip() {
+        skipArmed = false
+        openGeneration.reset()
+    }
 
     // MARK: Clear / Delete / Edit (§3.2 rule 5)
 
@@ -133,12 +244,6 @@ public struct CaptureCoordinator: Sendable, Equatable {
     }
 
     public mutating func endDestructive() { destructiveInProgress = false }
-
-    /// `changeCount` only grows, so the handled mark never moves backwards (a late reader of an
-    /// older count must not re-open a newer handled count).
-    private mutating func markHandled(_ count: Int) {
-        lastHandledChangeCount = max(lastHandledChangeCount ?? count, count)
-    }
 }
 
 /// Store-side protection against resurrecting cleared, deleted or pre-edit content (PLAN §3.2 rule 5).
