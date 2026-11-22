@@ -233,7 +233,9 @@ final class SettingsStore {
             defaults.removeObject(forKey: key)
             return
         }
-        defaults.set(try? JSONEncoder().encode(value), forKey: key)
+        // Encode failure must not wipe the previous value (`UserDefaults.set(nil)` removes the key).
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        defaults.set(data, forKey: key)
     }
 
     private static func load<T: Decodable>(_ type: T.Type, _ key: String, _ defaults: UserDefaults) -> T? {

@@ -24,7 +24,18 @@ struct AppsSettings: View {
         @Bindable var model = model
         return HStack(spacing: 0) {
             VStack(spacing: 0) {
-                List(selection: $model.settingsApp) {
+                // Same NSTableView class as History sidebar: ignore nil List sync writes and defer
+                // Observation (detail `.id` swap) off the selection-delegate stack.
+                List(selection: Binding(
+                    get: { model.settingsApp ?? Self.anyApp },
+                    set: { newValue in
+                        guard let newValue else { return }
+                        guard newValue != (model.settingsApp ?? Self.anyApp) else { return }
+                        Task { @MainActor in
+                            model.settingsApp = newValue
+                        }
+                    }
+                )) {
                     Label("All Apps", systemImage: "square.grid.2x2").tag(Self.anyApp)
                     ForEach(bundleIDs, id: \.self) { bundleID in
                         HStack {

@@ -13,6 +13,9 @@ final class HistoryModel {
     var scope: HistoryScope = .all {
         didSet {
             guard scope != oldValue else { return }
+            // Invalidate a deferred sidebar List write so it cannot overwrite this programmatic set.
+            sidebarApplyToken += 1
+            presentedSidebarSelection = nil
             // Entering Favorites/Collections: clear leftover History filters so reorder is obvious.
             if scope.isPinboard {
                 let resetKind = kindFilter != .all
@@ -213,6 +216,9 @@ final class HistoryModel {
     /// Sticky hide for stack cards during Undo (mirrors `hiddenIDs` for records).
     @ObservationIgnored private(set) var hiddenStackIDs: Set<UUID> = []
     @ObservationIgnored private var isLoadingMore = false
+    /// Next `store.page` offset into the current query (includes rows filtered out as hidden).
+    /// Must not track `records.count` — hide/undo shrinks the visible array without advancing the store cursor.
+    @ObservationIgnored private var nextPageOffset = 0
     @ObservationIgnored private var isActive = false
     @ObservationIgnored private var isStale = true
 
@@ -260,16 +266,39 @@ final class HistoryModel {
         periodFilter = .anyTime
     }
 
+    /// While a List selection write is deferred, getter returns this so AppKit's committed
+    /// selection and the binding stay aligned (avoids fighting updates / residual reentrancy).
+    @ObservationIgnored private var presentedSidebarSelection: HistoryScope?
+    /// Bumped on every `scope` write and each deferred sidebar apply — stale Tasks must no-op.
+    @ObservationIgnored private var sidebarApplyToken = 0
+
     /// Sidebar has no stack rows — map leftover `.stack` scope to no selection.
     /// Ignore `nil` writes so a List sync cannot clear the sidebar.
+    ///
+    /// Scope side effects (`scope.didSet` → filter resets + `reload`) must not run on the same
+    /// stack as the List write: macOS `List(selection:)` is an `NSTableView`, and sync Observation
+    /// rebuilds re-enter its selection delegate ("reentrant operation… will become an assert").
     var sidebarSelection: HistoryScope? {
         get {
+            if let presentedSidebarSelection { return presentedSidebarSelection }
             if case .stack = scope { return nil }
             return scope
         }
         set {
             guard let newValue else { return }
-            scope = newValue
+            let current: HistoryScope? = {
+                if let presentedSidebarSelection { return presentedSidebarSelection }
+                if case .stack = scope { return nil }
+                return scope
+            }()
+            guard newValue != current else { return }
+            presentedSidebarSelection = newValue
+            sidebarApplyToken += 1
+            let token = sidebarApplyToken
+            Task { @MainActor in
+                guard token == self.sidebarApplyToken else { return }
+                self.scope = newValue
+            }
         }
     }
 
@@ -319,9 +348,11 @@ final class HistoryModel {
     }
 
     func clipboardDidChange() {
-        if followsClipboard { applyLoadedSelection(defaultSelection()) }
+        // Only move when the clipboard identity is on-screen — never clear selection to nil.
+        if followsClipboard, let id = defaultSelection() { applyLoadedSelection(id) }
     }
 
+    /// Clipboard identity when present in `entries`; otherwise nil (does not mean "select first").
     private func defaultSelection() -> HistoryEntry.ID? {
         guard search.isEmpty else { return entries.first?.id }
         if let stackID = clipboardStackID(), entries.contains(where: { $0.id == .stack(stackID) }) {
@@ -345,6 +376,8 @@ final class HistoryModel {
         apps = []
         collections = []
         memberships = [:]
+        nextPageOffset = 0
+        hiddenRecordAdjustment = 0
         isStale = true
     }
 
@@ -400,6 +433,7 @@ final class HistoryModel {
                     }
                     let visibleRecords = loaded.filter { !hiddenIDs.contains($0.id) }
                     hiddenRecordAdjustment = loaded.count - visibleRecords.count
+                    nextPageOffset = loaded.count
                     withAnimation(animated ? .spring(response: 0.35, dampingFraction: 0.82) : nil) {
                         records = visibleRecords
                         stacks = []
@@ -412,7 +446,6 @@ final class HistoryModel {
                 } else if pinboard {
                     async let board = store.pinboardEntries(query, limit: ClipboardStore.maxPinboardEntries)
                     let (loadedEntries, loadedAllStacks, loadedStacked) = try await (board, allStackPage, stackedPage)
-                    guard generation == self.generation else { return }
                     var visible = loadedEntries.filter { entry in
                         switch entry {
                         case .record(let card): return !hiddenIDs.contains(card.id)
@@ -439,7 +472,10 @@ final class HistoryModel {
                         if case .stack(let card) = entry { return card }
                         return nil
                     }
+                    let memberships = try await store.memberships(of: visibleRecords.map(\.id))
+                    guard generation == self.generation else { return }
                     hiddenRecordAdjustment = 0
+                    nextPageOffset = 0
                     withAnimation(animated ? .spring(response: 0.35, dampingFraction: 0.82) : nil) {
                         records = visibleRecords
                         stacks = visibleStacks
@@ -447,13 +483,14 @@ final class HistoryModel {
                         stackedIDs = loadedStacked
                         entries = visible
                     }
-                    memberships = try await store.memberships(of: visibleRecords.map(\.id))
+                    self.memberships = memberships
                     recordTotal = visibleRecords.count
                 } else if stacksOnly {
                     async let stackPage = store.stacks(query, limit: Self.maxStacks, excluding: excluding)
                     let (loadedStacks, loadedAllStacks, loadedStacked) = try await (stackPage, allStackPage, stackedPage)
                     guard generation == self.generation else { return }
                     let visibleStacks = loadedStacks.filter { !hideStacks.contains($0.id) }
+                    nextPageOffset = 0
                     withAnimation(animated ? .spring(response: 0.35, dampingFraction: 0.82) : nil) {
                         records = []
                         stacks = visibleStacks
@@ -476,6 +513,7 @@ final class HistoryModel {
                     let visibleRecords = loaded.filter { !hiddenIDs.contains($0.id) }
                     let visibleStacks = loadedStacks.filter { !hideStacks.contains($0.id) }
                     hiddenRecordAdjustment = loaded.count - visibleRecords.count
+                    nextPageOffset = loaded.count
                     withAnimation(animated ? .spring(response: 0.35, dampingFraction: 0.82) : nil) {
                         records = visibleRecords
                         stacks = visibleStacks
@@ -490,8 +528,15 @@ final class HistoryModel {
                 loadError = nil
                 isStale = false
                 let userMoved = revision != selectionRevision
-                if !userMoved, selectFirst || followsClipboard || selectedIndex == nil {
-                    applyLoadedSelection(defaultSelection())
+                if !userMoved {
+                    // `selectFirst` / empty selection → clipboard hit or first row.
+                    // `followsClipboard` alone → move only when the clipboard identity is present;
+                    // never apply nil (that cleared selection on Favorites / filters).
+                    if selectFirst || selectedIndex == nil {
+                        applyLoadedSelection(defaultSelection() ?? entries.first?.id)
+                    } else if followsClipboard, let preferred = defaultSelection() {
+                        applyLoadedSelection(preferred)
+                    }
                 }
             } catch {
                 guard generation == self.generation else { return }
@@ -556,21 +601,32 @@ final class HistoryModel {
     }
 
     /// Next record page when near the end of **records** (P22). Pinboards are not paged.
+    /// Uses `nextPageOffset` (store cursor), not `records.count` — hide/undo must not stall paging.
     func entryAppeared(_ entry: HistoryEntry) {
         guard !scope.isPinboard else { return }
         guard case .record(let card) = entry else { return }
-        guard !isLoadingMore, records.count < recordTotal,
+        guard !isLoadingMore, nextPageOffset < recordTotal,
               let index = records.lastIndex(where: { $0.id == card.id }), index >= records.count - 12 else { return }
         isLoadingMore = true
         let generation = generation
         let query = query
-        let offset = records.count
         Task {
             defer { isLoadingMore = false }
-            guard let page = try? await store.page(query, offset: offset, limit: Self.pageSize),
-                  generation == self.generation else { return }
-            let known = Set(records.map(\.id))
-            let added = page.filter { !known.contains($0.id) && !hiddenIDs.contains($0.id) }
+            var added: [HistoryCard] = []
+            // Skip store windows that are entirely known/hidden (Undo-hide gaps). Cap iterations so
+            // a dense hide batch cannot MainActor-churn through the whole store in one appearance.
+            var pages = 0
+            while added.isEmpty, nextPageOffset < recordTotal, generation == self.generation, pages < 3 {
+                pages += 1
+                let offset = nextPageOffset
+                guard let page = try? await store.page(query, offset: offset, limit: Self.pageSize) else { return }
+                nextPageOffset = offset + page.count
+                if page.isEmpty { break }
+                let known = Set(records.map(\.id))
+                added = page.filter { !known.contains($0.id) && !hiddenIDs.contains($0.id) }
+                if page.count < Self.pageSize { break }
+            }
+            guard generation == self.generation, !added.isEmpty else { return }
             let memberships = (try? await store.memberships(of: added.map(\.id))) ?? [:]
             guard generation == self.generation else { return }
             records += added
@@ -738,7 +794,9 @@ final class HistoryModel {
             records = remaining.map(\.element)
             rebuildEntriesPreservingPinboardOrder(removingRecordIDs: ids)
         }
-        recordTotal = max(0, recordTotal - removed)
+        // Keep `recordTotal` as the store count; bump the footer adjustment instead. Shrinking
+        // `recordTotal` made load-more think the store was shorter and used the wrong page offset.
+        if !scope.isPinboard { hiddenRecordAdjustment += removed }
         if let selected, let id = selectedID, case .record(let rid) = id, ids.contains(rid) {
             let next = remaining.first { $0.offset > selected } ?? remaining.last
             selectedID = next.map { .record($0.element.id) }
