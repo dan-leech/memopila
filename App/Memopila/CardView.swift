@@ -246,7 +246,31 @@ struct CardView: View {
 
     @ViewBuilder
     private var unmaskedContent: some View {
-        switch card.displayType {
+        // Payload / storedTypes, not displayType alone — colour orphans can lag the .color cache.
+        if card.looksLikeColor {
+            HStack(spacing: 10) {
+                ColorSwatch(
+                    hex: ColorCardLabel.swatchHex(preview: card.preview, colorHex: card.colorHex),
+                    cornerRadius: 8
+                )
+                    .frame(width: 40, height: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(ColorCardLabel.text(preview: card.preview, colorHex: card.colorHex))
+                        .font(.system(size: 13, design: .monospaced))
+                        .lineLimit(2)
+                    ForEach(
+                        ColorCardLabel.secondaryLines(preview: card.preview, colorHex: card.colorHex),
+                        id: \.self
+                    ) { line in
+                        Text(line)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+            }
+        } else {
+            switch card.displayType {
         case .image, .pdf:
             if let image {
                 Image(nsImage: image)
@@ -259,13 +283,7 @@ struct CardView: View {
                 placeholder(card.displayType.systemImage)
             }
         case .color:
-            HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(card.colorHex.flatMap(Color.init(hex:)) ?? .clear)
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
-                    .frame(width: 40, height: 40)
-                Text(card.colorHex ?? "").font(.system(size: 13, design: .monospaced))
-            }
+            EmptyView()
         case .file:
             VStack(alignment: .leading, spacing: 6) {
                 if let image {
@@ -295,6 +313,7 @@ struct CardView: View {
                     .font(.system(size: 11.5, design: .monospaced))
                     .lineLimit(8)
             }
+        }
         }
     }
 
@@ -478,6 +497,10 @@ struct CardView: View {
     }
 
     private var metric: String {
+        if card.looksLikeColor {
+            let label = ColorCardLabel.text(preview: card.preview, colorHex: card.colorHex)
+            return label.isEmpty ? String(localized: "Color") : label
+        }
         switch card.displayType {
         case .text, .richText, .url, .mixed:
             guard let length = card.textLength else { return ByteCount.string(card.payloadSizeBytes) }
@@ -490,7 +513,8 @@ struct CardView: View {
         case .pdf:
             return "PDF · " + ByteCount.string(card.payloadSizeBytes)
         case .color:
-            return card.colorHex ?? String(localized: "Color")
+            let label = ColorCardLabel.text(preview: card.preview, colorHex: card.colorHex)
+            return label.isEmpty ? String(localized: "Color") : label
         case .file:
             let count = card.filePaths.count
             let files = count == 1 ? String(localized: "1 file") : String(localized: "\(count) files")
@@ -504,6 +528,10 @@ struct CardView: View {
         if let title = card.customTitle { parts.append(title) }
         if secretKind != nil {
             parts.append(secretCardTitle)
+        } else if card.looksLikeColor {
+            let label = ColorCardLabel.text(preview: card.preview, colorHex: card.colorHex)
+            if !label.isEmpty { parts.append(String(label.prefix(120))) }
+            parts.append(contentsOf: ColorCardLabel.secondaryLines(preview: card.preview, colorHex: card.colorHex))
         } else if !card.preview.isEmpty {
             parts.append(String(card.preview.prefix(120)))
         }

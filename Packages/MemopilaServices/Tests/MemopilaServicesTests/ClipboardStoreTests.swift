@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import MemopilaCore
 import Testing
@@ -360,6 +361,21 @@ struct ClipboardStoreTests {
         #expect(try await store.reclassifyRichText() == 1)
         #expect(try await store.card(plain)?.displayType == .text)
         #expect(try await store.card(bold)?.displayType == .richText)
+    }
+
+    @Test func reclassifyRichTextDoesNotDemoteColourUTI() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#112233"))
+        let items = PasteboardWriter.colorItems(values)
+        let id = try await store.plantColorForkForTesting(
+            snapshot("#112233", items: items),
+            enrichment: IngestEnrichment(cardPreview: "#112233", colorHex: "#112233", sourceAppName: "Editor")
+        )
+        // Text-only classify of utf8 would yield .text and leave a colour-UTI type-lag orphan.
+        try await store.corruptColorDisplayTypeForTesting(id, to: .richText)
+        #expect(try await store.reclassifyRichText() == 1)
+        #expect(try await store.card(id)?.displayType == .color)
+        #expect(try await store.payload(for: id).items == items)
     }
 
     @Test func recordsWithSeveralItemsAreNotEdited() async throws {
@@ -951,5 +967,878 @@ struct ClipboardStoreTests {
                 == [.record(newer), .record(older)],
             "Choose / useCount must not reshuffle Favorites"
         )
+    }
+
+    @Test func applyColorPasteFormatChangesPreviewAndMergesOnCollision() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(red: 0, green: 255, blue: 0))
+        let hexItems = PasteboardWriter.colorItems(values, textFormat: .hex)
+        let rgbItems = PasteboardWriter.colorItems(values, textFormat: .rgb)
+        guard case .committed(let hexID) = await ingest(store, snapshot("#00FF00", items: hexItems)),
+              case .committed(let rgbID) = await ingest(store, snapshot("rgb", at: 1_001, items: rgbItems))
+        else { Issue.record("colour ingest"); return }
+
+        #expect(try await store.applyColorPasteFormat(hexID, format: .hex, opSeq: 1) == .updated)
+        #expect(try await store.card(hexID)?.preview == "#00FF00")
+
+        #expect(try await store.applyColorPasteFormat(hexID, format: .rgb, opSeq: 2) == .merged(into: rgbID))
+        #expect(try await store.card(hexID) == nil)
+        #expect(try await store.card(rgbID)?.preview == "rgb(0, 255, 0)")
+    }
+
+    @Test func applyColorPasteFormatNoopsWhenAlreadyCanonical() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#FF0000"))
+        let items = PasteboardWriter.colorItems(values, textFormat: .hex)
+        guard case .committed(let id) = await ingest(store, snapshot("red", items: items)) else {
+            Issue.record("colour ingest"); return
+        }
+        let before = try await store.payload(for: id).items
+        #expect(try await store.applyColorPasteFormat(id, format: .hex, opSeq: 1) == .updated)
+        #expect(try await store.payload(for: id).items == before, "canonical HEX must not churn")
+    }
+
+    @Test func applyColorPasteFormatCanonicalizesLegacyOrderWhenCSSMatches() async throws {
+        let store = try ClipboardStore(url: nil)
+        // Text before colour UTI — same CSS, different framing than colorItems → must rewrite.
+        let colorData = try #require(
+            NSColor(srgbRed: 1, green: 0, blue: 0, alpha: 1).pasteboardPropertyList(forType: .color) as? Data
+        )
+        let legacy = [CanonicalItem([
+            .bytes(.utf8PlainText, Data("#FF0000".utf8)),
+            .bytes(.color, colorData),
+        ])]
+        guard case .committed(let id) = await ingest(store, snapshot("red", items: legacy)) else {
+            Issue.record("colour ingest"); return
+        }
+        #expect(try await store.applyColorPasteFormat(id, format: .hex, opSeq: 1) == .updated)
+        #expect(try await store.payload(for: id).items == PasteboardWriter.colorItems(try #require(ColorValues(hex: "#FF0000"))))
+    }
+
+    @Test func detailsHealsNilColorHexAndEmptyPreview() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#AABBCC"))
+        let items = PasteboardWriter.colorItems(values, textFormat: .hsl)
+        // Pre-fix row: empty caches (ingest now fills hex from payload).
+        let id = try await store.plantColorForkForTesting(
+            snapshot("hsl", items: items),
+            enrichment: IngestEnrichment(sourceAppName: "Editor")
+        )
+        #expect(try await store.card(id)?.colorHex == nil)
+        #expect(try await store.card(id)?.preview == "")
+        let details = try #require(try await store.details(id, maxTextScalars: 0))
+        #expect(details.card.colorHex == "#AABBCC")
+        #expect(ColorPasteFormat.matching(details.card.preview) == .hsl)
+        #expect(try await store.card(id)?.colorHex == "#AABBCC", "heal must persist for the grid")
+    }
+
+    @Test func ingestCanonicalizesNonNormalizedColourWithoutCallerNormalize() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#F0BF00"))
+        let legacyArchive = try #require(
+            NSColor(
+                calibratedRed: CGFloat(values.red) / 255,
+                green: CGFloat(values.green) / 255,
+                blue: CGFloat(values.blue) / 255,
+                alpha: 1
+            ).pasteboardPropertyList(forType: .color) as? Data
+        )
+        let legacyHex = try #require(ColorHex.string(fromPasteboardColor: legacyArchive))
+        let legacyItems = [CanonicalItem([
+            .bytes(.color, legacyArchive),
+            .bytes(.utf8PlainText, Data(legacyHex.utf8)),
+        ])]
+        let canonical = PasteboardWriter.colorItems(try #require(ColorValues(hex: legacyHex)))
+        #expect(MCS1.contentHash(of: legacyItems) != MCS1.contentHash(of: canonical))
+        // Caller passes raw snapshot (pre-normalize hash) — Store must canonicalize before address.
+        let bare = IngestEnrichment(cardPreview: legacyHex, sourceAppName: "Editor")
+        guard case .committed(let id) = await store.ingest(
+            snapshot(legacyHex, items: legacyItems), readerSeq: 0, enrichment: bare, limits: RetentionLimits()
+        ) else { Issue.record("colour ingest"); return }
+        #expect(try await store.payload(for: id).items == canonical)
+        #expect(try await store.card(id)?.colorHex == legacyHex)
+        #expect(
+            await store.ingest(
+                snapshot(legacyHex, at: 2_000, items: canonical), readerSeq: 1, enrichment: bare, limits: RetentionLimits()
+            ) == .merged(id)
+        )
+        #expect(try await store.count(HistoryQuery()) == 1)
+    }
+
+    @Test func ensureCanonicalColorRecordUpgradesLegacyPayload() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#334455"))
+        let legacyArchive = try #require(
+            NSColor(
+                calibratedRed: CGFloat(values.red) / 255,
+                green: CGFloat(values.green) / 255,
+                blue: CGFloat(values.blue) / 255,
+                alpha: 1
+            ).pasteboardPropertyList(forType: .color) as? Data
+        )
+        let hex = try #require(ColorHex.string(fromPasteboardColor: legacyArchive))
+        let legacyItems = [CanonicalItem([
+            .bytes(.color, legacyArchive),
+            .bytes(.utf8PlainText, Data(hex.utf8)),
+        ])]
+        let canonical = PasteboardWriter.colorItems(try #require(ColorValues(hex: hex)))
+        let enrichment = IngestEnrichment(cardPreview: hex, colorHex: hex, sourceAppName: "Editor")
+        let id = try await store.plantColorForkForTesting(snapshot(hex, items: legacyItems), enrichment: enrichment)
+        #expect(try await store.payload(for: id).items == legacyItems)
+        let ensured = try await store.ensureCanonicalColorRecord(id, opSeq: 1)
+        #expect(ensured.id == id)
+        #expect(ensured.items == canonical)
+        #expect(try await store.payload(for: id).items == canonical)
+    }
+
+    @Test func coalesceDuplicateColorRecordsMergesSameHexAndFormat() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#F0BF00"))
+        let legacyArchive = try #require(
+            NSColor(
+                calibratedRed: CGFloat(values.red) / 255,
+                green: CGFloat(values.green) / 255,
+                blue: CGFloat(values.blue) / 255,
+                alpha: 1
+            ).pasteboardPropertyList(forType: .color) as? Data
+        )
+        let legacyHex = try #require(ColorHex.string(fromPasteboardColor: legacyArchive))
+        let legacyItems = [CanonicalItem([
+            .bytes(.color, legacyArchive),
+            .bytes(.utf8PlainText, Data(legacyHex.utf8)),
+        ])]
+        let canonical = PasteboardWriter.colorItems(try #require(ColorValues(hex: legacyHex)))
+        // Soft-merge would collapse these on ingest — plant forks the way a pre-fix store did.
+        let enrichment = IngestEnrichment(cardPreview: legacyHex, colorHex: legacyHex, sourceAppName: "Editor")
+        _ = try await store.plantColorForkForTesting(snapshot(legacyHex, items: legacyItems), enrichment: enrichment)
+        _ = try await store.plantColorForkForTesting(
+            snapshot(legacyHex, at: 2_000, items: canonical), enrichment: enrichment
+        )
+        #expect(try await store.count(HistoryQuery()) == 2)
+        #expect(try await store.coalesceDuplicateColorRecords(opSeq: 1) == 1)
+        #expect(try await store.count(HistoryQuery()) == 1)
+        let survivor = try #require(try await store.page(HistoryQuery(), offset: 0, limit: 1).first)
+        #expect(try await store.payload(for: survivor.id).items == canonical)
+        #expect(try await store.coalesceDuplicateColorRecords(opSeq: 2) == 0)
+    }
+
+    @Test func softMergeUsesPayloadHexWhenEnrichmentColorHexNil() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#F0BF00"))
+        let legacyArchive = try #require(
+            NSColor(
+                calibratedRed: CGFloat(values.red) / 255,
+                green: CGFloat(values.green) / 255,
+                blue: CGFloat(values.blue) / 255,
+                alpha: 1
+            ).pasteboardPropertyList(forType: .color) as? Data
+        )
+        let legacyHex = try #require(ColorHex.string(fromPasteboardColor: legacyArchive))
+        let legacyItems = [CanonicalItem([
+            .bytes(.color, legacyArchive),
+            .bytes(.utf8PlainText, Data(legacyHex.utf8)),
+        ])]
+        let bare = IngestEnrichment(cardPreview: legacyHex, sourceAppName: "Editor")
+        guard case .committed(let id) = await store.ingest(
+            snapshot(legacyHex, items: legacyItems), readerSeq: 0, enrichment: bare, limits: RetentionLimits()
+        ) else { Issue.record("legacy colour ingest"); return }
+        let canonical = PasteboardWriter.colorItems(try #require(ColorValues(hex: legacyHex)))
+        // Inbound enrichment also lacks colorHex — identity must come from the colour UTI.
+        #expect(
+            await store.ingest(
+                snapshot(legacyHex, at: 2_000, items: canonical), readerSeq: 1, enrichment: bare, limits: RetentionLimits()
+            ) == .merged(id)
+        )
+        #expect(try await store.count(HistoryQuery()) == 1)
+        #expect(try await store.payload(for: id).items == canonical)
+    }
+
+    @Test func softMergeMatchesWrongCasedStoredColorHex() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#AABBCC"))
+        let legacyArchive = try #require(
+            NSColor(
+                calibratedRed: CGFloat(values.red) / 255,
+                green: CGFloat(values.green) / 255,
+                blue: CGFloat(values.blue) / 255,
+                alpha: 1
+            ).pasteboardPropertyList(forType: .color) as? Data
+        )
+        let legacyHex = try #require(ColorHex.string(fromPasteboardColor: legacyArchive))
+        let legacyItems = [CanonicalItem([
+            .bytes(.color, legacyArchive),
+            .bytes(.utf8PlainText, Data(legacyHex.utf8)),
+        ])]
+        let canonical = PasteboardWriter.colorItems(try #require(ColorValues(hex: legacyHex)))
+        #expect(MCS1.contentHash(of: legacyItems) != MCS1.contentHash(of: canonical))
+        // Pre-fix row kept a lower-cased cache; identity must match via payload HEX, not cache case.
+        let lowerCache = legacyHex.lowercased()
+        let id = try await store.plantColorForkForTesting(
+            snapshot(lowerCache, items: legacyItems),
+            enrichment: IngestEnrichment(cardPreview: lowerCache, colorHex: lowerCache, sourceAppName: "Editor")
+        )
+        #expect(try await store.card(id)?.colorHex == lowerCache)
+        let upper = IngestEnrichment.make(for: canonical, sourceAppName: "Editor")
+        #expect(upper.colorHex == legacyHex)
+        #expect(
+            await store.ingest(
+                snapshot(legacyHex, at: 2_000, items: canonical), readerSeq: 1, enrichment: upper, limits: RetentionLimits()
+            ) == .merged(id)
+        )
+        #expect(try await store.count(HistoryQuery()) == 1)
+        #expect(try await store.card(id)?.colorHex == legacyHex)
+        #expect(try await store.payload(for: id).items == canonical)
+    }
+
+    @Test func applyColorPasteFormatSoftMergesLegacyFork() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#334455"))
+        let legacyArchive = try #require(
+            NSColor(
+                calibratedRed: CGFloat(values.red) / 255,
+                green: CGFloat(values.green) / 255,
+                blue: CGFloat(values.blue) / 255,
+                alpha: 1
+            ).pasteboardPropertyList(forType: .color) as? Data
+        )
+        let hex = try #require(ColorHex.string(fromPasteboardColor: legacyArchive))
+        let legacyItems = [CanonicalItem([
+            .bytes(.color, legacyArchive),
+            .bytes(.utf8PlainText, Data(hex.utf8)),
+        ])]
+        let canonical = PasteboardWriter.colorItems(try #require(ColorValues(hex: hex)))
+        let enrichment = IngestEnrichment(cardPreview: hex, colorHex: hex, sourceAppName: "Editor")
+        let legacyID = try await store.plantColorForkForTesting(
+            snapshot(hex, items: legacyItems), enrichment: enrichment
+        )
+        let canonicalID = try await store.plantColorForkForTesting(
+            snapshot(hex, at: 2_000, items: canonical), enrichment: enrichment
+        )
+        #expect(legacyID != canonicalID)
+        #expect(try await store.count(HistoryQuery()) == 2)
+        #expect(try await store.applyColorPasteFormat(legacyID, format: .hex, opSeq: 1) == .merged(into: canonicalID))
+        #expect(try await store.count(HistoryQuery()) == 1)
+        #expect(try await store.payload(for: canonicalID).items == canonical)
+    }
+
+    @Test func backfillMissingColorMetadataFillsNilHexAndEmptyPreview() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#AABBCC"))
+        let items = PasteboardWriter.colorItems(values, textFormat: .rgb)
+        // Empty preview + nil colorHex: format picker would seed HEX and Choose would rewrite RGB.
+        let id = try await store.plantColorForkForTesting(
+            snapshot("rgb", items: items),
+            enrichment: IngestEnrichment(sourceAppName: "Editor")
+        )
+        #expect(try await store.card(id)?.colorHex == nil)
+        #expect(try await store.card(id)?.preview == "")
+        #expect(try await store.backfillMissingColorMetadata() == 1)
+        #expect(try await store.card(id)?.colorHex == "#AABBCC")
+        #expect(try await store.card(id)?.preview == "rgb(170, 187, 204)")
+        #expect(ColorPasteFormat.matching(try #require(try await store.card(id)?.preview)) == .rgb)
+        #expect(try await store.backfillMissingColorMetadata() == 0)
+    }
+
+    @Test func hardMergeBackfillsNilColorHexFromEnrichment() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#00FF00"))
+        let items = PasteboardWriter.colorItems(values)
+        let id = try await store.plantColorForkForTesting(
+            snapshot("#00FF00", items: items),
+            enrichment: IngestEnrichment(cardPreview: "#00FF00", sourceAppName: "Editor")
+        )
+        #expect(try await store.card(id)?.colorHex == nil)
+
+        let full = IngestEnrichment.make(for: items, sourceAppName: "Editor")
+        #expect(full.colorHex == "#00FF00")
+        #expect(
+            await store.ingest(
+                snapshot("#00FF00", at: 2_000, items: items), readerSeq: 0, enrichment: full, limits: RetentionLimits()
+            ) == .merged(id)
+        )
+        #expect(try await store.card(id)?.colorHex == "#00FF00")
+        #expect(try await store.card(id)?.copyCount == 2)
+    }
+
+    @Test func applyColorPasteFormatReadsColourFromPayloadWhenColorHexNil() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#112233"))
+        let items = PasteboardWriter.colorItems(values)
+        let id = try await store.plantColorForkForTesting(
+            snapshot("#112233", items: items),
+            enrichment: IngestEnrichment(cardPreview: "#112233", sourceAppName: "Editor")
+        )
+        #expect(try await store.applyColorPasteFormat(id, format: .rgb, opSeq: 1) == .updated)
+        #expect(try await store.card(id)?.colorHex == "#112233")
+        #expect(try await store.card(id)?.preview == "rgb(17, 34, 51)")
+    }
+
+    @Test func healOverwritesStaleColorHexAndPreviewFromPayload() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#AABBCC"))
+        let items = PasteboardWriter.colorItems(values, textFormat: .rgb)
+        // Stale caches that disagree with the UTI — cache-first heal used to leave them forever.
+        let id = try await store.plantColorForkForTesting(
+            snapshot("rgb", items: items),
+            enrichment: IngestEnrichment(cardPreview: "#FF0000", colorHex: "#FF0000", sourceAppName: "Editor")
+        )
+        #expect(try await store.card(id)?.colorHex == "#FF0000")
+        #expect(try await store.backfillMissingColorMetadata() == 1)
+        #expect(try await store.card(id)?.colorHex == "#AABBCC")
+        #expect(try await store.card(id)?.preview == "rgb(170, 187, 204)")
+        #expect(try await store.backfillMissingColorMetadata() == 0)
+    }
+
+    @Test func healPromotesStaleDisplayTypeOnColourUTIOrphan() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#AABBCC"))
+        let items = PasteboardWriter.colorItems(values, textFormat: .rgb)
+        let id = try await store.plantColorForkForTesting(
+            snapshot("rgb", items: items),
+            enrichment: IngestEnrichment(cardPreview: "rgb(170, 187, 204)", colorHex: "#AABBCC", sourceAppName: "Editor")
+        )
+        try await store.corruptColorDisplayTypeForTesting(id, to: .text)
+        #expect(try await store.card(id)?.displayType == .text)
+        #expect(try await store.card(id)?.looksLikeColor == true)
+        #expect(try await store.backfillMissingColorMetadata() == 1)
+        #expect(try await store.card(id)?.displayType == .color)
+        #expect(try await store.backfillMissingColorMetadata() == 0)
+    }
+
+    @Test func healAndDetailsRecoverEmptyStoredTypesWithColourUTIRows() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#AABBCC"))
+        let items = PasteboardWriter.colorItems(values, textFormat: .rgb)
+        let id = try await store.plantColorForkForTesting(
+            snapshot("rgb", items: items),
+            enrichment: IngestEnrichment(cardPreview: "rgb(170, 187, 204)", colorHex: "#AABBCC", sourceAppName: "Editor")
+        )
+        // Caches wiped — only payload rows still say colour. looksLikeColor is false until heal.
+        try await store.corruptColorCachesForTesting(id, displayType: .text, storedTypes: [], colorHex: nil)
+        #expect(try await store.card(id)?.looksLikeColor == false)
+        #expect(try await store.backfillMissingColorMetadata() == 1)
+        let card = try #require(try await store.card(id))
+        #expect(card.displayType == .color)
+        #expect(card.looksLikeColor == true)
+        #expect(card.colorHex == "#AABBCC")
+        #expect(card.preview == "rgb(170, 187, 204)")
+        #expect(card.storedTypes.contains(PasteboardType.color.rawValue))
+    }
+
+    @Test func looksLikeColorWhenOnlyColorHexCacheRemains() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#AABBCC"))
+        let items = PasteboardWriter.colorItems(values)
+        let id = try await store.plantColorForkForTesting(
+            snapshot("#AABBCC", items: items),
+            enrichment: IngestEnrichment(cardPreview: "#AABBCC", colorHex: "#AABBCC", sourceAppName: "Editor")
+        )
+        try await store.corruptColorCachesForTesting(id, displayType: .text, storedTypes: [], colorHex: "#AABBCC")
+        let card = try #require(try await store.card(id))
+        #expect(card.displayType == .text)
+        #expect(card.storedTypes.isEmpty)
+        #expect(card.looksLikeColor == true, "colorHex alone must keep colour face / drag types")
+        #expect(card.hasText == false)
+    }
+
+    @Test func hardMergeRestoresEmptyStoredTypesOnColour() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#00FF00"))
+        let items = PasteboardWriter.colorItems(values)
+        let id = try await store.plantColorForkForTesting(
+            snapshot("#00FF00", items: items),
+            enrichment: IngestEnrichment(cardPreview: "#00FF00", colorHex: "#00FF00", sourceAppName: "Editor")
+        )
+        try await store.corruptColorCachesForTesting(id, displayType: .color, storedTypes: [], colorHex: "#00FF00")
+        #expect(try await store.card(id)?.storedTypes.isEmpty == true)
+        let full = IngestEnrichment.make(for: items, sourceAppName: "Editor")
+        #expect(
+            await store.ingest(
+                snapshot("#00FF00", at: 2_000, items: items), readerSeq: 0, enrichment: full, limits: RetentionLimits()
+            ) == .merged(id)
+        )
+        #expect(try await store.card(id)?.storedTypes.contains(PasteboardType.color.rawValue) == true)
+    }
+
+    @Test func detailsHealsColourWhenCardCachesHideUTI() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#112233"))
+        let items = PasteboardWriter.colorItems(values)
+        let id = try await store.plantColorForkForTesting(
+            snapshot("#112233", items: items),
+            enrichment: IngestEnrichment(cardPreview: "#112233", colorHex: "#112233", sourceAppName: "Editor")
+        )
+        try await store.corruptColorCachesForTesting(id, displayType: .text, storedTypes: [], colorHex: nil)
+        let details = try #require(try await store.details(id, maxTextScalars: 0))
+        #expect(details.card.displayType == .color)
+        #expect(details.card.looksLikeColor == true)
+        #expect(details.card.colorHex == "#112233")
+    }
+
+    @Test func colorsFilterIncludesTypeLagOrphanWithColorHex() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#AABBCC"))
+        let items = PasteboardWriter.colorItems(values)
+        let id = try await store.plantColorForkForTesting(
+            snapshot("#AABBCC", items: items),
+            enrichment: IngestEnrichment(cardPreview: "#AABBCC", colorHex: "#AABBCC", sourceAppName: "Editor")
+        )
+        try await store.corruptColorDisplayTypeForTesting(id, to: .text)
+        #expect(try await store.card(id)?.displayType == .text)
+        #expect(try await store.count(HistoryQuery(kinds: [.color])) == 1)
+        #expect(try await store.page(HistoryQuery(kinds: [.color]), offset: 0, limit: 10).map(\.id) == [id])
+        #expect(try await store.count(HistoryQuery(scope: .type(.color))) == 1)
+    }
+
+    @Test func colorsFilterIncludesStackWithTypeLagColourMember() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#AABBCC"))
+        let items = PasteboardWriter.colorItems(values)
+        let colorID = try await store.plantColorForkForTesting(
+            snapshot("#AABBCC", items: items),
+            enrichment: IngestEnrichment(cardPreview: "#AABBCC", colorHex: "#AABBCC", sourceAppName: "Editor")
+        )
+        try await store.corruptColorDisplayTypeForTesting(colorID, to: .text)
+        let stackID = try await store.createStack(title: "Swatches", recordIDs: [colorID])
+        let stacks = try await store.stacks(HistoryQuery(kinds: [.color]))
+        #expect(stacks.map(\.id) == [stackID], "stack Colors filter must use colorHex, not displayType alone")
+        #expect(try await store.stacks(HistoryQuery(scope: .type(.color))).map(\.id) == [stackID])
+    }
+
+    @Test func displayTypesFindsColourUTIOrphanWithoutColorHex() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#CCDDEE"))
+        let items = PasteboardWriter.colorItems(values)
+        // Nil caches + stale displayType — only colour UTI in storedTypes says this is a colour.
+        let id = try await store.plantColorForkForTesting(
+            snapshot("colour", items: items),
+            enrichment: IngestEnrichment(sourceAppName: "Editor")
+        )
+        try await store.corruptColorDisplayTypeForTesting(id, to: .text)
+        #expect(try await store.card(id)?.colorHex == nil)
+        #expect(try await store.card(id)?.displayType == .text)
+        #expect(try await store.card(id)?.looksLikeColor == true)
+        // Colors chip must appear; filter itself needs colorHex/displayType (Predicate can't see UTI).
+        #expect(try await store.displayTypes().contains(.color))
+        #expect(try await store.backfillMissingColorMetadata() == 1)
+        #expect(try await store.count(HistoryQuery(kinds: [.color])) == 1)
+    }
+
+    @Test func softMergeFindsColourUTIOrphanWithoutColorHex() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#CCDDEE"))
+        let legacyArchive = try #require(
+            NSColor(
+                calibratedRed: CGFloat(values.red) / 255,
+                green: CGFloat(values.green) / 255,
+                blue: CGFloat(values.blue) / 255,
+                alpha: 1
+            ).pasteboardPropertyList(forType: .color) as? Data
+        )
+        let hex = try #require(ColorHex.string(fromPasteboardColor: legacyArchive))
+        let legacyItems = [CanonicalItem([
+            .bytes(.color, legacyArchive),
+            .bytes(.utf8PlainText, Data(hex.utf8)),
+        ])]
+        let canonical = PasteboardWriter.colorItems(try #require(ColorValues(hex: hex)))
+        let orphanID = try await store.plantColorForkForTesting(
+            snapshot(hex, items: legacyItems),
+            enrichment: IngestEnrichment(sourceAppName: "Editor")
+        )
+        try await store.corruptColorDisplayTypeForTesting(orphanID, to: .text)
+        #expect(try await store.card(orphanID)?.colorHex == nil)
+        #expect(await ingest(store, snapshot(hex, at: 2_000, items: canonical)) == .merged(orphanID))
+        #expect(try await store.count(HistoryQuery()) == 1)
+        #expect(try await store.card(orphanID)?.displayType == .color)
+    }
+
+    @Test func coalesceFindsTypeLagOrphanWithColourUTI() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#F0BF00"))
+        let legacyArchive = try #require(
+            NSColor(
+                calibratedRed: CGFloat(values.red) / 255,
+                green: CGFloat(values.green) / 255,
+                blue: CGFloat(values.blue) / 255,
+                alpha: 1
+            ).pasteboardPropertyList(forType: .color) as? Data
+        )
+        let legacyHex = try #require(ColorHex.string(fromPasteboardColor: legacyArchive))
+        let legacyItems = [CanonicalItem([
+            .bytes(.color, legacyArchive),
+            .bytes(.utf8PlainText, Data(legacyHex.utf8)),
+        ])]
+        let canonical = PasteboardWriter.colorItems(try #require(ColorValues(hex: legacyHex)))
+        let enrichment = IngestEnrichment(cardPreview: legacyHex, colorHex: legacyHex, sourceAppName: "Editor")
+        let orphanID = try await store.plantColorForkForTesting(
+            snapshot(legacyHex, items: legacyItems), enrichment: enrichment
+        )
+        try await store.corruptColorDisplayTypeForTesting(orphanID, to: .text)
+        _ = try await store.plantColorForkForTesting(
+            snapshot(legacyHex, at: 2_000, items: canonical), enrichment: enrichment
+        )
+        #expect(try await store.count(HistoryQuery()) == 2)
+        #expect(try await store.coalesceDuplicateColorRecords(opSeq: 1) == 1)
+        #expect(try await store.count(HistoryQuery()) == 1)
+    }
+
+    @Test func softMergeFindsTypeLagColorOrphan() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#00BBCC"))
+        let legacyArchive = try #require(
+            NSColor(
+                calibratedRed: CGFloat(values.red) / 255,
+                green: CGFloat(values.green) / 255,
+                blue: CGFloat(values.blue) / 255,
+                alpha: 1
+            ).pasteboardPropertyList(forType: .color) as? Data
+        )
+        let hex = try #require(ColorHex.string(fromPasteboardColor: legacyArchive))
+        let legacyItems = [CanonicalItem([
+            .bytes(.color, legacyArchive),
+            .bytes(.utf8PlainText, Data(hex.utf8)),
+        ])]
+        let canonical = PasteboardWriter.colorItems(try #require(ColorValues(hex: hex)))
+        let orphanID = try await store.plantColorForkForTesting(
+            snapshot(hex, items: legacyItems),
+            enrichment: IngestEnrichment(cardPreview: hex, colorHex: hex, sourceAppName: "Editor")
+        )
+        try await store.corruptColorDisplayTypeForTesting(orphanID, to: .text)
+        #expect(try await store.card(orphanID)?.displayType == .text)
+        // Same sRGB+format, different MCS1 — must soft-merge even when displayType lagged to .text.
+        #expect(await ingest(store, snapshot(hex, at: 2_000, items: canonical)) == .merged(orphanID))
+        #expect(try await store.count(HistoryQuery()) == 1)
+        #expect(try await store.card(orphanID)?.displayType == .color)
+        #expect(try await store.payload(for: orphanID).items == canonical)
+    }
+
+    @Test func applyColorPasteFormatAcceptsColorHexWhenDisplayTypeLags() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#112233"))
+        let items = PasteboardWriter.colorItems(values, textFormat: .hex)
+        let id = try await store.plantColorForkForTesting(
+            snapshot("#112233", items: items),
+            enrichment: IngestEnrichment(cardPreview: "#112233", colorHex: "#112233", sourceAppName: "Editor")
+        )
+        try await store.corruptColorDisplayTypeForTesting(id, to: .text)
+        #expect(try await store.applyColorPasteFormat(id, format: .rgb, opSeq: 1) == .updated)
+        #expect(try await store.card(id)?.displayType == .color)
+        #expect(try await store.card(id)?.preview == "rgb(17, 34, 51)")
+    }
+
+    @Test func duplicateInStackHealsColourCachesFromPayload() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#AABBCC"))
+        let items = PasteboardWriter.colorItems(values)
+        let id = try await store.plantColorForkForTesting(
+            snapshot("#AABBCC", items: items),
+            enrichment: IngestEnrichment(cardPreview: "#AABBCC", colorHex: "#AABBCC", sourceAppName: "Editor")
+        )
+        try await store.corruptColorCachesForTesting(id, displayType: .text, storedTypes: [], colorHex: nil)
+        let stackID = try await store.createStack(title: "Dup", recordIDs: [id])
+        let copyID = try await store.duplicateInStack(recordID: id, stackID: stackID)
+        let copy = try #require(try await store.card(copyID))
+        #expect(copy.displayType == .color)
+        #expect(copy.colorHex == "#AABBCC")
+        #expect(copy.storedTypes.contains(PasteboardType.color.rawValue))
+    }
+
+    @Test func applyColorPasteFormatIgnoresStaleColorHexCache() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#112233"))
+        let items = PasteboardWriter.colorItems(values)
+        let id = try await store.plantColorForkForTesting(
+            snapshot("#112233", items: items),
+            enrichment: IngestEnrichment(cardPreview: "#112233", colorHex: "#FF0000", sourceAppName: "Editor")
+        )
+        #expect(try await store.applyColorPasteFormat(id, format: .rgb, opSeq: 1) == .updated)
+        #expect(try await store.card(id)?.colorHex == "#112233")
+        #expect(try await store.card(id)?.preview == "rgb(17, 34, 51)")
+        #expect(try await store.payload(for: id).items == PasteboardWriter.colorItems(values, textFormat: .rgb))
+    }
+
+    @Test func ensureCanonicalHealsDisplayTypeWhenPayloadAlreadyCanonical() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#445566"))
+        let items = PasteboardWriter.colorItems(values)
+        // Lone CSS text orphan: ensureCanonical must promote displayType even when it also
+        // rewrites bytes (hash changes) — and when a twin already holds canonical bytes, merge.
+        let textID = try await store.plantTextRecordForTesting("#445566")
+        #expect(try await store.card(textID)?.displayType == .text)
+        let ensured = try await store.ensureCanonicalColorRecord(textID, opSeq: 1)
+        #expect(try await store.card(ensured.id)?.displayType == .color)
+        #expect(ensured.items == items)
+        #expect(try await store.payload(for: ensured.id).items == items)
+        // Second call: bytes already canonical — hash-noop must still keep .color (displayType heal).
+        let again = try await store.ensureCanonicalColorRecord(ensured.id, opSeq: 2)
+        #expect(again.id == ensured.id)
+        #expect(try await store.card(again.id)?.displayType == .color)
+        #expect(again.items == items)
+    }
+
+    @Test func ensureCanonicalDoesNotRewriteChannelsFromStaleCache() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#334455"))
+        let legacyArchive = try #require(
+            NSColor(
+                calibratedRed: CGFloat(values.red) / 255,
+                green: CGFloat(values.green) / 255,
+                blue: CGFloat(values.blue) / 255,
+                alpha: 1
+            ).pasteboardPropertyList(forType: .color) as? Data
+        )
+        let hex = try #require(ColorHex.string(fromPasteboardColor: legacyArchive))
+        let legacyItems = [CanonicalItem([
+            .bytes(.color, legacyArchive),
+            .bytes(.utf8PlainText, Data(hex.utf8)),
+        ])]
+        let canonical = PasteboardWriter.colorItems(try #require(ColorValues(hex: hex)))
+        let id = try await store.plantColorForkForTesting(
+            snapshot(hex, items: legacyItems),
+            enrichment: IngestEnrichment(cardPreview: hex, colorHex: "#FF0000", sourceAppName: "Editor")
+        )
+        let ensured = try await store.ensureCanonicalColorRecord(id, opSeq: 1)
+        #expect(ensured.items == canonical)
+        #expect(try await store.card(id)?.colorHex == hex)
+    }
+
+    @Test func ingestAlignsWrongEnrichmentHexToPayload() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#00AA11"))
+        let items = PasteboardWriter.colorItems(values)
+        let wrong = IngestEnrichment(cardPreview: "#FF0000", colorHex: "#FF0000", sourceAppName: "Editor")
+        guard case .committed(let id) = await store.ingest(
+            snapshot("#00AA11", items: items), readerSeq: 0, enrichment: wrong, limits: RetentionLimits()
+        ) else { Issue.record("colour ingest"); return }
+        #expect(try await store.card(id)?.colorHex == "#00AA11")
+        #expect(try await store.card(id)?.preview == "#00AA11")
+    }
+
+    @Test func editTextPromotesLoneCSSToColorCard() async throws {
+        let store = try ClipboardStore(url: nil)
+        guard case .committed(let id) = await ingest(store, snapshot("note")) else {
+            Issue.record("seed"); return
+        }
+        // Colour UTI archive exceeds a 1 KB text-only limit — use the normal item budget.
+        #expect(try await store.editText(id, text: "#00AA11", opSeq: 1, maxBytes: 1_000_000) == .updated)
+        let card = try #require(try await store.card(id))
+        #expect(card.displayType == .color)
+        #expect(card.colorHex == "#00AA11")
+        #expect(try await store.payload(for: id).items == PasteboardWriter.colorItems(try #require(ColorValues(hex: "#00AA11"))))
+    }
+
+    @Test func editTextRejectsColourUTIEvenWhenDisplayTypeLags() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#00AA11"))
+        let items = PasteboardWriter.colorItems(values)
+        let id = try await store.plantColorForkForTesting(
+            snapshot("#00AA11", items: items),
+            enrichment: IngestEnrichment(cardPreview: "#00AA11", colorHex: "#00AA11", sourceAppName: "Editor")
+        )
+        try await store.corruptColorDisplayTypeForTesting(id, to: .text)
+        #expect(try await store.card(id)?.displayType == .text)
+        #expect(try await store.card(id)?.looksLikeColor == true)
+        let result = try await store.editText(id, text: "not a colour", opSeq: 1, maxBytes: 1_000_000)
+        #expect(result == .rejected("Colour records use the paste-format picker, not the text editor."))
+        #expect(try await store.payload(for: id).items == items)
+    }
+
+    @Test func editTextRejectsColourUTIWhenAllCachesWiped() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#00AA11"))
+        let items = PasteboardWriter.colorItems(values)
+        let id = try await store.plantColorForkForTesting(
+            snapshot("#00AA11", items: items),
+            enrichment: IngestEnrichment(cardPreview: "#00AA11", colorHex: "#00AA11", sourceAppName: "Editor")
+        )
+        // Same corruption as heal recovery — storedTypes alone used to let edit destroy MCS1.
+        try await store.corruptColorCachesForTesting(id, displayType: .text, storedTypes: [], colorHex: nil)
+        #expect(try await store.card(id)?.looksLikeColor == false)
+        let result = try await store.editText(id, text: "not a colour", opSeq: 1, maxBytes: 1_000_000)
+        #expect(result == .rejected("Colour records use the paste-format picker, not the text editor."))
+        #expect(try await store.payload(for: id).items == items)
+    }
+
+    @Test func detailsDoesNotPromoteLoneCSSWithoutColourUTI() async throws {
+        let store = try ClipboardStore(url: nil)
+        let id = try await store.plantTextRecordForTesting("#112233")
+        let details = try #require(try await store.details(id, maxTextScalars: 100))
+        #expect(details.card.displayType == .text, "open-details heal must not flip face without colour bytes")
+        #expect(details.card.colorHex == nil)
+        #expect(try await store.payload(for: id).items == [CanonicalItem([.bytes(.utf8PlainText, Data("#112233".utf8))])])
+    }
+
+    @Test func promoteOrphanMaterializesColorFaceWithoutColourUTI() async throws {
+        let store = try ClipboardStore(url: nil)
+        let id = try await store.plantTextRecordForTesting("#445566")
+        // Simulate older heal: displayType.color while payload is still plain CSS text.
+        try await store.corruptColorCachesForTesting(id, displayType: .color, storedTypes: [], colorHex: "#445566")
+        #expect(try await store.payload(for: id).items.contains { item in
+            item.representations.contains { $0.type == .color }
+        } == false)
+        #expect(try await store.promoteOrphanCSSColorTextRecords(opSeq: 1) == 1)
+        let card = try #require(try await store.card(id))
+        #expect(card.displayType == .color)
+        #expect(card.colorHex == "#445566")
+        #expect(try await store.payload(for: id).items == PasteboardWriter.colorItems(try #require(ColorValues(hex: "#445566"))))
+    }
+
+    @Test func payloadTextUsesTrimmedColorPastePlainText() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#112233"))
+        let colorData = try #require(
+            PasteboardWriter.colorItems(values, textFormat: .rgb)
+                .flatMap(\.representations)
+                .first(where: { $0.type == .color })?
+                .bytes
+        )
+        // Leading/trailing whitespace on utf8 — TextDecoding keeps it; paste SSOT trims.
+        let items = [CanonicalItem([
+            .bytes(.color, colorData),
+            .bytes(.utf8PlainText, Data("  rgb(17, 34, 51)  ".utf8)),
+        ])]
+        let id = try await store.plantColorForkForTesting(
+            snapshot("rgb", items: items),
+            enrichment: IngestEnrichment(cardPreview: "rgb(17, 34, 51)", colorHex: "#112233", sourceAppName: "Editor")
+        )
+        #expect(try await store.payload(for: id).text == "rgb(17, 34, 51)")
+        #expect(try await store.details(id, maxTextScalars: 100)?.text == "rgb(17, 34, 51)")
+        #expect(try await store.card(id)?.hasText == false, "colour cards are not text-action sources")
+        #expect(try await store.card(id)?.looksLikeColor == true)
+    }
+
+    @Test func editTextSoftMergesPromotedCSSIntoExistingColor() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#00AA11"))
+        let colorItems = PasteboardWriter.colorItems(values)
+        guard case .committed(let colorID) = await ingest(store, snapshot("#00AA11", items: colorItems)) else {
+            Issue.record("color"); return
+        }
+        guard case .committed(let textID) = await ingest(store, snapshot("draft", at: 2_000)) else {
+            Issue.record("text"); return
+        }
+        #expect(try await store.editText(textID, text: "#00AA11", opSeq: 1, maxBytes: 1_000_000) == .merged(into: colorID))
+        #expect(try await store.count(HistoryQuery()) == 1)
+        #expect(try await store.card(colorID)?.displayType == .color)
+    }
+
+    @Test func ingestSoftMergesColorIntoOrphanCSSText() async throws {
+        let store = try ClipboardStore(url: nil)
+        let orphanID = try await store.plantTextRecordForTesting("#00BBCC")
+        #expect(try await store.card(orphanID)?.displayType == .text)
+        let values = try #require(ColorValues(hex: "#00BBCC"))
+        let colorItems = PasteboardWriter.colorItems(values)
+        #expect(await ingest(store, snapshot("#00BBCC", at: 2_000, items: colorItems)) == .merged(orphanID))
+        #expect(try await store.count(HistoryQuery()) == 1)
+        #expect(try await store.card(orphanID)?.displayType == .color)
+        #expect(try await store.payload(for: orphanID).items == colorItems)
+    }
+
+    @Test func ingestPromotesInsignificantRTFHexAndMergesWithColor() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#F0BF00"))
+        let colorItems = PasteboardWriter.colorItems(values)
+        guard case .committed(let colorID) = await ingest(store, snapshot("#F0BF00", items: colorItems)) else {
+            Issue.record("color"); return
+        }
+        // Browser/Notes chrome: insignificant RTF + lone CSS — must not fork a second card.
+        let rtf = Data(("{\\rtf1\\ansi\\ansicpg1252\\cocoartf2822\n\\cocoatextscaling0\\cocoaplatform0{\\fonttbl\\f0\\fswiss\\fcharset0 Helvetica;}\n"
+            + "{\\colortbl;\\red255\\green255\\blue255;\\red0\\green0\\blue0;}\n"
+            + "\\pard\\tx560\\pardirnatural\\partightenfactor0\n\n\\f0\\fs24 \\cf0 #F0BF00}").utf8)
+        let chrome = [CanonicalItem([
+            .bytes(.rtf, rtf),
+            .bytes(.utf8PlainText, Data("#F0BF00".utf8)),
+        ])]
+        #expect(DisplayType.classify(chrome) == .text)
+        #expect(await ingest(store, snapshot("#F0BF00", at: 2_000, items: chrome)) == .merged(colorID))
+        #expect(try await store.count(HistoryQuery()) == 1)
+    }
+
+    @Test func promoteOrphanCSSColorTextRecordsMergesIntoColorTwin() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#00BBCC"))
+        let colorItems = PasteboardWriter.colorItems(values)
+        guard case .committed(let colorID) = await ingest(store, snapshot("#00BBCC", items: colorItems)) else {
+            Issue.record("color"); return
+        }
+        let orphanID = try await store.plantTextRecordForTesting("#00BBCC", at: Date(timeIntervalSince1970: 2_000))
+        #expect(try await store.count(HistoryQuery()) == 2)
+        #expect(try await store.promoteOrphanCSSColorTextRecords(opSeq: 1) == 1)
+        #expect(try await store.count(HistoryQuery()) == 1)
+        #expect(try await store.card(orphanID) == nil)
+        #expect(try await store.card(colorID)?.displayType == .color)
+        #expect(try await store.promoteOrphanCSSColorTextRecords(opSeq: 2) == 0)
+    }
+
+    @Test func promoteOrphanCSSColorTextRecordsUpgradesLoneOrphan() async throws {
+        let store = try ClipboardStore(url: nil)
+        let orphanID = try await store.plantTextRecordForTesting("#112233")
+        #expect(try await store.promoteOrphanCSSColorTextRecords(opSeq: 1) == 1)
+        let card = try #require(try await store.card(orphanID))
+        #expect(card.displayType == .color)
+        #expect(card.colorHex == "#112233")
+        #expect(try await store.payload(for: orphanID).items == PasteboardWriter.colorItems(try #require(ColorValues(hex: "#112233"))))
+    }
+
+    @Test func softMergeFindsColorWhenStoredColorHexIsNil() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#F0BF00"))
+        let legacyArchive = try #require(
+            NSColor(
+                calibratedRed: CGFloat(values.red) / 255,
+                green: CGFloat(values.green) / 255,
+                blue: CGFloat(values.blue) / 255,
+                alpha: 1
+            ).pasteboardPropertyList(forType: .color) as? Data
+        )
+        let legacyHex = try #require(ColorHex.string(fromPasteboardColor: legacyArchive))
+        let legacyItems = [CanonicalItem([
+            .bytes(.color, legacyArchive),
+            .bytes(.utf8PlainText, Data(legacyHex.utf8)),
+        ])]
+        let id = try await store.plantColorForkForTesting(
+            snapshot(legacyHex, items: legacyItems),
+            enrichment: IngestEnrichment(cardPreview: legacyHex, sourceAppName: "Editor")
+        )
+        #expect(try await store.card(id)?.colorHex == nil)
+
+        let canonical = PasteboardWriter.colorItems(try #require(ColorValues(hex: legacyHex)))
+        let full = IngestEnrichment.make(for: canonical, sourceAppName: "Editor")
+        #expect(
+            await store.ingest(
+                snapshot(legacyHex, at: 2_000, items: canonical), readerSeq: 1, enrichment: full, limits: RetentionLimits()
+            ) == .merged(id)
+        )
+        #expect(try await store.count(HistoryQuery()) == 1)
+        #expect(try await store.card(id)?.colorHex == legacyHex)
+        #expect(try await store.payload(for: id).items == canonical)
+    }
+
+    @Test func ingestMergesColorWhenArchiveBytesDifferButHexAndFormatMatch() async throws {
+        let store = try ClipboardStore(url: nil)
+        let values = try #require(ColorValues(hex: "#F0BF00"))
+        // Pre-canonical card: colour UTI whose archive is not `colorItems`, plus matching HEX text.
+        let legacyArchive = try #require(
+            NSColor(calibratedRed: CGFloat(values.red) / 255, green: CGFloat(values.green) / 255, blue: CGFloat(values.blue) / 255, alpha: 1)
+                .pasteboardPropertyList(forType: .color) as? Data
+        )
+        let legacyHex = try #require(ColorHex.string(fromPasteboardColor: legacyArchive))
+        let legacyItems = [CanonicalItem([
+            .bytes(.color, legacyArchive),
+            .bytes(.utf8PlainText, Data(legacyHex.utf8)),
+        ])]
+        guard case .committed(let id) = await ingest(store, snapshot(legacyHex, items: legacyItems)) else {
+            Issue.record("legacy colour ingest"); return
+        }
+        let canonical = PasteboardWriter.colorItems(try #require(ColorValues(hex: legacyHex)))
+        #expect(MCS1.contentHash(of: canonical) != MCS1.contentHash(of: legacyItems), "archives must differ so MCS1 misses")
+        #expect(await ingest(store, snapshot(legacyHex, at: 2_000, items: canonical)) == .merged(id))
+        #expect(try await store.count(HistoryQuery()) == 1)
+        #expect(try await store.card(id)?.copyCount == 2)
+        #expect(try await store.card(id)?.colorHex == legacyHex)
+        // Soft-merge must upgrade legacy UTI so the next MCS1 hit is a hard dedup.
+        #expect(try await store.payload(for: id).items == canonical)
+        #expect(await ingest(store, snapshot(legacyHex, at: 3_000, items: canonical)) == .merged(id))
+        #expect(try await store.card(id)?.copyCount == 3)
     }
 }

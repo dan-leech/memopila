@@ -299,6 +299,8 @@ enum ActionRegistry {
 
     /// *Duplicate As ▸*: a new card with transformed text appears at the top; the original stays.
     private static func duplicateMenu(for card: HistoryCard, model: AppModel) -> ActionItem? {
+        // Colour cards use the paste-format picker — text transforms forked near-duplicate colours.
+        guard !card.looksLikeColor else { return nil }
         let id = card.id
         var children: [ActionItem] = []
         if card.hasText, card.displayType != .text {

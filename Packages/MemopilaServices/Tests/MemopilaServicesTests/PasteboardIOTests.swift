@@ -62,6 +62,26 @@ struct PasteboardIOTests {
         #expect(TextDecoding.plainText(of: snapshot.items) == "hello")
     }
 
+    @Test func makeItemsDecodesUTF16ColourPasteTextWithoutSynthesizingHex() throws {
+        let values = try #require(ColorValues(hex: "#00FF00"))
+        let colorData = try #require(
+            NSColor(srgbRed: 0, green: 1, blue: 0, alpha: 1).pasteboardPropertyList(forType: .color) as? Data
+        )
+        var bytes = Data()
+        for unit in values.rgb.utf16 {
+            var le = unit.littleEndian
+            withUnsafeBytes(of: &le) { bytes.append(contentsOf: $0) }
+        }
+        let items = [CanonicalItem([
+            .bytes(.color, colorData),
+            .bytes(.utf16PlainText, bytes),
+        ])]
+        let pasteboardItems = PasteboardWriter.makeItems(items, sourceBundleID: nil)
+        #expect(pasteboardItems.count == 1)
+        #expect(pasteboardItems[0].string(forType: .string) == "rgb(0, 255, 0)")
+        #expect(pasteboardItems[0].data(forType: .color) == colorData)
+    }
+
     @Test func enrichmentForImagesAndColors() throws {
         let png = try #require(TestImages.png(width: 1200, height: 600))
         let enrichment = IngestEnrichment.make(for: [CanonicalItem([.bytes(.png, png)])], sourceAppName: nil)
@@ -72,6 +92,8 @@ struct PasteboardIOTests {
 
         let colorData = try #require(NSColor(srgbRed: 1, green: 0.5, blue: 0, alpha: 1).pasteboardPropertyList(forType: .color) as? Data)
         #expect(ColorHex.string(fromPasteboardColor: colorData) == "#FF8000")
+        let translucent = try #require(NSColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.5).pasteboardPropertyList(forType: .color) as? Data)
+        #expect(ColorHex.string(fromPasteboardColor: translucent) == "#00000080")
     }
 
     @Test func richTextFallbacksForSearch() {

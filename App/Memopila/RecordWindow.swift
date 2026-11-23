@@ -47,6 +47,19 @@ enum RecordKeys {
         let flags = event.modifierFlags.intersection([.command, .option, .control, .shift])
         let key = KeyPress(event)
         let responder = window.firstResponder
+        // Eyedropper mode: one gesture leaves sampling only (pin stays). Same keys again act normally.
+        if state.isEyedropping, flags.isEmpty {
+            let exitsMode =
+                key.code == kVK_Escape
+                || key.code == kVK_Space
+                || key.isReturn
+                || [kVK_UpArrow, kVK_DownArrow, kVK_LeftArrow, kVK_RightArrow].contains(key.code)
+            if exitsMode {
+                state.isEyedropping = false
+                state.hoverColor = nil
+                return true
+            }
+        }
         if key.code == kVK_Escape {
             // Esc inside the find bar closes the find bar, not the window.
             // Also the find bar of the text recognized in an image.

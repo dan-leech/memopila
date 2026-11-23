@@ -1,4 +1,7 @@
 import AppKit
+import CoreGraphics
+import MemopilaCore
+import MemopilaServices
 import Observation
 import SwiftUI
 
@@ -60,7 +63,11 @@ final class ImageZoom {
 /// transparent shadow margin showed as a strange patterned frame (first-run feedback).
 struct ZoomableImage: NSViewRepresentable {
     let image: NSImage
+    let cgImage: CGImage?
     let zoom: ImageZoom
+    var isPicking: Bool = false
+    var onHover: ((ColorValues?) -> Void)?
+    var onPicked: ((ColorValues) -> Void)?
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
@@ -76,23 +83,33 @@ struct ZoomableImage: NSViewRepresentable {
         scrollView.allowsMagnification = true
         scrollView.minMagnification = 0.02
         scrollView.maxMagnification = 32
-        let imageView = NSImageView()
+        let imageView = PickingImageView()
         imageView.image = image
+        imageView.cgImage = cgImage
         imageView.imageScaling = .scaleAxesIndependently
         imageView.frame = NSRect(origin: .zero, size: Self.pixelSize(of: image))
         scrollView.documentView = imageView
         zoom.scrollView = scrollView
         context.coordinator.observe(scrollView, zoom: zoom)
+        context.coordinator.bind(imageView, parent: self)
         // Fit once the scroll view has its size.
         Task { @MainActor in zoom.fit() }
         return scrollView
     }
 
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        guard let imageView = scrollView.documentView as? NSImageView, imageView.image !== image else { return }
-        imageView.image = image
-        imageView.frame = NSRect(origin: .zero, size: Self.pixelSize(of: image))
-        zoom.fit()
+        guard let imageView = scrollView.documentView as? PickingImageView else { return }
+        context.coordinator.bind(imageView, parent: self)
+        if imageView.image !== image {
+            imageView.image = image
+            imageView.cgImage = cgImage
+            imageView.frame = NSRect(origin: .zero, size: Self.pixelSize(of: image))
+            zoom.fit()
+        } else {
+            imageView.cgImage = cgImage
+        }
+        imageView.isPicking = isPicking
+        imageView.window?.invalidateCursorRects(for: imageView)
     }
 
     private static func pixelSize(of image: NSImage) -> NSSize {
@@ -120,9 +137,103 @@ struct ZoomableImage: NSViewRepresentable {
             })
         }
 
+        @MainActor
+        fileprivate func bind(_ imageView: PickingImageView, parent: ZoomableImage) {
+            imageView.isPicking = parent.isPicking
+            imageView.cgImage = parent.cgImage
+            imageView.onHover = parent.onHover
+            imageView.onPicked = parent.onPicked
+        }
+
         deinit {
             observers.forEach(NotificationCenter.default.removeObserver)
         }
+    }
+}
+
+/// Image document that can sample pixels while the eyedropper is armed.
+private final class PickingImageView: NSImageView {
+    var cgImage: CGImage?
+    var isPicking = false {
+        didSet {
+            window?.invalidateCursorRects(for: self)
+            if !isPicking {
+                onHover?(nil)
+                downPoint = nil
+            }
+        }
+    }
+    var onHover: ((ColorValues?) -> Void)?
+    var onPicked: ((ColorValues) -> Void)?
+
+    private var tracking: NSTrackingArea?
+    private var downPoint: NSPoint?
+    private static let dragThreshold: CGFloat = 4
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        if let tracking { removeTrackingArea(tracking) }
+        let options: NSTrackingArea.Options = [.mouseEnteredAndExited, .mouseMoved, .activeInKeyWindow, .inVisibleRect]
+        let area = NSTrackingArea(rect: .zero, options: options, owner: self, userInfo: nil)
+        addTrackingArea(area)
+        tracking = area
+    }
+
+    override func resetCursorRects() {
+        if isPicking {
+            addCursorRect(bounds, cursor: .crosshair)
+        } else {
+            super.resetCursorRects()
+        }
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard isPicking else { return super.mouseMoved(with: event) }
+        onHover?(sample(at: convert(event.locationInWindow, from: nil)))
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onHover?(nil)
+        super.mouseExited(with: event)
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard isPicking, event.type == .leftMouseDown else { return super.mouseDown(with: event) }
+        // Consume the click so it does not start a drag-pan; scroll wheel / pinch still work.
+        downPoint = convert(event.locationInWindow, from: nil)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard isPicking else { return super.mouseDragged(with: event) }
+        // Ignore drag while picking: a drag past the threshold cancels the pin on mouseUp.
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        defer { downPoint = nil }
+        guard isPicking, event.type == .leftMouseUp, let start = downPoint else {
+            return super.mouseUp(with: event)
+        }
+        let point = convert(event.locationInWindow, from: nil)
+        // Click without drag → pin; a drag was a cancelled pan attempt, not a sample.
+        guard hypot(point.x - start.x, point.y - start.y) < Self.dragThreshold else { return }
+        if let color = sample(at: point) {
+            onPicked?(color)
+        }
+    }
+
+    override func rightMouseDown(with event: NSEvent) {
+        guard !isPicking else { return }
+        super.rightMouseDown(with: event)
+    }
+
+    private func sample(at point: NSPoint) -> ColorValues? {
+        guard let cgImage, bounds.width > 0, bounds.height > 0 else { return nil }
+        return ImageColorSample.color(
+            in: cgImage,
+            documentX: point.x,
+            documentY: point.y,
+            documentSize: bounds.size
+        )
     }
 }
 

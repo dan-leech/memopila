@@ -115,6 +115,12 @@ public actor ClipboardStore {
         limits: RetentionLimits,
         protectingRecords: Set<UUID> = []
     ) -> IngestResult {
+        // Canonicalize before address: MCS1 / soft-dedup must not trust client colour bytes (§8.5).
+        let snapshot = ColorPayload.normalizedSnapshot(snapshot)
+        var enrichment = enrichment
+        if ColorPayload.identity(of: snapshot.items) != nil {
+            enrichment = Self.enrichmentAligned(with: snapshot, base: enrichment)
+        }
         if staleGuard.isStale(contentHash: snapshot.contentHash, readerSeq: readerSeq) { return .dropped }
         let context = makeContext()
         let observation = CaptureObservation(
@@ -129,8 +135,34 @@ public actor ClipboardStore {
             if let existing = try fetchRecord(withHash: snapshot.contentHash, in: context) {
                 apply(DedupMerge.merge(try metadata(of: existing, in: context), with: observation), to: existing)
                 if let kind = snapshot.sensitiveKind { existing.sensitiveKind = kind.rawValue }
+                // colorHex / preview are caches: a hard MCS1 hit must not leave them nil forever
+                // (format picker / soft-dedup / swatch all trust the cache, not the payload).
+                backfillColorMetadata(on: existing, from: enrichment, snapshot: snapshot)
                 existing.searchText = Self.searchText(for: existing)
                 try context.save()
+                return .merged(existing.id)
+            }
+
+            // Same sRGB + paste format, different NSColor archive bytes (Color Picker vs #hex text).
+            // Identity from payload after normalize — not displayType / enrichment alone.
+            // Upgrade the survivor to the inbound canonical payload so Choose/MCS1 converge.
+            if let identity = ColorPayload.identity(of: snapshot.items),
+               let existing = try fetchColorDuplicate(
+                identity: identity,
+                excludingHash: snapshot.contentHash,
+                excludingID: nil,
+                in: context
+               ) {
+                apply(DedupMerge.merge(try metadata(of: existing, in: context), with: observation), to: existing)
+                if let kind = snapshot.sensitiveKind { existing.sensitiveKind = kind.rawValue }
+                if existing.contentHash != snapshot.contentHash {
+                    staleGuard.recordTombstone(contentHash: existing.contentHash, opSeq: readerSeq)
+                    try replaceColorPayload(of: existing, with: snapshot, enrichment: enrichment, in: context)
+                } else {
+                    backfillColorMetadata(on: existing, from: enrichment, snapshot: snapshot)
+                    existing.searchText = Self.searchText(for: existing)
+                    try context.save()
+                }
                 return .merged(existing.id)
             }
 
@@ -173,7 +205,9 @@ public actor ClipboardStore {
             record.sensitiveKind = snapshot.sensitiveKind?.rawValue
             record.pixelWidth = enrichment.pixelWidth
             record.pixelHeight = enrichment.pixelHeight
-            record.colorHex = enrichment.colorHex
+            // Payload SSOT: enrichment hex is a cache hint only.
+            record.colorHex = Self.colorHexFromItems(snapshot.items)
+                ?? Self.canonicalColorHex(enrichment.colorHex)
             record.filePaths = enrichment.filePaths
             record.storedTypes = Self.distinctTypes(of: snapshot.items)
             record.skippedTypes = snapshot.skippedTypes.map(\.rawValue)
@@ -276,13 +310,30 @@ public actor ClipboardStore {
         let context = makeContext()
         guard let record = try fetchRecord(id, in: context) else { return nil }
         let rows = record.representations.sorted { ($0.itemIndex, $0.repIndex) < ($1.itemIndex, $1.repIndex) }
+        let payloadItems = Self.items(from: rows)
+        // Payload / caches that already mean colour — not `normalized` (that promotes lone CSS;
+        // promotion belongs in ingest / promoteOrphan / editText, not open-details heal).
+        let looksColour = DisplayType(rawValue: record.displayTypeRaw) == .color
+            || record.colorHex != nil
+            || record.storedTypes.contains(PasteboardType.color.rawValue)
+            || payloadItems.contains { item in item.representations.contains { $0.type == .color } }
+        if looksColour {
+            try healColorMetadataIfNeeded(record, in: context)
+        }
         // Only text rows are read, and none when no text is wanted: an image's payload stays on
         // disk (review finding: every open of a record loaded all of it).
         var text: String?
         if maxTextScalars > 0 {
-            let textTypes = Set(PasteboardType.plainTextTypes.union(PasteboardType.richTextTypes).union([.url]).map(\.rawValue))
-            let items = Self.items(from: rows.filter { textTypes.contains($0.uti) })
-            text = RichText.plainText(of: items).map { TextDecoding.prefix($0, maxScalars: maxTextScalars) }
+            // Colour only: pastePlainText also returns ordinary utf8 for non-colour items — do not
+            // steal rich-text HTML/RTF extraction. Trimmed CSS SSOT matches RestorePayload.text.
+            if looksColour,
+               let plain = ColorPayload.pastePlainText(of: payloadItems) {
+                text = TextDecoding.prefix(plain, maxScalars: maxTextScalars)
+            } else {
+                let textTypes = Set(PasteboardType.plainTextTypes.union(PasteboardType.richTextTypes).union([.url]).map(\.rawValue))
+                let items = Self.items(from: rows.filter { textTypes.contains($0.uti) })
+                text = RichText.plainText(of: items).map { TextDecoding.prefix($0, maxScalars: maxTextScalars) }
+            }
         }
         let tags = try context.fetch(FetchDescriptor<RecordTag>(predicate: #Predicate { $0.recordID == id }))
         return RecordDetails(
@@ -379,6 +430,286 @@ public actor ClipboardStore {
         return nil
     }
 
+    /// Align colour `colorHex` / `cardPreview` / `displayType` to the payload (migration / details).
+    /// Stale caches used to win over the colour UTI and rewrite channels on Choose. Returns how many changed.
+    @discardableResult
+    public func backfillMissingColorMetadata() throws -> Int {
+        let ids = try colorHealCandidateIDs()
+        var changed = 0
+        for start in stride(from: 0, to: ids.count, by: 50) {
+            let batch = Array(ids[start..<min(start + 50, ids.count)])
+            let context = makeContext()
+            let records = try context.fetch(FetchDescriptor<ClipboardRecord>(predicate: #Predicate { batch.contains($0.id) }))
+            var batchChanged = 0
+            for record in records {
+                if try healColorMetadataIfNeeded(record, in: context, save: false) {
+                    batchChanged += 1
+                }
+            }
+            if batchChanged > 0 {
+                try context.save()
+                changed += batchChanged
+            }
+        }
+        return changed
+    }
+
+    /// Colour displayType / colorHex / storedTypes, or a colour UTI row (stale empty storedTypes).
+    /// Launch migration / coalesce — not a hot path.
+    private func colorHealCandidateIDs() throws -> [UUID] {
+        let type = DisplayType.color.rawValue
+        let colorUTI = PasteboardType.color.rawValue
+        let context = makeContext()
+        var ids = Set<UUID>()
+        var descriptor = FetchDescriptor<ClipboardRecord>()
+        descriptor.propertiesToFetch = [\.id, \.displayTypeRaw, \.storedTypes, \.colorHex]
+        for record in try context.fetch(descriptor) {
+            if record.displayTypeRaw == type || record.colorHex != nil || record.storedTypes.contains(colorUTI) {
+                ids.insert(record.id)
+            }
+        }
+        // Payload SSOT: empty storedTypes used to hide colour UTI rows from migration forever.
+        let repDescriptor = FetchDescriptor<PayloadRepresentation>(
+            predicate: #Predicate { $0.uti == colorUTI }
+        )
+        for rep in try context.fetch(repDescriptor) {
+            if let id = rep.record?.id { ids.insert(id) }
+        }
+        return Array(ids)
+    }
+
+    /// Persist colour caches + promote `displayType` / `storedTypes` from payload (SSOT).
+    /// `save: false` batches several heals into one caller save.
+    @discardableResult
+    private func healColorMetadataIfNeeded(
+        _ record: ClipboardRecord,
+        in context: ModelContext,
+        save: Bool = true
+    ) throws -> Bool {
+        let rows = record.representations.sorted { ($0.itemIndex, $0.repIndex) < ($1.itemIndex, $1.repIndex) }
+        let items = Self.items(from: rows)
+        // Payload colour UTI only — `normalized` would treat lone CSS as colour and flip
+        // displayType without writing MCS1 colour bytes (that's promoteOrphanCSSColorTextRecords).
+        let payloadHasColourUTI = items.contains { item in item.representations.contains { $0.type == .color } }
+        let cacheSaysColour = DisplayType(rawValue: record.displayTypeRaw) == .color
+            || record.colorHex != nil
+            || record.storedTypes.contains(PasteboardType.color.rawValue)
+        // Never run pastePlainText fallback on ordinary text — it would rewrite cardPreview.
+        guard payloadHasColourUTI || cacheSaysColour else { return false }
+
+        var did = false
+        if let hex = resolvedColorHex(of: record), record.colorHex != hex {
+            record.colorHex = hex
+            did = true
+        }
+        // Colour paste SSOT only when a colour UTI exists; else keep colorHex / leave preview.
+        let plain: String? = payloadHasColourUTI
+            ? (ColorPayload.pastePlainText(of: items) ?? record.colorHex)
+            : record.colorHex
+        if let plain, !plain.isEmpty {
+            let preview = record.cardPreview.trimmingCharacters(in: .whitespacesAndNewlines)
+            if preview != plain {
+                record.cardPreview = TextDecoding.prefix(plain, maxScalars: IngestEnrichment.cardPreviewScalars)
+                record.textIndex = TextDecoding.prefix(plain, maxScalars: IngestEnrichment.searchScalars)
+                record.textLength = plain.count
+                record.lineCount = 1
+                did = true
+            }
+        }
+        if payloadHasColourUTI {
+            let types = Self.distinctTypes(of: items)
+            if record.storedTypes != types {
+                record.storedTypes = types
+                did = true
+            }
+            if DisplayType(rawValue: record.displayTypeRaw) != .color {
+                record.displayTypeRaw = DisplayType.color.rawValue
+                did = true
+            }
+        } else if record.storedTypes.contains(PasteboardType.color.rawValue) {
+            // Stale storedTypes claimed colour while rows do not — realign cache to payload.
+            let types = Self.distinctTypes(of: items)
+            if record.storedTypes != types {
+                record.storedTypes = types
+                did = true
+            }
+        }
+        guard did else { return false }
+        record.searchText = Self.searchText(for: record)
+        if save { try context.save() }
+        return true
+    }
+
+    /// Test seam: insert a text card without `ColorPayload.normalized` (pre-promote CSS orphans).
+    func plantTextRecordForTesting(_ text: String, at observedAt: Date = Date(timeIntervalSince1970: 1_000)) throws -> UUID {
+        let items = [CanonicalItem([.bytes(.utf8PlainText, Data(text.utf8))])]
+        precondition(DisplayType.classify(items) == .text)
+        let context = makeContext()
+        let record = ClipboardRecord(
+            displayTypeRaw: DisplayType.text.rawValue,
+            firstCopiedAt: observedAt,
+            lastCopiedAt: observedAt,
+            copyCount: 1,
+            contentHash: MCS1.contentHash(of: items),
+            hashSchemeVersion: MCS1.hashSchemeVersion,
+            storageFormatVersion: PayloadIntegrity.storageFormatVersion,
+            payloadSizeBytes: MCS1.payloadSize(of: items)
+        )
+        record.cardPreview = TextDecoding.prefix(text, maxScalars: IngestEnrichment.cardPreviewScalars)
+        record.textIndex = TextDecoding.prefix(text, maxScalars: IngestEnrichment.searchScalars)
+        record.textLength = text.count
+        record.lineCount = 1
+        record.storedTypes = Self.distinctTypes(of: items)
+        record.searchText = Self.searchText(for: record)
+        context.insert(record)
+        insertRepresentations(of: items, for: record, in: context)
+        try context.save()
+        return record.id
+    }
+
+    /// Test seam: leave colour payload but set a stale `displayType` (type-lag orphan).
+    func corruptColorDisplayTypeForTesting(_ id: UUID, to type: DisplayType) throws {
+        let context = makeContext()
+        guard let record = try fetchRecord(id, in: context) else { return }
+        record.displayTypeRaw = type.rawValue
+        try context.save()
+    }
+
+    /// Test seam: clear colour caches while leaving colour UTI rows on disk.
+    func corruptColorCachesForTesting(_ id: UUID, displayType: DisplayType, storedTypes: [String], colorHex: String?) throws {
+        let context = makeContext()
+        guard let record = try fetchRecord(id, in: context) else { return }
+        record.displayTypeRaw = displayType.rawValue
+        record.storedTypes = storedTypes
+        record.colorHex = colorHex
+        try context.save()
+    }
+
+    /// Test seam: insert a colour card without soft-merge so migration coalesce can plant MCS1 forks.
+    func plantColorForkForTesting(_ snapshot: OwnedSnapshot, enrichment: IngestEnrichment) throws -> UUID {
+        precondition(snapshot.displayType == .color)
+        let context = makeContext()
+        let observation = CaptureObservation(
+            observedAt: snapshot.observedAt,
+            sourceAppBundleID: snapshot.identity.bundleID,
+            sourceAppName: enrichment.sourceAppName,
+            sourceURL: snapshot.sourceURL,
+            sourceWindowTitle: nil,
+            retentionMinutes: snapshot.settings.retentionMinutes
+        )
+        let record = ClipboardRecord(
+            displayTypeRaw: snapshot.displayType.rawValue,
+            firstCopiedAt: snapshot.observedAt,
+            lastCopiedAt: snapshot.observedAt,
+            copyCount: 1,
+            contentHash: snapshot.contentHash,
+            hashSchemeVersion: MCS1.hashSchemeVersion,
+            storageFormatVersion: PayloadIntegrity.storageFormatVersion,
+            payloadSizeBytes: snapshot.payloadSizeBytes
+        )
+        apply(DedupMerge.newRecord(from: observation), to: record)
+        record.cardPreview = enrichment.cardPreview
+        record.textIndex = enrichment.textIndex
+        record.textLength = enrichment.textLength
+        record.lineCount = enrichment.lineCount
+        record.colorHex = enrichment.colorHex
+        record.storedTypes = Self.distinctTypes(of: snapshot.items)
+        record.skippedTypes = snapshot.skippedTypes.map(\.rawValue)
+        record.ocrStateRaw = Self.initialRecognitionState(for: snapshot).rawValue
+        record.searchText = Self.searchText(for: record)
+        context.insert(record)
+        insertRepresentations(of: snapshot.items, for: record, in: context)
+        try context.save()
+        return record.id
+    }
+
+    /// Collapse colour cards that share the same sRGB hex + paste format but forked MCS1
+    /// (legacy NSColor archives). Keeps one survivor per identity, upgrades it to `colorItems`.
+    /// Includes type-lag orphans (colour UTI / colorHex with stale displayType) so they join the
+    /// same identity bucket after heal promotes them — not only rows already marked `.color`.
+    /// Returns how many duplicate cards were deleted.
+    @discardableResult
+    public func coalesceDuplicateColorRecords(opSeq: Int) throws -> Int {
+        let ids = try colorHealCandidateIDs()
+        guard ids.count > 1 else { return 0 }
+        let context = makeContext()
+        let records = try context.fetch(FetchDescriptor<ClipboardRecord>(predicate: #Predicate { ids.contains($0.id) }))
+
+        var groups: [String: [ClipboardRecord]] = [:]
+        for record in records {
+            _ = try healColorMetadataIfNeeded(record, in: context, save: false)
+            guard let identity = colorIdentity(of: record) else { continue }
+            groups["\(identity.hex)|\(identity.format.rawValue)", default: []].append(record)
+        }
+        try context.save()
+
+        var deleted = 0
+        for (_, group) in groups where group.count > 1 {
+            deleted += try coalesceColorGroup(group, opSeq: opSeq)
+        }
+        return deleted
+    }
+
+    /// One (hex, format) bucket: merge extras into a survivor and canonicalize its payload.
+    private func coalesceColorGroup(_ group: [ClipboardRecord], opSeq: Int) throws -> Int {
+        let context = makeContext()
+        let ids = group.map(\.id)
+        let records = try context.fetch(FetchDescriptor<ClipboardRecord>(predicate: #Predicate { ids.contains($0.id) }))
+        guard records.count > 1 else { return 0 }
+
+        guard let identity = records.lazy.compactMap({ self.colorIdentity(of: $0) }).first,
+              let values = ColorValues(hex: identity.hex) else { return 0 }
+        let format = identity.format
+        let hex = identity.hex
+        let canonical = PasteboardWriter.colorItems(values, textFormat: format)
+        guard !canonical.isEmpty else { return 0 }
+        let canonicalHash = MCS1.contentHash(of: canonical)
+
+        // Prefer a card that already holds the canonical hash; else favorite; else earliest copy.
+        let survivor = records.first { $0.contentHash == canonicalHash }
+            ?? records.first(where: \.isFavorite)
+            ?? records.sorted { a, b in
+                if a.firstCopiedAt != b.firstCopiedAt { return a.firstCopiedAt < b.firstCopiedAt }
+                return a.id.uuidString < b.id.uuidString
+            }.first
+        guard let survivor else { return 0 }
+        let victims = records.filter { $0.id != survivor.id }
+        guard !victims.isEmpty else { return 0 }
+
+        try saveOrRollback(context) {
+            for victim in victims {
+                staleGuard.recordTombstone(contentHash: victim.contentHash, opSeq: opSeq)
+                let victimUse = victim.useCount
+                apply(
+                    DedupMerge.mergeEdited(try metadata(of: victim, in: context), into: try metadata(of: survivor, in: context)),
+                    to: survivor
+                )
+                survivor.useCount += victimUse
+                if survivor.customTitle == nil { survivor.customTitle = victim.customTitle }
+                let survivorID = survivor.id
+                let victimID = victim.id
+                let tags = try context.fetch(FetchDescriptor<RecordTag>(predicate: #Predicate { $0.recordID == victimID }))
+                let existing = Set(
+                    try context.fetch(FetchDescriptor<RecordTag>(predicate: #Predicate { $0.recordID == survivorID }))
+                        .map(\.collectionID)
+                )
+                for tag in tags where !existing.contains(tag.collectionID) {
+                    context.insert(RecordTag(recordID: survivorID, collectionID: tag.collectionID))
+                }
+                try retargetStackMembers(from: victimID, to: survivorID, in: context)
+                try Self.retargetFavoriteSlot(from: victimID, to: survivorID, in: context)
+                try Self.retargetCollectionSlots(from: victimID, to: survivorID, in: context)
+            }
+            try deleteRecords(ids: victims.map(\.id), in: context)
+            survivor.colorHex = hex
+            survivor.searchText = Self.searchText(for: survivor)
+        }
+
+        // Canonicalize the survivor (no-op when it already holds colorItems for this format).
+        _ = try applyColorPasteFormat(survivor.id, format: format, opSeq: opSeq)
+        return victims.count
+    }
+
     /// Records stored as rich text whose formatting says nothing (one font in one colour) become
     /// text or links, as new copies are classified (owner feedback); run once after the update.
     /// Only the text rows are read, a few records at a time. Returns how many changed.
@@ -395,6 +726,17 @@ public actor ClipboardStore {
             let context = makeContext()
             let records = try context.fetch(FetchDescriptor<ClipboardRecord>(predicate: #Predicate { batch.contains($0.id) }))
             for record in records {
+                // Colour UTI / colorHex: text-only classify would demote to .text and leave a
+                // type-lag orphan (Predicate Colors filter + looksLikeColor diverge from payload).
+                let hasColourUTI = record.representations.contains { $0.uti == PasteboardType.color.rawValue }
+                    || record.storedTypes.contains(PasteboardType.color.rawValue)
+                if hasColourUTI || record.colorHex != nil {
+                    if hasColourUTI, record.displayTypeRaw != DisplayType.color.rawValue {
+                        record.displayTypeRaw = DisplayType.color.rawValue
+                        changed += 1
+                    }
+                    continue
+                }
                 let rows = record.representations
                     .filter { textTypes.contains($0.uti) }
                     .sorted { ($0.itemIndex, $0.repIndex) < ($1.itemIndex, $1.repIndex) }
@@ -441,7 +783,14 @@ public actor ClipboardStore {
                 hashSchemeVersion: record.hashSchemeVersion,
                 storageFormatVersion: record.storageFormatVersion
             )
-            return RestorePayload(items: items, sourceBundleID: record.lastSourceAppBundleID, text: RichText.plainText(of: items))
+            // Colour only: pastePlainText also returns ordinary utf8 (trimmed) for non-colour —
+            // do not change plain-text Duplicate As whitespace for normal text cards.
+            let isColour = items.contains { item in item.representations.contains { $0.type == .color } }
+                || ColorPayload.identity(of: items) != nil
+            let text = isColour
+                ? (ColorPayload.pastePlainText(of: items) ?? RichText.plainText(of: items))
+                : RichText.plainText(of: items)
+            return RestorePayload(items: items, sourceBundleID: record.lastSourceAppBundleID, text: text)
         } catch {
             throw StoreError.unreadable("\(error)")
         }
@@ -478,8 +827,18 @@ public actor ClipboardStore {
     public func displayTypes() throws -> [DisplayType] {
         let context = makeContext()
         var descriptor = FetchDescriptor<ClipboardRecord>()
-        descriptor.propertiesToFetch = [\.displayTypeRaw]
-        let present = Set(try context.fetch(descriptor).compactMap { DisplayType(rawValue: $0.displayTypeRaw) })
+        descriptor.propertiesToFetch = [\.displayTypeRaw, \.storedTypes, \.colorHex]
+        let colorUTI = PasteboardType.color.rawValue
+        var present = Set<DisplayType>()
+        for record in try context.fetch(descriptor) {
+            if let type = DisplayType(rawValue: record.displayTypeRaw) {
+                present.insert(type)
+            }
+            // Type-lag orphans: Colors chip before launch heal promotes displayType.
+            if record.colorHex != nil || record.storedTypes.contains(colorUTI) {
+                present.insert(.color)
+            }
+        }
         return DisplayType.allCases.filter(present.contains)
     }
 
@@ -596,6 +955,15 @@ public actor ClipboardStore {
         guard let type = DisplayType(rawValue: record.displayTypeRaw), [.text, .richText, .url].contains(type) else {
             return .rejected("Only text records can be edited.")
         }
+        // displayType / storedTypes can lag empty while colour UTI rows remain — payload is SSOT.
+        // Lone CSS *without* a colour UTI / colorHex stays editable so edit can promote via normalize.
+        let editRows = record.representations.sorted { ($0.itemIndex, $0.repIndex) < ($1.itemIndex, $1.repIndex) }
+        let editItems = Self.items(from: editRows)
+        let hasColourUTI = record.storedTypes.contains(PasteboardType.color.rawValue)
+            || editItems.contains { item in item.representations.contains { $0.type == .color } }
+        if hasColourUTI || record.colorHex != nil {
+            return .rejected("Colour records use the paste-format picker, not the text editor.")
+        }
         guard !text.isEmpty else { return .rejected("The text is empty.") }
         // The editor shows the first item's text: saving would drop the others (review finding).
         guard Set(record.representations.map(\.itemIndex)).count <= 1 else {
@@ -608,10 +976,11 @@ public actor ClipboardStore {
             if let html = rich.html { representations.append(.bytes(.html, html)) }
         }
         representations.append(.bytes(.utf8PlainText, data))
-        let size = representations.reduce(0) { $0 + $1.byteCount }
-        guard size <= maxBytes else { return .rejected("The text is larger than the item size limit.") }
 
-        let items = [CanonicalItem(representations)]
+        // Same choke as ingest: lone CSS text must become a Color card (else Color Picker forks MCS1).
+        let items = ColorPayload.normalized([CanonicalItem(representations)])
+        let size = MCS1.payloadSize(of: items)
+        guard size <= maxBytes else { return .rejected("The text is larger than the item size limit.") }
         let hash = MCS1.contentHash(of: items)
         guard hash != record.contentHash else { return .updated }
         staleGuard.recordTombstone(contentHash: record.contentHash, opSeq: opSeq)
@@ -637,6 +1006,34 @@ public actor ClipboardStore {
             return .merged(into: survivor.id)
         }
 
+        // Soft-merge into an existing Color card when edit promoted lone CSS to the same identity.
+        if let identity = ColorPayload.identity(of: items),
+           let soft = try fetchColorDuplicate(
+            identity: identity, excludingHash: record.contentHash, excludingID: id, in: context
+           ),
+           soft.id != id {
+            let survivorID = soft.id
+            try saveOrRollback(context) {
+                let editedUseCount = record.useCount
+                apply(DedupMerge.mergeEdited(try metadata(of: record, in: context), into: try metadata(of: soft, in: context)), to: soft)
+                soft.useCount += editedUseCount
+                if soft.customTitle == nil { soft.customTitle = record.customTitle }
+                soft.searchText = Self.searchText(for: soft)
+                let tags = try context.fetch(FetchDescriptor<RecordTag>(predicate: #Predicate { $0.recordID == id }))
+                let existing = Set(try context.fetch(FetchDescriptor<RecordTag>(predicate: #Predicate { $0.recordID == survivorID })).map(\.collectionID))
+                for tag in tags where !existing.contains(tag.collectionID) {
+                    context.insert(RecordTag(recordID: survivorID, collectionID: tag.collectionID))
+                }
+                try retargetStackMembers(from: id, to: survivorID, in: context)
+                try Self.retargetFavoriteSlot(from: id, to: survivorID, in: context)
+                try Self.retargetCollectionSlots(from: id, to: survivorID, in: context)
+                try deleteRecords(ids: [id], in: context)
+            }
+            // Upgrade legacy survivor UTI to the edited canonical colour (no-op when already matching).
+            _ = try applyColorPasteFormat(survivorID, format: identity.format, opSeq: opSeq)
+            return .merged(into: survivorID)
+        }
+
         // Stage new external blobs unlinked, then swap in a second save. Rules:
         // 1) Never insert+delete external storage in one save (interim/rename race).
         // 2) Every committed save must leave the record PayloadIntegrity-verifiable — so do not
@@ -657,32 +1054,187 @@ public actor ClipboardStore {
                 }
                 record.contentHash = hash
                 record.payloadSizeBytes = size
-                // As for a copy: formatting that says nothing makes it text (`FormattingSignificance`).
-                record.displayTypeRaw = DisplayType.classify(items).rawValue
-                record.textIndex = TextDecoding.prefix(text, maxScalars: IngestEnrichment.searchScalars)
-                record.textLength = text.count
-                record.lineCount = TextStats.lineCount(text)
+                // As for a copy: formatting that says nothing makes it text (`FormattingSignificance`);
+                // lone CSS promotes to colour via ColorPayload.normalized above.
+                let classified = DisplayType.classify(items)
+                record.displayTypeRaw = classified.rawValue
+                record.storedTypes = Self.distinctTypes(of: items)
+                record.skippedTypes = []
                 // Edited text is checked like a copy: a token typed in is masked, and expires under
                 // *Delete after* (review findings).
                 let secret = secretPolicy == .off ? nil : SecretDetector.detectMatch(text, kinds: secretKinds)
-                if let secret, secret.isEmbedded {
-                    record.cardPreview = TextDecoding.prefix(secret.matched, maxScalars: IngestEnrichment.cardPreviewScalars)
+                if classified == .color, let identity = ColorPayload.identity(of: items) {
+                    let plain = ColorPayload.pastePlainText(of: items) ?? identity.hex
+                    record.cardPreview = TextDecoding.prefix(plain, maxScalars: IngestEnrichment.cardPreviewScalars)
+                    record.textIndex = TextDecoding.prefix(plain, maxScalars: IngestEnrichment.searchScalars)
+                    record.textLength = plain.count
+                    record.lineCount = 1
+                    record.colorHex = identity.hex
+                    record.sensitiveKind = nil
                 } else {
-                    record.cardPreview = TextDecoding.prefix(text, maxScalars: IngestEnrichment.cardPreviewScalars)
+                    record.textIndex = TextDecoding.prefix(text, maxScalars: IngestEnrichment.searchScalars)
+                    record.textLength = text.count
+                    record.lineCount = TextStats.lineCount(text)
+                    if let secret, secret.isEmbedded {
+                        record.cardPreview = TextDecoding.prefix(secret.matched, maxScalars: IngestEnrichment.cardPreviewScalars)
+                    } else {
+                        record.cardPreview = TextDecoding.prefix(text, maxScalars: IngestEnrichment.cardPreviewScalars)
+                    }
+                    record.sensitiveKind = secret?.kind.rawValue
+                    record.colorHex = nil
                 }
-                record.sensitiveKind = secret?.kind.rawValue
                 let pinned = try record.isFavorite || stackedRecordIDs(in: context).contains(id)
                 if secret != nil, case .deleteAfter(let minutes) = secretPolicy, !pinned {
                     let expiry = now.addingTimeInterval(TimeInterval(minutes) * 60)
                     record.expiresAt = min(record.expiresAt ?? expiry, expiry)
                 }
                 record.editedAt = Date()
-                record.storedTypes = representations.map(\.type.rawValue)
-                record.skippedTypes = []
                 record.searchText = Self.searchText(for: record)
             }
         } catch {
             // Save #1 already committed staged blobs; drop them so a failed swap does not leak.
+            for model in staged where model.record == nil { context.delete(model) }
+            try? context.save()
+            throw error
+        }
+        return .updated
+    }
+
+    /// Persist canonical `colorItems` when the payload is (or promotes to) a colour, so clipboard
+    /// writes match stored MCS1 (§1 / §8.5). Safe no-op for non-colour — callers need not gate on
+    /// `displayType` (that cache lagged orphans and skipped canonicalize).
+    /// Returns the live id (after soft-merge) and the items to put on the pasteboard.
+    public func ensureCanonicalColorRecord(_ id: UUID, opSeq: Int) throws -> (id: UUID, items: [CanonicalItem], sourceBundleID: String?) {
+        let payload = try payload(for: id)
+        let normalized = ColorPayload.normalized(payload.items)
+        guard let identity = ColorPayload.identity(of: normalized) else {
+            return (id, payload.items, payload.sourceBundleID)
+        }
+        // Always apply: even when bytes already match, hash-noop must still heal displayType/caches.
+        switch try applyColorPasteFormat(id, format: identity.format, opSeq: opSeq) {
+        case .updated:
+            let fresh = try self.payload(for: id)
+            return (id, fresh.items, fresh.sourceBundleID)
+        case .merged(let into):
+            let fresh = try self.payload(for: into)
+            return (into, fresh.items, fresh.sourceBundleID)
+        case .rejected(let message):
+            throw StoreError.unreadable(message)
+        }
+    }
+
+    /// Change the CSS paste string on a Color card; rebuilds canonical `colorItems` (§8.5).
+    /// Choose uses this so the card label and MCS1 stay aligned with what was written.
+    public func applyColorPasteFormat(_ id: UUID, format: ColorPasteFormat, opSeq: Int) throws -> EditResult {
+        let context = makeContext()
+        guard let record = try fetchRecord(id, in: context) else { return .rejected("The record no longer exists.") }
+        let rows = record.representations.sorted { ($0.itemIndex, $0.repIndex) < ($1.itemIndex, $1.repIndex) }
+        let existingItems = Self.items(from: rows)
+        let normalizedExisting = ColorPayload.normalized(existingItems)
+        // Any looksLikeColor signal or promotable lone CSS — displayType alone missed colorHex /
+        // colour-UTI type-lag while the format picker still treated the card as colour.
+        let hasColourUTI = existingItems.contains { item in item.representations.contains { $0.type == .color } }
+            || record.storedTypes.contains(PasteboardType.color.rawValue)
+        let isColor = DisplayType(rawValue: record.displayTypeRaw) == .color
+        let promotable = ColorPayload.identity(of: normalizedExisting) != nil
+        guard isColor || promotable || record.colorHex != nil || hasColourUTI else {
+            return .rejected("Only colour records have a paste format.")
+        }
+        // Payload hex wins; cache only when the UTI is unreadable (nil colorHex used to reject).
+        let hex = resolvedColorHex(of: record)
+            ?? ColorPayload.identity(of: normalizedExisting)?.hex
+        guard let hex, let values = ColorValues(hex: hex) else {
+            return .rejected("The colour could not be read.")
+        }
+        if record.colorHex != hex { record.colorHex = hex }
+        // Always rebuild via colorItems: matching CSS with a legacy / reordered UTI still forked MCS1.
+        let items = PasteboardWriter.colorItems(values, textFormat: format)
+        guard !items.isEmpty else { return .rejected("The colour could not be written.") }
+        let text = format.string(from: values)
+        let hash = MCS1.contentHash(of: items)
+        guard hash != record.contentHash else {
+            // Bytes already canonical — still heal caches (orphan promote / empty storedTypes).
+            if record.displayTypeRaw != DisplayType.color.rawValue {
+                record.displayTypeRaw = DisplayType.color.rawValue
+            }
+            let types = Self.distinctTypes(of: items)
+            if record.storedTypes != types { record.storedTypes = types }
+            let preview = record.cardPreview.trimmingCharacters(in: .whitespacesAndNewlines)
+            if preview != text {
+                record.cardPreview = TextDecoding.prefix(text, maxScalars: IngestEnrichment.cardPreviewScalars)
+                record.textIndex = TextDecoding.prefix(text, maxScalars: IngestEnrichment.searchScalars)
+                record.textLength = text.count
+                record.lineCount = 1
+            }
+            record.searchText = Self.searchText(for: record)
+            if context.hasChanges { try context.save() }
+            return .updated
+        }
+        let size = MCS1.payloadSize(of: items)
+        staleGuard.recordTombstone(contentHash: record.contentHash, opSeq: opSeq)
+
+        // Hard MCS1 hit, or another card with the same sRGB + paste format (legacy archive fork).
+        let wantIdentity = ColorPayload.Identity(hex: hex, format: format)
+        let survivor = try fetchRecord(withHash: hash, in: context).flatMap { $0.id != id ? $0 : nil }
+            ?? {
+                guard let soft = try? fetchColorDuplicate(
+                    identity: wantIdentity, excludingHash: record.contentHash, excludingID: id, in: context
+                ), soft.id != id else { return nil }
+                return soft
+            }()
+        if let survivor {
+            let survivorID = survivor.id
+            let needsPayloadUpgrade = survivor.contentHash != hash
+            try saveOrRollback(context) {
+                let editedUseCount = record.useCount
+                apply(DedupMerge.mergeEdited(try metadata(of: record, in: context), into: try metadata(of: survivor, in: context)), to: survivor)
+                survivor.useCount += editedUseCount
+                survivor.editedAt = Date()
+                if survivor.customTitle == nil { survivor.customTitle = record.customTitle }
+                survivor.searchText = Self.searchText(for: survivor)
+                let tags = try context.fetch(FetchDescriptor<RecordTag>(predicate: #Predicate { $0.recordID == id }))
+                let existing = Set(try context.fetch(FetchDescriptor<RecordTag>(predicate: #Predicate { $0.recordID == survivorID })).map(\.collectionID))
+                for tag in tags where !existing.contains(tag.collectionID) {
+                    context.insert(RecordTag(recordID: survivorID, collectionID: tag.collectionID))
+                }
+                try retargetStackMembers(from: id, to: survivorID, in: context)
+                try Self.retargetFavoriteSlot(from: id, to: survivorID, in: context)
+                try Self.retargetCollectionSlots(from: id, to: survivorID, in: context)
+                try deleteRecords(ids: [id], in: context)
+            }
+            // Soft survivor may still hold a legacy UTI — upgrade it to the format we just chose.
+            if needsPayloadUpgrade {
+                let upgrade = try applyColorPasteFormat(survivorID, format: format, opSeq: opSeq)
+                if case .merged(let into) = upgrade { return .merged(into: into) }
+            }
+            return .merged(into: survivorID)
+        }
+
+        let obsolete = Array(record.representations)
+        let staged = stageRepresentations(of: items, in: context)
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
+        do {
+            try saveOrRollback(context) {
+                for row in obsolete { context.delete(row) }
+                for model in staged { model.record = record }
+                record.contentHash = hash
+                record.payloadSizeBytes = size
+                record.cardPreview = TextDecoding.prefix(text, maxScalars: IngestEnrichment.cardPreviewScalars)
+                record.textIndex = TextDecoding.prefix(text, maxScalars: IngestEnrichment.searchScalars)
+                record.textLength = text.count
+                record.lineCount = 1
+                record.editedAt = Date()
+                record.displayTypeRaw = DisplayType.color.rawValue
+                record.storedTypes = Self.distinctTypes(of: items)
+                record.skippedTypes = []
+                record.searchText = Self.searchText(for: record)
+            }
+        } catch {
             for model in staged where model.record == nil { context.delete(model) }
             try? context.save()
             throw error
@@ -1230,6 +1782,9 @@ public actor ClipboardStore {
             context.insert(rep)
             rep.record = copy
         }
+        // After UTI rows exist: heal so looksLikeColor / Colors see the duplicate (source caches
+        // may have lagged while payload still held colour).
+        _ = try healColorMetadataIfNeeded(copy, in: context, save: false)
         if let thumb = source.thumbnail {
             let model = RecordThumbnail(data: Data(thumb.data))
             context.insert(model)
@@ -1613,7 +2168,8 @@ public actor ClipboardStore {
         let fileNames = record.filePaths.map { URL(fileURLWithPath: $0).lastPathComponent }
         let parts: [String?] = [
             record.customTitle, record.textIndex, record.ocrText, record.lastSourceAppName,
-            record.sourceURL, record.sourceWindowTitle, fileNames.isEmpty ? nil : fileNames.joined(separator: "\n"),
+            record.sourceURL, record.sourceWindowTitle, record.colorHex,
+            fileNames.isEmpty ? nil : fileNames.joined(separator: "\n"),
         ]
         return parts.compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "\n")
     }
@@ -1672,6 +2228,319 @@ public actor ClipboardStore {
         var descriptor = FetchDescriptor<ClipboardRecord>(predicate: #Predicate { $0.contentHash == hash && $0.hashSchemeVersion == scheme })
         descriptor.fetchLimit = 1
         return try context.fetch(descriptor).first
+    }
+
+    /// Colour cards whose NSColor archives differ but sRGB + paste format match (§8.5 dedup).
+    /// Also matches lone-CSS *text* orphans that promote to the same identity (pre-normalize history).
+    /// No fetchLimit: missing a soft-merge past an arbitrary cap forks MCS1 again (colour sets stay small).
+    private func fetchColorDuplicate(
+        identity: ColorPayload.Identity,
+        excludingHash: String,
+        excludingID: UUID?,
+        in context: ModelContext
+    ) throws -> ClipboardRecord? {
+        let colorType = DisplayType.color.rawValue
+        let textType = DisplayType.text.rawValue
+        let richType = DisplayType.richText.rawValue
+        let wantHex = identity.hex
+        let wantFormat = identity.format
+        // Case-insensitive identity cannot be expressed in the predicate — filter in memory.
+        // Include `colorHex != nil` so type-lag orphans soft-merge. Do **not** use
+        // `storedTypes.contains` inside #Predicate — it SIGSEGVs SwiftData at runtime.
+        let colorDescriptor = FetchDescriptor<ClipboardRecord>(
+            predicate: #Predicate {
+                ($0.displayTypeRaw == colorType || $0.colorHex != nil)
+                    && $0.contentHash != excludingHash
+            }
+        )
+        if let hit = try context.fetch(colorDescriptor).first(where: { record in
+            if let excludingID, record.id == excludingID { return false }
+            guard let found = colorIdentity(of: record), found.hex == wantHex else { return false }
+            if record.colorHex != wantHex { record.colorHex = wantHex }
+            return found.format == wantFormat
+        }) {
+            return hit
+        }
+        // Colour UTI + nil colorHex + wrong displayType: Predicate cannot see storedTypes — scan.
+        let colorUTI = PasteboardType.color.rawValue
+        if let hit = try fetchColourUTITypeLagDuplicate(
+            wantHex: wantHex,
+            wantFormat: wantFormat,
+            excludingHash: excludingHash,
+            excludingID: excludingID,
+            colorType: colorType,
+            colorUTI: colorUTI,
+            in: context
+        ) {
+            return hit
+        }
+        // Short text/richText: CSS paste strings are tiny; insignificant RTF+CSS promotes via normalize.
+        let textDescriptor = FetchDescriptor<ClipboardRecord>(
+            predicate: #Predicate {
+                ($0.displayTypeRaw == textType || $0.displayTypeRaw == richType)
+                    && $0.contentHash != excludingHash
+                    && $0.textLength != nil
+                    && $0.textLength! <= 64
+            }
+        )
+        return try context.fetch(textDescriptor).first { record in
+            if let excludingID, record.id == excludingID { return false }
+            let rows = record.representations.sorted { ($0.itemIndex, $0.repIndex) < ($1.itemIndex, $1.repIndex) }
+            let normalized = ColorPayload.normalized(Self.items(from: rows))
+            guard let found = ColorPayload.identity(of: normalized) else { return false }
+            return found.hex == wantHex && found.format == wantFormat
+        }
+    }
+
+    /// Type-lag orphans with a colour UTI row but nil `colorHex` / wrong displayType.
+    /// Finds via `PayloadRepresentation.uti` — `storedTypes` may be empty while rows remain.
+    private func fetchColourUTITypeLagDuplicate(
+        wantHex: String,
+        wantFormat: ColorPasteFormat,
+        excludingHash: String,
+        excludingID: UUID?,
+        colorType: String,
+        colorUTI: String,
+        in context: ModelContext
+    ) throws -> ClipboardRecord? {
+        let repDescriptor = FetchDescriptor<PayloadRepresentation>(
+            predicate: #Predicate { $0.uti == colorUTI }
+        )
+        var candidateIDs = Set<UUID>()
+        for rep in try context.fetch(repDescriptor) {
+            guard let record = rep.record else { continue }
+            if let excludingID, record.id == excludingID { continue }
+            guard record.contentHash != excludingHash else { continue }
+            guard record.displayTypeRaw != colorType || record.colorHex == nil else { continue }
+            candidateIDs.insert(record.id)
+        }
+        guard !candidateIDs.isEmpty else { return nil }
+        let ids = Array(candidateIDs)
+        return try context.fetch(FetchDescriptor<ClipboardRecord>(predicate: #Predicate { ids.contains($0.id) }))
+            .first { record in
+                guard let found = colorIdentity(of: record), found.hex == wantHex else { return false }
+                if record.colorHex != wantHex { record.colorHex = wantHex }
+                return found.format == wantFormat
+            }
+    }
+
+    /// Promote pre-normalize lone-CSS text/richText rows into Color cards, merging into an existing twin when present.
+    /// Also materializes `.color` faces that still lack colour UTI bytes (older heal flipped displayType only).
+    @discardableResult
+    public func promoteOrphanCSSColorTextRecords(opSeq: Int) throws -> Int {
+        let textType = DisplayType.text.rawValue
+        let richType = DisplayType.richText.rawValue
+        let colorType = DisplayType.color.rawValue
+        let context = makeContext()
+        let descriptor = FetchDescriptor<ClipboardRecord>(
+            predicate: #Predicate {
+                ($0.displayTypeRaw == textType || $0.displayTypeRaw == richType || $0.displayTypeRaw == colorType)
+                    && $0.textLength != nil
+                    && $0.textLength! <= 64
+            }
+        )
+        let records = try context.fetch(descriptor)
+        var changed = 0
+        for record in records {
+            let rows = record.representations.sorted { ($0.itemIndex, $0.repIndex) < ($1.itemIndex, $1.repIndex) }
+            let items = Self.items(from: rows)
+            let normalized = ColorPayload.normalized(items)
+            guard let identity = ColorPayload.identity(of: normalized),
+                  ColorPayload.identity(of: items) == nil else { continue }
+            let hash = MCS1.contentHash(of: normalized)
+            let size = MCS1.payloadSize(of: normalized)
+            let enrichment = IngestEnrichment.make(for: normalized, sourceAppName: record.lastSourceAppName)
+            if let twin = try fetchColorDuplicate(
+                identity: identity, excludingHash: record.contentHash, excludingID: record.id, in: context
+            ) {
+                let twinID = twin.id
+                let orphanID = record.id
+                staleGuard.recordTombstone(contentHash: record.contentHash, opSeq: opSeq)
+                try saveOrRollback(context) {
+                    apply(
+                        DedupMerge.mergeEdited(try metadata(of: record, in: context), into: try metadata(of: twin, in: context)),
+                        to: twin
+                    )
+                    twin.useCount += record.useCount
+                    if twin.customTitle == nil { twin.customTitle = record.customTitle }
+                    twin.searchText = Self.searchText(for: twin)
+                    let tags = try context.fetch(FetchDescriptor<RecordTag>(predicate: #Predicate { $0.recordID == orphanID }))
+                    let existing = Set(
+                        try context.fetch(FetchDescriptor<RecordTag>(predicate: #Predicate { $0.recordID == twinID }))
+                            .map(\.collectionID)
+                    )
+                    for tag in tags where !existing.contains(tag.collectionID) {
+                        context.insert(RecordTag(recordID: twinID, collectionID: tag.collectionID))
+                    }
+                    try retargetStackMembers(from: orphanID, to: twinID, in: context)
+                    try Self.retargetFavoriteSlot(from: orphanID, to: twinID, in: context)
+                    try Self.retargetCollectionSlots(from: orphanID, to: twinID, in: context)
+                    try deleteRecords(ids: [orphanID], in: context)
+                }
+                if twin.contentHash != hash {
+                    _ = try applyColorPasteFormat(twinID, format: identity.format, opSeq: opSeq)
+                }
+                changed += 1
+                continue
+            }
+            let snap = OwnedSnapshot(
+                changeCount: 0,
+                observedAt: record.lastCopiedAt,
+                identity: AppIdentity(bundleID: record.lastSourceAppBundleID, source: .frontmost),
+                settings: ResolvedAppSettings(),
+                items: normalized,
+                contentHash: hash,
+                payloadSizeBytes: size,
+                displayType: .color,
+                skippedTypes: [],
+                sourceURL: record.sourceURL
+            )
+            staleGuard.recordTombstone(contentHash: record.contentHash, opSeq: opSeq)
+            try replaceColorPayload(of: record, with: snap, enrichment: enrichment, in: context)
+            changed += 1
+        }
+        return changed
+    }
+
+    /// `#RRGGBB[AA]` via `ColorValues.hex` — identity key, not the raw cache string.
+    private static func canonicalColorHex(_ hex: String?) -> String? {
+        guard let hex, let values = ColorValues(hex: hex) else { return nil }
+        return values.hex
+    }
+
+    private static func colorHexFromItems(_ items: [CanonicalItem]) -> String? {
+        ColorPayload.identity(of: items)?.hex
+    }
+
+    /// Align enrichment caches to the (already normalized) snapshot payload — payload is SSOT.
+    private static func enrichmentAligned(with snapshot: OwnedSnapshot, base: IngestEnrichment) -> IngestEnrichment {
+        var enrichment = base
+        let fromItems = IngestEnrichment.make(
+            for: snapshot.items,
+            sourceAppName: base.sourceAppName,
+            sourceWindowTitle: base.sourceWindowTitle
+        )
+        // Wrong caller hex must not stick: soft-merge / swatch trust this cache.
+        enrichment.colorHex = fromItems.colorHex ?? canonicalColorHex(enrichment.colorHex)
+        let previewBlank = enrichment.cardPreview.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let payloadPreview = fromItems.cardPreview.trimmingCharacters(in: .whitespacesAndNewlines)
+        if previewBlank || (!payloadPreview.isEmpty && enrichment.cardPreview.trimmingCharacters(in: .whitespacesAndNewlines) != payloadPreview) {
+            enrichment.cardPreview = fromItems.cardPreview
+            enrichment.textIndex = fromItems.textIndex
+            enrichment.textLength = fromItems.textLength
+            enrichment.lineCount = fromItems.lineCount
+        }
+        return enrichment
+    }
+
+    /// Payload-first identity; caches only when paste text / hex missing.
+    private func colorIdentity(of record: ClipboardRecord) -> ColorPayload.Identity? {
+        let rows = record.representations.sorted { ($0.itemIndex, $0.repIndex) < ($1.itemIndex, $1.repIndex) }
+        let items = Self.items(from: rows)
+        if let identity = ColorPayload.identity(of: items) { return identity }
+        guard let hex = resolvedColorHex(of: record) else { return nil }
+        let preview = record.cardPreview.trimmingCharacters(in: .whitespacesAndNewlines)
+        let format = ColorPayload.pasteFormat(forPlainText: preview.isEmpty ? nil : preview)
+        return ColorPayload.Identity(hex: hex, format: format)
+    }
+
+    /// Payload colour UTI first; `colorHex` cache only when the UTI is unreadable.
+    private func resolvedColorHex(of record: ClipboardRecord) -> String? {
+        if let hex = colorHexFromPayload(record) { return hex }
+        return Self.canonicalColorHex(record.colorHex)
+    }
+
+    private func colorHexFromPayload(_ record: ClipboardRecord) -> String? {
+        let rows = record.representations.sorted { ($0.itemIndex, $0.repIndex) < ($1.itemIndex, $1.repIndex) }
+        guard let data = Self.items(from: rows)
+            .flatMap(\.representations)
+            .first(where: { $0.type == .color })?
+            .bytes else { return nil }
+        return ColorHex.string(fromPasteboardColor: data).flatMap(Self.canonicalColorHex)
+    }
+
+    private func colorPastePlainText(of record: ClipboardRecord) -> String? {
+        let rows = record.representations.sorted { ($0.itemIndex, $0.repIndex) < ($1.itemIndex, $1.repIndex) }
+        return ColorPayload.pastePlainText(of: Self.items(from: rows))
+    }
+
+    /// Align colour caches from payload (preferred) / enrichment without rewriting representations.
+    private func backfillColorMetadata(on record: ClipboardRecord, from enrichment: IngestEnrichment, snapshot: OwnedSnapshot) {
+        // Colour UTI / displayType — not `normalized` (would treat inbound lone CSS as colour caches
+        // without requiring colour bytes; ingest already normalizes colour snapshots).
+        let looksColour = snapshot.displayType == .color
+            || DisplayType(rawValue: record.displayTypeRaw) == .color
+            || record.colorHex != nil
+            || snapshot.items.contains { item in item.representations.contains { $0.type == .color } }
+        guard looksColour else { return }
+        let hex = Self.colorHexFromItems(snapshot.items)
+            ?? Self.canonicalColorHex(enrichment.colorHex)
+            ?? Self.canonicalColorHex(record.colorHex)
+            ?? colorHexFromPayload(record)
+        if let hex, record.colorHex != hex {
+            record.colorHex = hex
+        }
+        let wantPreview = ColorPayload.pastePlainText(of: snapshot.items)
+            ?? {
+                let trimmed = enrichment.cardPreview.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : enrichment.cardPreview
+            }()
+        if let wantPreview {
+            let have = record.cardPreview.trimmingCharacters(in: .whitespacesAndNewlines)
+            if have != wantPreview.trimmingCharacters(in: .whitespacesAndNewlines) {
+                record.cardPreview = TextDecoding.prefix(wantPreview, maxScalars: IngestEnrichment.cardPreviewScalars)
+                record.textIndex = TextDecoding.prefix(wantPreview, maxScalars: IngestEnrichment.searchScalars)
+                record.textLength = wantPreview.count
+                record.lineCount = 1
+            }
+        }
+        if DisplayType(rawValue: record.displayTypeRaw) != .color {
+            record.displayTypeRaw = DisplayType.color.rawValue
+        }
+        // Hard MCS1 hit must not leave empty/stale storedTypes — looksLikeColor / drag / Colors chip.
+        let types = Self.distinctTypes(of: snapshot.items)
+        if record.storedTypes != types {
+            record.storedTypes = types
+        }
+    }
+
+    /// Swap a colour record onto the inbound canonical items (two-phase save like edit/format).
+    private func replaceColorPayload(
+        of record: ClipboardRecord,
+        with snapshot: OwnedSnapshot,
+        enrichment: IngestEnrichment,
+        in context: ModelContext
+    ) throws {
+        let obsolete = Array(record.representations)
+        let staged = stageRepresentations(of: snapshot.items, in: context)
+        do {
+            try context.save()
+        } catch {
+            context.rollback()
+            throw error
+        }
+        do {
+            try saveOrRollback(context) {
+                for row in obsolete { context.delete(row) }
+                for model in staged { model.record = record }
+                record.contentHash = snapshot.contentHash
+                record.payloadSizeBytes = snapshot.payloadSizeBytes
+                record.cardPreview = enrichment.cardPreview
+                record.textIndex = enrichment.textIndex
+                record.textLength = enrichment.textLength
+                record.lineCount = enrichment.lineCount ?? 1
+                record.colorHex = Self.colorHexFromItems(snapshot.items)
+                    ?? Self.canonicalColorHex(enrichment.colorHex)
+                record.displayTypeRaw = snapshot.displayType.rawValue
+                record.storedTypes = Self.distinctTypes(of: snapshot.items)
+                record.skippedTypes = snapshot.skippedTypes.map(\.rawValue)
+                record.searchText = Self.searchText(for: record)
+            }
+        } catch {
+            for model in staged where model.record == nil { context.delete(model) }
+            try? context.save()
+            throw error
+        }
     }
 
     private func retentionCandidates(in context: ModelContext) throws -> [RetentionCandidate] {
@@ -1757,7 +2626,13 @@ public actor ClipboardStore {
     }
 
     private typealias StackMemberMeta = (
-        displayType: String, app: String?, search: String, preview: String, sensitive: String?
+        displayType: String,
+        app: String?,
+        search: String,
+        preview: String,
+        sensitive: String?,
+        colorHex: String?,
+        hasColourUTI: Bool
     )
 
     /// Scope / filter first, then caller applies `prefix(limit)` after `stackMatches`.
@@ -1801,14 +2676,20 @@ public actor ClipboardStore {
         guard !unique.isEmpty else { return [:] }
         var recordMeta: [UUID: StackMemberMeta] = [:]
         var recDesc = FetchDescriptor<ClipboardRecord>(predicate: #Predicate { unique.contains($0.id) })
-        recDesc.propertiesToFetch = [\.id, \.displayTypeRaw, \.lastSourceAppBundleID, \.searchText, \.cardPreview, \.sensitiveKind]
+        recDesc.propertiesToFetch = [
+            \.id, \.displayTypeRaw, \.lastSourceAppBundleID, \.searchText, \.cardPreview, \.sensitiveKind, \.colorHex,
+            \.storedTypes,
+        ]
+        let colorUTI = PasteboardType.color.rawValue
         for record in try context.fetch(recDesc) {
             recordMeta[record.id] = (
                 record.displayTypeRaw,
                 record.lastSourceAppBundleID,
                 record.searchText,
                 record.cardPreview,
-                record.sensitiveKind
+                record.sensitiveKind,
+                record.colorHex,
+                record.storedTypes.contains(colorUTI)
             )
         }
         return recordMeta
@@ -1853,7 +2734,12 @@ public actor ClipboardStore {
         case .app(let bundleID):
             guard members.contains(where: { $0.app == bundleID }) else { return false }
         case .type(let type):
-            guard members.contains(where: { $0.displayType == type.rawValue }) else { return false }
+            if type == .color {
+                // Same denormalized signals as record Colors filter — displayType alone misses type-lag.
+                guard members.contains(where: Self.memberLooksLikeColor) else { return false }
+            } else {
+                guard members.contains(where: { $0.displayType == type.rawValue }) else { return false }
+            }
         case .collection(let collectionID):
             guard card.collectionIDs.contains(collectionID) else { return false }
         case .stack:
@@ -1861,8 +2747,12 @@ public actor ClipboardStore {
             return false
         }
         if !query.kinds.isEmpty {
-            let raws = Set(query.kinds.map(\.rawValue))
-            guard members.contains(where: { raws.contains($0.displayType) }) else { return false }
+            if query.kinds == [.color] {
+                guard members.contains(where: Self.memberLooksLikeColor) else { return false }
+            } else {
+                let raws = Set(query.kinds.map(\.rawValue))
+                guard members.contains(where: { raws.contains($0.displayType) }) else { return false }
+            }
         }
         if let since = query.since, card.lastUsedAt < since { return false }
         for word in query.words {
@@ -1871,6 +2761,13 @@ public actor ClipboardStore {
             guard inTitle || inMembers else { return false }
         }
         return true
+    }
+
+    /// Stack member colour face — mirrors HistoryCard.looksLikeColor (displayType / colorHex / UTI).
+    private static func memberLooksLikeColor(_ member: StackMemberMeta) -> Bool {
+        member.displayType == DisplayType.color.rawValue
+            || member.colorHex != nil
+            || member.hasColourUTI
     }
 
     /// Records, their representations and thumbnails (cascade) and memberships, in the caller's transaction.
@@ -1935,8 +2832,15 @@ public actor ClipboardStore {
             let app: String? = bundleID
             and(#Predicate { $0.lastSourceAppBundleID == app })
         case .type(let type):
-            let raw = type.rawValue
-            and(#Predicate { $0.displayTypeRaw == raw })
+            if type == .color {
+                // displayType / colorHex — `storedTypes.contains` in #Predicate crashes SwiftData.
+                // Launch heal restores caches for UTI-only orphans.
+                let colorType = DisplayType.color.rawValue
+                and(#Predicate { $0.displayTypeRaw == colorType || $0.colorHex != nil })
+            } else {
+                let raw = type.rawValue
+                and(#Predicate { $0.displayTypeRaw == raw })
+            }
         case .collection(let collectionID):
             let ids = try context.fetch(FetchDescriptor<RecordTag>(predicate: #Predicate { $0.collectionID == collectionID })).map(\.recordID)
             and(#Predicate { ids.contains($0.id) })
@@ -1946,8 +2850,14 @@ public actor ClipboardStore {
             and(#Predicate { ids.contains($0.id) })
         }
         if !query.kinds.isEmpty {
-            let raws = query.kinds.map(\.rawValue)
-            and(#Predicate { raws.contains($0.displayTypeRaw) })
+            let colorOnly = query.kinds == [.color]
+            if colorOnly {
+                let colorType = DisplayType.color.rawValue
+                and(#Predicate { $0.displayTypeRaw == colorType || $0.colorHex != nil })
+            } else {
+                let raws = query.kinds.map(\.rawValue)
+                and(#Predicate { raws.contains($0.displayTypeRaw) })
+            }
         }
         if let since = query.since {
             and(#Predicate { $0.lastCopiedAt >= since })
@@ -1990,8 +2900,15 @@ public actor ClipboardStore {
 
     private static func recordMatchesPinboardFilters(_ record: ClipboardRecord, query: HistoryQuery) -> Bool {
         if !query.kinds.isEmpty {
-            let raws = query.kinds.map(\.rawValue)
-            guard raws.contains(record.displayTypeRaw) else { return false }
+            if query.kinds == [.color] {
+                let isColor = DisplayType(rawValue: record.displayTypeRaw) == .color
+                    || record.colorHex != nil
+                    || record.storedTypes.contains(PasteboardType.color.rawValue)
+                guard isColor else { return false }
+            } else {
+                let raws = query.kinds.map(\.rawValue)
+                guard raws.contains(record.displayTypeRaw) else { return false }
+            }
         }
         for word in query.words {
             guard record.searchText.localizedStandardContains(word) else { return false }

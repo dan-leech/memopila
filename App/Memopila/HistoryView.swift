@@ -863,7 +863,17 @@ private struct HistoryGrid: View {
                 }
                 .onDrag {
                     model.beginStackDrag(stack.id)
-                    return DragSupport.provider(for: stack, store: model.store, armedMemberID: model.stackSession.currentMemberID)
+                    let memberID = model.stackSession.currentMemberID.flatMap { stack.memberIDs.contains($0) ? $0 : nil }
+                        ?? stack.previewRecordID
+                        ?? stack.memberIDs.first
+                    let fromCard = memberID.flatMap { model.resolveCard($0)?.looksLikeColor }
+                    let fromPreview = ColorValues(css: stack.preview.trimmingCharacters(in: .whitespacesAndNewlines)) != nil
+                    return DragSupport.provider(
+                        for: stack,
+                        store: model.store,
+                        armedMemberID: model.stackSession.currentMemberID,
+                        memberLooksLikeColor: fromCard ?? fromPreview
+                    )
                 }
                 .onDrop(
                     of: [.item, .text, .plainText, .utf8PlainText, .image, .fileURL],

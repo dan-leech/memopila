@@ -372,9 +372,15 @@ final class ClipboardMonitor {
             record("change \(changeCount) not saved: \(reason)")
         case .captured(let snapshot):
             coordinator.beginIngest(changeCount: snapshot.changeCount)
-            var enrichment = enrichment ?? IngestEnrichment()
-            enrichment.sourceAppName = AppInfo.name(for: snapshot.identity.bundleID)
-            await ingest(snapshot, enrichment: enrichment, readerSeq: readerSeq)
+            // Colour-UTI-only → HEX text before hash so store ≡ makeItems write (§8.5).
+            let normalized = ColorPayload.normalizedSnapshot(snapshot)
+            var enrichment = IngestEnrichment.make(
+                for: normalized.items,
+                sourceAppName: AppInfo.name(for: normalized.identity.bundleID),
+                sourceWindowTitle: enrichment?.sourceWindowTitle
+            )
+            enrichment.sourceAppName = AppInfo.name(for: normalized.identity.bundleID)
+            await ingest(normalized, enrichment: enrichment, readerSeq: readerSeq)
         }
         // Save anyway re-reads an already-handled count: release flight only, do not move lastHandled.
         if saveAnyway {

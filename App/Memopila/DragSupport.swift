@@ -8,28 +8,51 @@ import UniformTypeIdentifiers
 enum DragSupport {
     /// Stack drag-out: current dealt while armed (clipboard), else first UI member. Card face stays first.
     /// Empty stacks still register plain text (title) so in-app pinboard reorder can start a drag session.
-    static func provider(for stack: StackCard, store: ClipboardStore, armedMemberID: UUID?) -> NSItemProvider {
+    /// - Parameter memberLooksLikeColor: dealt/preview member — when true, register colour UTI
+    ///   (utf8-only stack drag left Color Wells empty while card drag worked).
+    static func provider(
+        for stack: StackCard,
+        store: ClipboardStore,
+        armedMemberID: UUID?,
+        memberLooksLikeColor: Bool = false
+    ) -> NSItemProvider {
         let memberID = (armedMemberID.flatMap { id in stack.memberIDs.contains(id) ? id : nil })
             ?? stack.previewRecordID
             ?? stack.memberIDs.first
         let provider = NSItemProvider()
         let title = stack.title.isEmpty ? "Stack" : stack.title
-        if let memberID {
+        guard let memberID else {
             provider.registerDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier, visibility: .all) { completion in
+                completion(Data(title.utf8), nil)
+                return nil
+            }
+            return provider
+        }
+        let typeIDs: [String] = memberLooksLikeColor
+            ? [PasteboardType.color.rawValue, UTType.utf8PlainText.identifier]
+            : [UTType.utf8PlainText.identifier]
+        for type in typeIDs {
+            provider.registerDataRepresentation(forTypeIdentifier: type, visibility: .all) { completion in
                 let reply = Transfer(value: completion)
                 Task {
                     do {
                         let payload = try await store.payload(for: memberID)
-                        reply.value(payload.text.map { Data($0.utf8) }, nil)
+                        // Normalize before identity — raw CSS text / legacy UTI have nil identity.
+                        if ColorPayload.identity(of: ColorPayload.normalized(payload.items)) != nil {
+                            reply.value(data(of: type, in: payload), nil)
+                        } else if PasteboardType.plainTextTypes.contains(PasteboardType(type)) {
+                            reply.value(payload.text.map { Data($0.utf8) } ?? Data(title.utf8), nil)
+                        } else {
+                            reply.value(nil, nil)
+                        }
                     } catch {
-                        reply.value(Data(title.utf8), nil)
+                        if PasteboardType.plainTextTypes.contains(PasteboardType(type)) {
+                            reply.value(Data(title.utf8), nil)
+                        } else {
+                            reply.value(nil, error)
+                        }
                     }
                 }
-                return nil
-            }
-        } else {
-            provider.registerDataRepresentation(forTypeIdentifier: UTType.utf8PlainText.identifier, visibility: .all) { completion in
-                completion(Data(title.utf8), nil)
                 return nil
             }
         }
@@ -45,14 +68,25 @@ enum DragSupport {
         }
         let provider = NSItemProvider()
         let id = card.id
-        var types = card.storedTypes.filter { type in
-            let pasteboardType = PasteboardType(type)
-            return !pasteboardType.isFileReference && !pasteboardType.isMetadataOnly
-                && !type.contains(" ") && UTType(type) != nil
+        // Colour types from looksLikeColor / CSS preview — launch heal keeps caches aligned.
+        let previewCSS = ColorValues(css: card.preview.trimmingCharacters(in: .whitespacesAndNewlines)) != nil
+        let typeIDs: [String]
+        if card.looksLikeColor || previewCSS {
+            typeIDs = [
+                PasteboardType.color.rawValue,
+                UTType.utf8PlainText.identifier,
+            ]
+        } else {
+            var types = card.storedTypes.filter { type in
+                let pasteboardType = PasteboardType(type)
+                return !pasteboardType.isFileReference && !pasteboardType.isMetadataOnly
+                    && !type.contains(" ") && UTType(type) != nil
+            }
+            let plainText = UTType.utf8PlainText.identifier
+            if card.hasText, !types.contains(plainText) { types.append(plainText) }
+            typeIDs = types
         }
-        let plainText = UTType.utf8PlainText.identifier
-        if card.hasText, !types.contains(plainText) { types.append(plainText) }
-        for type in types {
+        for type in typeIDs {
             provider.registerDataRepresentation(forTypeIdentifier: type, visibility: .all) { completion in
                 let reply = Transfer(value: completion)
                 Task {
@@ -70,9 +104,17 @@ enum DragSupport {
     }
 
     private static func data(of type: String, in payload: RestorePayload) -> Data? {
-        if let bytes = payload.items.lazy.flatMap(\.representations).first(where: { $0.type.rawValue == type })?.bytes {
+        // Prefer normalized identity (lone CSS / legacy UTI) — raw identity misses promotable text.
+        let normalized = ColorPayload.normalized(payload.items)
+        let items = ColorPayload.identity(of: normalized) == nil ? payload.items : normalized
+        if let bytes = items.lazy.flatMap(\.representations).first(where: { $0.type.rawValue == type })?.bytes {
             return bytes
         }
-        return type == UTType.utf8PlainText.identifier ? payload.text.map { Data($0.utf8) } : nil
+        // Legacy storedTypes may still request utf16/plain; serve the canonical CSS string.
+        if PasteboardType.plainTextTypes.contains(PasteboardType(type)) {
+            return ColorPayload.pastePlainText(of: items).map { Data($0.utf8) }
+                ?? payload.text.map { Data($0.utf8) }
+        }
+        return nil
     }
 }

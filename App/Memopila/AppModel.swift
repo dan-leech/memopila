@@ -204,6 +204,7 @@ final class AppModel {
         runRetention()
         prunePreviewFiles(all: true)
         reclassifyRichTextOnce()
+        maintainColorRecordsOnLaunch()
         recognition.wake()
         let daily = Timer(timeInterval: 86_400, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.runRetention() }
@@ -294,13 +295,19 @@ final class AppModel {
     }
 
     private func openRecordAsync(_ id: UUID, focusText: Bool, closeAfterSave: Bool = false) async {
-        let card: HistoryCard
+        var card: HistoryCard
         if let local = resolveCard(id) {
             card = local
         } else if let loaded = try? await store.card(id) {
             card = loaded
         } else {
             return
+        }
+        // Always details-heal: looksLikeColor can miss when storedTypes/displayType lagged but
+        // colour UTI rows remain — details inspects payload (§8.5 picker seed).
+        if let healed = try? await store.details(id, maxTextScalars: 0)?.card {
+            card = healed
+            history.replaceLocally(healed)
         }
         itemState?.loadTask?.cancel()
         let state = ItemState(card: card, focusOnLoad: focusText && Self.isEditable(card), maxBytes: settings.maxItemBytes)
@@ -344,7 +351,25 @@ final class AppModel {
             return resolveUnsavedChanges { [weak self] in self?.openAdjacentRecord(offset, vertically: vertically) }
         }
         saveTitle()
-        // Record window navigates records only (skips stack entries, §8.4).
+        // Colour: resolve format against payload (same race as ↩), drain, then open neighbour (§8.5).
+        if state.card.looksLikeColor {
+            let colorID = state.id
+            let picker = state.colorPasteFormat
+            let openPreview = state.card.preview
+            writes.run {
+                await queueResolvedColorPasteFormat(id: colorID, picker: picker, openTimePreview: openPreview)
+                _ = await ensureColorPasteFormatDrained(colorID, reopenOnMerge: false)
+                openAdjacentRecordAfterColorFlush(offset, vertically: vertically, from: colorID)
+            }
+            return
+        }
+        openAdjacentRecordAfterColorFlush(offset, vertically: vertically, from: state.id)
+    }
+
+    /// Shared ← → step after any colour-format drain (or immediately for non-colour).
+    private func openAdjacentRecordAfterColorFlush(_ offset: Int, vertically: Bool, from id: UUID) {
+        // User already opened another record while we drained — do not yank selection.
+        if let state = itemState, state.id != id { return }
         for _ in 0..<max(history.entries.count, 1) {
             if vertically {
                 history.moveSelectionVertically(offset)
@@ -353,7 +378,7 @@ final class AppModel {
             }
             if let card = history.selectedCard {
                 history.cardAppeared(card)
-                if card.id != state.id { openRecord(card.id) }
+                if card.id != id { openRecord(card.id) }
                 return
             }
         }
@@ -512,8 +537,22 @@ final class AppModel {
             toasts.error(String(localized: "To paste, allow Memopila in System Settings → Privacy & Security → Accessibility, then try again."))
             return
         }
+        // Color format: resolve against the payload after close — ItemState may still be seeded
+        // from an empty preview if ↩ beat the details heal (§8.5).
+        let needsColorFormat = state.card.looksLikeColor
+        let pickerFormat = state.colorPasteFormat
+        let openPreview = state.card.preview
+        let id = state.id
         closeRecord(returningToPanel: false)
-        restore(state.id, paste: paste)
+        writes.run {
+            if needsColorFormat {
+                await queueResolvedColorPasteFormat(id: id, picker: pickerFormat, openTimePreview: openPreview)
+                let restoreID = await ensureColorPasteFormatDrained(id, reopenOnMerge: false)
+                await performRestore(restoreID, paste: paste, colorFormat: nil)
+            } else {
+                await performRestore(id, paste: paste, colorFormat: nil)
+            }
+        }
     }
 
     /// Once after the update that weighs formatting: rich text cards whose formatting says nothing
@@ -526,6 +565,19 @@ final class AppModel {
             guard let changed = try? await store.reclassifyRichText() else { return }
             UserDefaults.standard.set(true, forKey: key)
             if changed > 0 { history.storeDidChange() }
+        }
+    }
+
+    /// Every launch: heal colour caches, promote lone-CSS / face-without-UTI orphans, coalesce
+    /// same-identity MCS1 forks. Colour sets stay small; hot paths trust caches after this.
+    private func maintainColorRecordsOnLaunch() {
+        let store = store
+        let opSeq = monitor.coordinator.opSeq
+        Task {
+            let healed = (try? await store.backfillMissingColorMetadata()) ?? 0
+            let promoted = (try? await store.promoteOrphanCSSColorTextRecords(opSeq: opSeq)) ?? 0
+            let coalesced = (try? await store.coalesceDuplicateColorRecords(opSeq: opSeq)) ?? 0
+            if healed + promoted + coalesced > 0 { history.storeDidChange() }
         }
     }
 
@@ -794,7 +846,7 @@ final class AppModel {
     /// user came from, as in Pasta. *Auto-paste* (off by default) also presses ⌘V there;
     /// `paste` overrides that setting. `true` when the clipboard now holds the item.
     @discardableResult
-    private func performRestore(_ id: UUID, paste: Bool? = nil) async -> Bool {
+    private func performRestore(_ id: UUID, paste: Bool? = nil, colorFormat: ColorPasteFormat? = nil) async -> Bool {
         // Choosing a member card disarms any armed stack (§8.1).
         if stackSession.isArmed { stackSession.stop(toast: false) }
         let wantsPaste = paste ?? settings.pasteAfterCopy
@@ -806,8 +858,39 @@ final class AppModel {
             toasts.error(String(localized: "To paste, allow Memopila in System Settings → Privacy & Security → Accessibility, then try again."))
             return false
         }
-        guard let content = await variantContent(id, variant: .original) else { return false }
-        switch await monitor.writeAsync(content.items, sourceBundleID: content.sourceBundleID, recordID: id) {
+        var writeID = id
+        let content: (items: [CanonicalItem], sourceBundleID: String?)
+        if let colorFormat {
+            // Record-window Choose: sync CSS string onto the card, then write that payload (§8.5).
+            switch await applyColorFormatForChoose(id, format: colorFormat) {
+            case .failed(let message):
+                toasts.error(message)
+                return false
+            case .ready(let syncedID, let items, let sourceBundleID):
+                writeID = syncedID
+                content = (items, sourceBundleID)
+            }
+        } else {
+            // Gate on payload identity (not displayType cache). Destructive only when colour.
+            let peek = try? await store.payload(for: id)
+            let looksColour = peek.map {
+                ColorPayload.identity(of: ColorPayload.normalized($0.items)) != nil
+            } ?? false
+            if looksColour {
+                switch await ensureCanonicalColorForWrite(id) {
+                case .failed(let message):
+                    toasts.error(message)
+                    return false
+                case .ready(let syncedID, let items, let sourceBundleID):
+                    writeID = syncedID
+                    content = (items, sourceBundleID)
+                }
+            } else {
+                guard let original = await variantContent(id, variant: .original) else { return false }
+                content = original
+            }
+        }
+        switch await monitor.writeAsync(content.items, sourceBundleID: content.sourceBundleID, recordID: writeID) {
         case .failed(let message):
             toasts.error(message)
             return false
@@ -836,10 +919,202 @@ final class AppModel {
                     toasts.show(String(localized: "On the clipboard. Could not paste into the other app — press ⌘V there."))
                 }
             }
-            if isPinned { showChooseBadge(id, pasted: didPaste) }
-            try? await store.markUsed(id, at: Date())
+            if isPinned { showChooseBadge(writeID, pasted: didPaste) }
+            try? await store.markUsed(writeID, at: Date())
             history.storeDidChange()
             return true
+        }
+    }
+
+    private enum ColorChoosePrepare {
+        case ready(UUID, [CanonicalItem], String?)
+        case failed(String)
+    }
+
+    private enum ColorFormatPersist {
+        case updated(UUID)
+        case merged(into: UUID)
+        case busy
+        case failed(String)
+    }
+
+    /// Latest intended colour paste format per record. All store writes go through one serial drain.
+    @ObservationIgnored private var pendingColorFormats: [UUID: ColorPasteFormat] = [:]
+    /// Deleted→survivor after format merge, so Choose/Copy find the live id.
+    @ObservationIgnored private var colorFormatRemap: [UUID: UUID] = [:]
+    @ObservationIgnored private var colorFormatDraining = false
+
+    /// Persist HEX/RGB/HSL when the picker changes — optimistic grid patch + serial store drain.
+    func saveColorPasteFormat(_ id: UUID, format: ColorPasteFormat) {
+        queueColorPasteFormat(id, format: format)
+        writes.run { await runColorFormatDrain(reopenOnMerge: true) }
+    }
+
+    /// ↩ / ←→: honour a real picker change; otherwise use the stored paste string (not a stale
+    /// empty-preview HEX seed).
+    private func queueResolvedColorPasteFormat(
+        id: UUID,
+        picker: ColorPasteFormat,
+        openTimePreview: String
+    ) async {
+        let payloadText = (try? await store.payload(for: id)).flatMap { ColorPayload.pastePlainText(of: $0.items) }
+        _ = try? await store.details(id, maxTextScalars: 0)
+        let format = ColorPayload.chooseFormat(
+            picker: picker,
+            openTimePreview: openTimePreview,
+            payloadPlainText: payloadText
+        )
+        queueColorPasteFormat(id, format: format)
+    }
+
+    private func queueColorPasteFormat(_ id: UUID, format: ColorPasteFormat) {
+        let live = resolvedColorFormatID(id)
+        pendingColorFormats[live] = format
+        patchColorPreviewLocally(id: live, format: format)
+    }
+
+    private func resolvedColorFormatID(_ id: UUID) -> UUID {
+        var current = id
+        var seen = Set<UUID>()
+        while let next = colorFormatRemap[current], seen.insert(current).inserted {
+            current = next
+        }
+        return current
+    }
+
+    private func patchColorPreviewLocally(id: UUID, format: ColorPasteFormat) {
+        guard let card = resolveCard(id),
+              let values = ColorCardLabel.values(preview: card.preview, colorHex: card.colorHex) else { return }
+        let patched = card.withColorPreview(format.string(from: values))
+        guard patched != card else { return }
+        history.replaceLocally(patched)
+    }
+
+    /// Serialise all pending colour-format writes (picker / Choose / Copy / ←→ share this).
+    private func runColorFormatDrain(reopenOnMerge: Bool) async {
+        while colorFormatDraining {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+        colorFormatDraining = true
+        defer { colorFormatDraining = false }
+        while let id = pendingColorFormats.keys.first {
+            _ = await drainColorPasteFormat(id, reopenOnMerge: reopenOnMerge)
+        }
+    }
+
+    /// Drain until `id`'s pending (and remaps) are empty; used by Choose/Copy/←→ that need the survivor.
+    @discardableResult
+    private func ensureColorPasteFormatDrained(_ id: UUID, reopenOnMerge: Bool) async -> UUID {
+        await runColorFormatDrain(reopenOnMerge: reopenOnMerge)
+        return resolvedColorFormatID(id)
+    }
+
+    /// Write pending formats for `id` until empty; remaps pending across merges. Returns survivor id.
+    @discardableResult
+    private func drainColorPasteFormat(_ id: UUID, reopenOnMerge: Bool) async -> UUID {
+        var writeID = resolvedColorFormatID(id)
+        while let format = pendingColorFormats[writeID] {
+            switch await persistColorPasteFormat(writeID, format: format, reopenOnMerge: reopenOnMerge) {
+            case .updated(let synced):
+                if pendingColorFormats[writeID] == format {
+                    pendingColorFormats.removeValue(forKey: writeID)
+                }
+                writeID = synced
+            case .merged(let into):
+                let leftover = pendingColorFormats.removeValue(forKey: writeID)
+                colorFormatRemap[writeID] = into
+                if let leftover, leftover != format {
+                    pendingColorFormats[into] = leftover
+                }
+                writeID = into
+            case .busy:
+                try? await Task.sleep(for: .milliseconds(40))
+            case .failed(let message):
+                pendingColorFormats.removeValue(forKey: writeID)
+                toasts.error(message)
+                history.storeDidChange()
+                return writeID
+            }
+        }
+        return writeID
+    }
+
+    /// Store-only format change under the destructive lease; retargets selection on merge.
+    private func persistColorPasteFormat(
+        _ id: UUID,
+        format: ColorPasteFormat,
+        reopenOnMerge: Bool
+    ) async -> ColorFormatPersist {
+        switch await monitor.destructive({ opSeq in
+            try await store.applyColorPasteFormat(id, format: format, opSeq: opSeq)
+        }) {
+        case .success(.updated):
+            return .updated(id)
+        case .success(.merged(let into)):
+            monitor.recordChanged(id)
+            history.removeLocally([id])
+            rescueFromPendingDeletion(into)
+            history.selectedID = .record(into)
+            stackEditor?.remapMember(from: id, to: into)
+            if let card = resolveCard(into) {
+                history.replaceLocally(card)
+            } else if let card = try? await store.card(into) {
+                history.replaceLocally(card)
+            }
+            history.storeDidChange()
+            if stackSession.isArmed { stackSession.rebuildFromStore() }
+            reloadStackEditorIfNeeded()
+            if reopenOnMerge, itemState?.id == id {
+                await showRecord(into)
+                toasts.show(String(localized: "Merged with an existing record"))
+            }
+            return .merged(into: into)
+        case .success(.rejected(let message)):
+            return .failed(message)
+        case .failure(.busy):
+            return .busy
+        case .failure(.failed):
+            return .failed(String(localized: "The colour format could not be saved."))
+        }
+    }
+
+    /// Grid Choose / migration: apply format when there was no prior drain.
+    private func applyColorFormatForChoose(_ id: UUID, format: ColorPasteFormat) async -> ColorChoosePrepare {
+        switch await persistColorPasteFormat(id, format: format, reopenOnMerge: false) {
+        case .updated(let writeID):
+            return await colorChoosePayload(writeID)
+        case .merged(let into):
+            colorFormatRemap[id] = into
+            return await colorChoosePayload(into)
+        case .busy:
+            return .failed(String(localized: "Another change is in progress. Try again."))
+        case .failed(let message):
+            return .failed(message)
+        }
+    }
+
+    /// Persist canonical colour payload so the green-line card matches clipboard MCS1 (§1 / §8.5).
+    private func ensureCanonicalColorForWrite(_ id: UUID) async -> ColorChoosePrepare {
+        switch await monitor.destructive({ opSeq in
+            try await store.ensureCanonicalColorRecord(id, opSeq: opSeq)
+        }) {
+        case .success(let result):
+            if result.id != id { colorFormatRemap[id] = result.id }
+            history.storeDidChange()
+            return .ready(result.id, result.items, result.sourceBundleID)
+        case .failure(.busy):
+            return .failed(String(localized: "Another change is in progress. Try again."))
+        case .failure(.failed):
+            return .failed(String(localized: "The colour could not be prepared for the clipboard."))
+        }
+    }
+
+    private func colorChoosePayload(_ id: UUID) async -> ColorChoosePrepare {
+        do {
+            let payload = try await store.payload(for: id)
+            return .ready(id, payload.items, payload.sourceBundleID)
+        } catch {
+            return .failed(String(localized: "The colour could not be prepared for the clipboard."))
         }
     }
 
@@ -858,16 +1133,79 @@ final class AppModel {
     /// goes to the clipboard as a new card at the top, so history always shows what the clipboard
     /// holds (§3.4). Copying part of an item keeps the window open, like ⌘C in its text.
     func copyNewText(_ text: String, from id: UUID?) {
+        writeDerived(PasteboardWriter.plainTextItems(text), from: id)
+    }
+
+    /// A colour (eyedropper / Color record): colour UTI + HEX/RGB/HSL text → Color card (§8.5).
+    func copyNewColor(_ values: ColorValues, format: ColorPasteFormat = .hex, from id: UUID?) {
+        // Color record: keep stored UTI bytes (regenerating NSColor can fork MCS1 into a duplicate).
+        if let id, resolveCard(id)?.looksLikeColor == true {
+            queueColorPasteFormat(id, format: format)
+            let expected = format.string(from: values)
+            writes.run {
+                var writeID = await ensureColorPasteFormatDrained(id, reopenOnMerge: false)
+                do {
+                    // Clipboard ≡ card: persist canonical UTI even when CSS text already matches.
+                    switch await ensureCanonicalColorForWrite(writeID) {
+                    case .failed(let message):
+                        toasts.error(message)
+                        return
+                    case .ready(let synced, _, _):
+                        writeID = synced
+                    }
+                    var items: [CanonicalItem]
+                    var source: String?
+                    let payload = try await store.payload(for: writeID)
+                    if ColorPayload.pastePlainText(of: payload.items) == expected {
+                        items = payload.items
+                        source = payload.sourceBundleID
+                    } else {
+                        // Drain/format raced — apply once more before giving up.
+                        switch await applyColorFormatForChoose(writeID, format: format) {
+                        case .failed(let message):
+                            toasts.error(message)
+                            return
+                        case .ready(let synced, let syncedItems, let syncedSource):
+                            writeID = synced
+                            items = syncedItems
+                            source = syncedSource
+                        }
+                    }
+                    switch await monitor.writeAsync(items, sourceBundleID: source, recordID: writeID) {
+                    case .written:
+                        try? await store.markUsed(writeID, at: Date())
+                        history.storeDidChange()
+                        toasts.show(String(localized: "Copied to the clipboard"))
+                    case .failed(let message):
+                        toasts.error(message)
+                    }
+                } catch {
+                    toasts.error(String(localized: "The colour could not be copied."))
+                }
+            }
+            return
+        }
+        let items = PasteboardWriter.colorItems(values, textFormat: format)
+        guard !items.isEmpty else {
+            toasts.error(String(localized: "The colour could not be copied."))
+            return
+        }
+        writeDerived(items, from: id)
+    }
+
+    private func writeDerived(_ items: [CanonicalItem], from id: UUID?) {
+        let items = ColorPayload.normalized(items)
         writes.run {
-            let items = PasteboardWriter.plainTextItems(text)
             let sourceBundleID = id.flatMap { resolveCard($0)?.sourceAppBundleID }
             switch await ingestDerived(items, from: id) {
-            case .saved(let newID):
+            case .saved(let newID, let merged):
                 switch await monitor.writeAsync(items, sourceBundleID: sourceBundleID, recordID: newID) {
                 case .written:
                     try? await store.markUsed(newID, at: Date())
                     history.storeDidChange()
-                    toasts.show(String(localized: "Copied to the clipboard and added to history"))
+                    toasts.show(merged
+                        ? String(localized: "Copied to the clipboard")
+                        : String(localized: "Copied to the clipboard and added to history"))
                 case .failed(let message):
                     toasts.error(message)
                 }
@@ -942,7 +1280,7 @@ final class AppModel {
         writes.run {
             guard let content = await variantContent(id, variant: variant) else { return }
             switch await ingestDerived(content.items, from: id) {
-            case .saved(let newID):
+            case .saved(let newID, _):
                 history.selectedID = .record(newID)
                 history.storeDidChange()
                 toasts.show(String(localized: "Duplicated as \(variant.title)"))
@@ -955,7 +1293,7 @@ final class AppModel {
     }
 
     enum DerivedResult {
-        case saved(UUID)
+        case saved(UUID, merged: Bool)
         /// *Secrets: Don't save* applies to it, as to any copy.
         case secretNotSaved
         case failed(String)
@@ -966,6 +1304,8 @@ final class AppModel {
     private func ingestDerived(_ items: [CanonicalItem], from id: UUID?) async -> DerivedResult {
         let original = id.flatMap { resolveCard($0) }
         var appSettings = original?.sourceAppBundleID.map { settings.settings(for: $0) } ?? ResolvedAppSettings()
+        // Same colour normalisation as the monitor path so MCS1 matches Choose/Restore writes.
+        let items = ColorPayload.normalized(items)
         var sensitiveKind: SecretKind?
         if let text = TextDecoding.plainText(of: items), settings.secretPolicy != .off,
            let kind = SecretDetector.detect(text, kinds: settings.secretKinds) {
@@ -1004,11 +1344,14 @@ final class AppModel {
             limits: settings.retentionLimits,
             protectingRecords: retentionProtectedRecords
         ) {
-        case .committed(let newID), .merged(let newID):
+        case .committed(let newID):
             // As for a capture: a pending delete of the same content is undone, retention and its
             // expiry timer run (review finding).
             didSave(newID)
-            return .saved(newID)
+            return .saved(newID, merged: false)
+        case .merged(let newID):
+            didSave(newID)
+            return .saved(newID, merged: true)
         case .rejected(let message), .failed(let message):
             return .failed(message)
         case .dropped:
@@ -1017,7 +1360,9 @@ final class AppModel {
     }
 
     static func isEditable(_ card: HistoryCard) -> Bool {
-        [.text, .richText, .url].contains(card.displayType)
+        // displayType can lag: colour UTI orphans must not open as editable text.
+        guard !card.looksLikeColor else { return false }
+        return [.text, .richText, .url].contains(card.displayType)
     }
 
     func toggleFavorite(_ id: UUID) {
@@ -2148,7 +2493,8 @@ final class AppModel {
     }
 
     /// The stored image or PDF page, downsampled to the preview size off the main actor (§7.3).
-    func previewImage(_ id: UUID, maxPixelSize: Int) async -> NSImage? {
+    /// Keeps the `CGImage` for the eyedropper — do not recover it from `NSImage`.
+    func previewImage(_ id: UUID, maxPixelSize: Int) async -> (image: NSImage, cgImage: CGImage)? {
         guard let input = try? await store.recognitionInput(for: id) else { return nil }
         let image = await Task.detached(priority: .userInitiated) { () -> Transfer<CGImage>? in
             let image = input.isPDF
@@ -2156,7 +2502,8 @@ final class AppModel {
                 : Thumbnailer.downsampledImage(from: input.data, maxPixelSize: maxPixelSize)
             return image.map { Transfer(value: $0) }
         }.value
-        return image.map { NSImage(cgImage: $0.value, size: .zero) }
+        guard let cgImage = image?.value else { return nil }
+        return (NSImage(cgImage: cgImage, size: .zero), cgImage)
     }
 
     /// Edit save (§3.6). Returns an error message, or `nil` on success; the window stays open.
@@ -2214,6 +2561,11 @@ final class AppModel {
     private func showRecord(_ id: UUID) async {
         var card = resolveCard(id)
         if card == nil { card = await details(id, maxTextScalars: 0)?.card }
+        // Always details-heal (payload may have colour UTI while card caches lag) (§8.5).
+        if let healed = await details(id, maxTextScalars: 0)?.card {
+            card = healed
+            history.replaceLocally(healed)
+        }
         guard let card else { return closeRecord() }
         let state = ItemState(card: card, focusOnLoad: false, maxBytes: settings.maxItemBytes)
         itemState = state

@@ -101,10 +101,28 @@ public enum PasteboardWriter {
                 return fileItem
             }
             let carrier = fileItems.first ?? NSPasteboardItem()
+            var wrotePlainText = false
             for representation in others {
-                if let data = representation.bytes {
-                    carrier.setData(data, forType: NSPasteboard.PasteboardType(representation.type.rawValue))
+                let type = NSPasteboard.PasteboardType(representation.type.rawValue)
+                // Plain text as a string: many fields ignore UTF-8 `setData` for paste.
+                // Decode via TextDecoding (utf16 must not be read as UTF-8 — that forced HEX synthesis
+                // on colour cards and left raw utf16 bytes on the pasteboard).
+                if PasteboardType.plainTextTypes.contains(representation.type),
+                   let data = representation.bytes,
+                   let string = TextDecoding.decode(data, as: representation.type) {
+                    carrier.setString(string, forType: .string)
+                    wrotePlainText = true
+                } else if !PasteboardType.plainTextTypes.contains(representation.type),
+                          let data = representation.bytes {
+                    carrier.setData(data, forType: type)
                 }
+            }
+            // Color cards show HEX in the UI from metadata, but older / Color Picker payloads are
+            // colour-UTI only — synthesize HEX so Choose/Restore pastes into text fields.
+            if !wrotePlainText,
+               let colorData = others.first(where: { $0.type == .color })?.bytes,
+               let hex = ColorHex.string(fromPasteboardColor: colorData) {
+                carrier.setString(hex, forType: .string)
             }
             result += fileItems.isEmpty ? [carrier] : fileItems
         }
@@ -115,5 +133,22 @@ public enum PasteboardWriter {
 
     public static func plainTextItems(_ text: String) -> [CanonicalItem] {
         [CanonicalItem([.bytes(.utf8PlainText, Data(text.utf8))])]
+    }
+
+    /// Colour UTI plus one CSS string (HEX / RGB / HSL) so Color Wells and text fields both paste.
+    /// `DisplayType` stays `.color`; the string is the paste format for text fields (§8.5).
+    public static func colorItems(_ values: ColorValues, textFormat: ColorPasteFormat = .hex) -> [CanonicalItem] {
+        let color = NSColor(
+            srgbRed: CGFloat(values.red) / 255,
+            green: CGFloat(values.green) / 255,
+            blue: CGFloat(values.blue) / 255,
+            alpha: CGFloat(values.alpha) / 255
+        )
+        guard let data = color.pasteboardPropertyList(forType: .color) as? Data else { return [] }
+        let text = textFormat.string(from: values)
+        return [CanonicalItem([
+            .bytes(.color, data),
+            .bytes(.utf8PlainText, Data(text.utf8)),
+        ])]
     }
 }

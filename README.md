@@ -19,7 +19,7 @@
   <img src="docs/assets/screenshot.webp" width="860" alt="The Memopila panel in dark mode: a sidebar with History, Favorites, Apps and Collections, a filter bar with All, Text, Links, Images and Files, and a grid of clipboard cards">
 </p>
 
-Memopila lives in the menu bar and keeps a history of what you copy: text, rich text, links, images, PDFs, colours and files. Press **⌥⌘V**, find what you need, and press ↩. The record goes back on the clipboard and you are returned to the app you were in.
+Memopila lives in the menu bar and keeps a history of what you copy: text, rich text, links, images, PDFs, colours (system Color Picker, or a lone HEX / RGB / HSL paste) and files. Press **⌥⌘V**, find what you need, and press ↩. The record goes back on the clipboard and you are returned to the app you were in.
 
 > [!NOTE]
 > **1.1.1** — stability: Stack Window ♥ / titles stay in sync with History, pinboard and playlist reorders no longer race or drop slots, stack delete has Undo, leave-stack and Settings age cuts ask before deleting old cards, and edit-merge keeps stack and pinboard membership. Pasteboard access is checked on macOS 15.6, 26.6 and 27.0; remaining PLAN §10 spikes (including 27.2+ when Apple ships it) are follow-ups, not missing product.
@@ -45,7 +45,7 @@ Memopila lives in the menu bar and keeps a history of what you copy: text, rich 
   - formatted text, edited with its formatting kept;
   - syntax highlighting while you type, line numbers for code, and invisible characters;
   - files through Quick Look;
-  - colours as HEX / RGB / HSL;
+  - colours as HEX / RGB / HSL (each paste format is its own card; the grid shows the other formats in smaller type so the same colour is easy to spot); on images, an eyedropper samples a pixel and Copy makes a Color card;
   - links with *Open*.
 - *Changes…* compares your edits with the saved text, and the standard *Save / Don't Save / Cancel* sheet keeps you from losing them.
 - **Text in images** is recognized on device (Vision) and is searchable. Copy part of it or all of it as a new card.

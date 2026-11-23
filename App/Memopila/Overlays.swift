@@ -45,6 +45,7 @@ struct RecordView: View {
     @Bindable var state: ItemState
     @State private var details: RecordDetails?
     @State private var image: NSImage?
+    @State private var previewCGImage: CGImage?
     @State private var imageFailed = false
     @State private var newCollectionName = ""
     @State private var isNamingCollection = false
@@ -201,6 +202,17 @@ struct RecordView: View {
             systemImage: "1.magnifyingglass",
             help: String(localized: "One image pixel per screen pixel")
         ) { zoom.actualSize() }
+        HoverIconButton(
+            systemImage: "eyedropper",
+            help: state.isEyedropping
+                ? String(localized: "Stop sampling colours (Esc)")
+                : String(localized: "Sample a colour from the image"),
+            emphasized: state.isEyedropping
+        ) {
+            state.isEyedropping.toggle()
+            if !state.isEyedropping { state.hoverColor = nil }
+        }
+        .disabled(previewCGImage == nil)
         // Preview's own icon right next to the words: one button, not an icon and a label apart.
         Button { model.openInPreview(state.id) } label: {
             HStack(spacing: 4) {
@@ -287,7 +299,14 @@ struct RecordView: View {
                     // Zoom with ⌘+ / ⌘− / ⌘0, a pinch or the toolbar; scroll when larger than the window.
                     Group {
                         if let image {
-                            ZoomableImage(image: image, zoom: state.imageZoom)
+                            ZoomableImage(
+                                image: image,
+                                cgImage: previewCGImage,
+                                zoom: state.imageZoom,
+                                isPicking: state.isEyedropping,
+                                onHover: { state.hoverColor = $0 },
+                                onPicked: { state.pinnedColor = $0 }
+                            )
                         } else if imageFailed {
                             Label("The image could not be shown.", systemImage: "photo.badge.exclamationmark")
                                 .foregroundStyle(.orange)
@@ -296,6 +315,17 @@ struct RecordView: View {
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    if state.isEyedropping || state.pinnedColor != nil {
+                        SampledColorPane(
+                            pinned: state.pinnedColor,
+                            isPicking: state.isEyedropping,
+                            hover: state.hoverColor,
+                            format: $state.colorPasteFormat,
+                            copy: { values, format in
+                                model.copyNewColor(values, format: format, from: state.id)
+                            }
+                        )
+                    }
                     recognizedTextPane(availableHeight: proxy.size.height)
                 }
             }
@@ -303,7 +333,7 @@ struct RecordView: View {
             FilePreview(card: card, thumbnails: model.thumbnails) { [model, id = state.id] path in
                 model.copyNewText(path, from: id)
             }
-        } else if card.displayType == .color {
+        } else if card.looksLikeColor {
             colorView
         }
     }
@@ -363,38 +393,25 @@ struct RecordView: View {
         .padding(16)
     }
 
-    /// A colour: the swatch and its HEX, RGB and HSL, each copied with one click.
+    /// A colour: swatch + paste-format picker; changing the segment saves onto the card (§8.5).
     @ViewBuilder
     private var colorView: some View {
-        let values = card.colorHex.flatMap(ColorValues.init(hex:))
+        // Same channel SSOT as the grid card (paste string first, hex cache as fallback).
+        let values = ColorCardLabel.values(preview: card.preview, colorHex: card.colorHex)
+        let swatch = ColorCardLabel.swatchHex(preview: card.preview, colorHex: card.colorHex)
         HStack(spacing: 28) {
-            RoundedRectangle(cornerRadius: 14)
-                .fill(card.colorHex.flatMap(Color.init(hex:)) ?? .clear)
-                .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(.separator))
+            ColorSwatch(hex: swatch)
                 .frame(width: 160, height: 160)
             if let values {
-                Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 12) {
-                    colorRow("HEX", values.hex)
-                    colorRow("RGB", values.rgb)
-                    colorRow("HSL", values.hsl)
-                }
+                // No Copy — the card already exists; Choose (↩) is the clipboard action.
+                ColorFormatRows(values: values, format: $state.colorPasteFormat, persistsOnChange: true)
             }
         }
         .padding(16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private func colorRow(_ name: String, _ value: String) -> some View {
-        GridRow(alignment: .firstTextBaseline) {
-            Text(verbatim: name).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-            Text(verbatim: value).font(.title3.monospaced()).textSelection(.enabled)
-            Button { model.copyNewText(value, from: state.id) } label: {
-                Image(systemName: "doc.on.doc")
-                    .frame(width: 22, height: 20)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(ToolbarIconStyle(recolorsLabel: false))
-            .floatingHelp(String(localized: "Copy \(name): it goes to the clipboard and into history"))
+        .onChange(of: state.colorPasteFormat) { _, format in
+            // Like the title field: the picker is the edit; no separate Save.
+            model.saveColorPasteFormat(state.id, format: format)
         }
     }
 
@@ -868,6 +885,9 @@ struct RecordView: View {
             return String(localized: "Click the text to edit · ← → other records · ↩ to clipboard · Esc closes")
         }
         if isImage {
+            if state.isEyedropping {
+                return String(localized: "Click to sample · Esc stops sampling · Copy from the panel below")
+            }
             return String(localized: "⌘+ ⌘− zoom · ⌘0 fit · ← → other records · ↩ to clipboard · Esc closes")
         }
         return String(localized: "← → other records · ↩ to clipboard · Esc closes")
@@ -895,13 +915,29 @@ struct RecordView: View {
             // The card the window opened with may be older than the stored record.
             state.adoptStoredTitle(card.customTitle)
             model.windows.updateRecordTitle(card)
+            if card.looksLikeColor {
+                // Heal grid swatch after details backfilled nil colorHex / empty preview.
+                model.history.replaceLocally(card)
+                // Reseed format only when it still matches what init saw — a late load must not
+                // clobber a picker change the user already made.
+                let seededAtOpen = ColorPasteFormat.matching(state.card.preview) ?? .hex
+                if state.colorPasteFormat == seededAtOpen {
+                    state.colorPasteFormat = ColorPasteFormat.matching(card.preview) ?? .hex
+                }
+            }
         }
         guard [.image, .pdf].contains(state.card.displayType) else { return }
         // Large enough for Actual Size on most screenshots, still bounded in memory (§7.3).
-        let loadedImage = await model.previewImage(state.id, maxPixelSize: 4_096)
+        let preview = await model.previewImage(state.id, maxPixelSize: 4_096)
         guard !Task.isCancelled else { return }
-        image = loadedImage
-        imageFailed = loadedImage == nil
+        image = preview?.image
+        previewCGImage = preview?.cgImage
+        imageFailed = preview == nil
+        if preview == nil {
+            state.isEyedropping = false
+            state.pinnedColor = nil
+            state.hoverColor = nil
+        }
     }
 }
 

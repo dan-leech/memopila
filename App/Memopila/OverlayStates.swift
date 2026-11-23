@@ -118,6 +118,15 @@ final class ItemState {
     @ObservationIgnored private var highlightTask: Task<Void, Never>?
     /// Fit, Actual Size and zoom of an image or PDF record.
     let imageZoom = ImageZoom()
+    /// Eyedropper armed: hover/click samples pixels (mode only; pin is separate).
+    var isEyedropping = false
+    /// Last colour pinned from the image (survives leaving eyedropper mode).
+    var pinnedColor: ColorValues?
+    /// Colour under the cursor while eyedropping (not committed).
+    var hoverColor: ColorValues?
+    /// HEX / RGB / HSL for Color records and the eyedropper pane (Choose + Copy use this).
+    /// Seeded from `card.preview` at open so ↩ before async details still uses the stored format.
+    var colorPasteFormat: ColorPasteFormat = .hex
     /// The text recognized in an image, under it; ⌘F searches it.
     let recognizedText = TextSelection()
     /// ⌥⌘I asks the record view to show or hide the inspector.
@@ -161,10 +170,16 @@ final class ItemState {
         title = card.customTitle ?? ""
         language = LanguageChoice(stored: card.codeLanguage)
         self.focusOnLoad = focusOnLoad
+        if card.looksLikeColor {
+            colorPasteFormat = ColorPasteFormat.matching(card.preview) ?? .hex
+        }
     }
 
     /// Shown as text: the text view instead of an image, file or colour view.
-    var hasText: Bool { [.text, .richText, .url, .mixed].contains(card.displayType) }
+    var hasText: Bool {
+        guard !card.looksLikeColor else { return false }
+        return [.text, .richText, .url, .mixed].contains(card.displayType)
+    }
     var titleChanged: Bool { title.trimmingCharacters(in: .whitespacesAndNewlines) != originalTitle }
     /// Unsaved text. The title does not count: it saves itself when the field is left.
     var isDirty: Bool { isTextDirty }

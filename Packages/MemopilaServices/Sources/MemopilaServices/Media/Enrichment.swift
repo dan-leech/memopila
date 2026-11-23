@@ -51,7 +51,13 @@ public struct IngestEnrichment: Sendable, Equatable {
         var enrichment = IngestEnrichment(sourceAppName: sourceAppName, sourceWindowTitle: sourceWindowTitle)
         let representations = items.flatMap(\.representations)
 
-        if let text = RichText.plainText(of: items) {
+        // Colour: preview/format cache must use pastePlainText SSOT (trimmed), not RichText/TextDecoding.
+        if let colorText = ColorPayload.pastePlainText(of: items), ColorPayload.identity(of: items) != nil {
+            enrichment.cardPreview = TextDecoding.prefix(colorText, maxScalars: cardPreviewScalars)
+            enrichment.textIndex = TextDecoding.prefix(colorText, maxScalars: searchScalars)
+            enrichment.textLength = colorText.count
+            enrichment.lineCount = 1
+        } else if let text = RichText.plainText(of: items) {
             enrichment.cardPreview = TextDecoding.prefix(text, maxScalars: cardPreviewScalars)
             enrichment.textIndex = TextDecoding.prefix(text, maxScalars: searchScalars)
             enrichment.textLength = text.count
@@ -71,7 +77,9 @@ public struct IngestEnrichment: Sendable, Equatable {
             enrichment.pixelHeight = thumbnail.pixelHeight
         }
 
-        if let colorData = representations.first(where: { $0.type == .color })?.bytes {
+        if let hex = ColorPayload.identity(of: items)?.hex {
+            enrichment.colorHex = hex
+        } else if let colorData = representations.first(where: { $0.type == .color })?.bytes {
             enrichment.colorHex = ColorHex.string(fromPasteboardColor: colorData)
         }
         return enrichment
@@ -233,12 +241,178 @@ public enum Thumbnailer {
     }
 }
 
-/// `#RRGGBB` for a `com.apple.cocoa.pasteboard.color` payload.
+/// `#RRGGBB` or `#RRGGBBAA` for a `com.apple.cocoa.pasteboard.color` payload (AA when translucent).
 public enum ColorHex {
     public static func string(fromPasteboardColor data: Data) -> String? {
-        guard let color = NSColor(pasteboardPropertyList: data, ofType: .color),
-              let rgb = color.usingColorSpace(.sRGB) else { return nil }
+        guard let color = NSColor(pasteboardPropertyList: data, ofType: .color) else { return nil }
+        return string(from: color)
+    }
+
+    /// sRGB HEX matching `ColorValues.hex`.
+    public static func string(from color: NSColor) -> String? {
+        guard let rgb = color.usingColorSpace(.sRGB) else { return nil }
         func component(_ value: CGFloat) -> Int { Int((min(max(value, 0), 1) * 255).rounded()) }
-        return String(format: "#%02X%02X%02X", component(rgb.redComponent), component(rgb.greenComponent), component(rgb.blueComponent))
+        return ColorValues(
+            red: component(rgb.redComponent),
+            green: component(rgb.greenComponent),
+            blue: component(rgb.blueComponent),
+            alpha: component(rgb.alphaComponent)
+        )?.hex
+    }
+}
+
+/// Colour pasteboard identity: UTI alone is not enough — text fields need a CSS string, and MCS1
+/// must match what `PasteboardWriter.makeItems` writes (synthesis on write alone diverged hashes).
+public enum ColorPayload {
+    /// Colour-UTI-only → +HEX; lone CSS text → colour; rebuild UTI from sRGB channels so Color Picker
+    /// vs `colorItems` vs `#hex` text share one MCS1 for the same channels + paste format.
+    public static func normalized(_ items: [CanonicalItem]) -> [CanonicalItem] {
+        canonicalizingColorItems(promotingLoneCSSColor(ensuringPasteText(items)))
+    }
+
+    /// Append HEX plain text when a colour item has no plain-text representation. Idempotent.
+    public static func ensuringPasteText(_ items: [CanonicalItem]) -> [CanonicalItem] {
+        items.map { item in
+            let types = Set(item.representations.map(\.type))
+            guard types.contains(.color) else { return item }
+            if !types.isDisjoint(with: PasteboardType.plainTextTypes) { return item }
+            guard let data = item.representations.first(where: { $0.type == .color })?.bytes,
+                  let hex = ColorHex.string(fromPasteboardColor: data) else { return item }
+            return CanonicalItem(item.representations + [.bytes(.utf8PlainText, Data(hex.utf8))])
+        }
+    }
+
+    /// A single item whose plain text is only `#…` / `rgb(…)` / `hsl(…)` → Color card (UTI + text).
+    /// Keeps files / images / *significant* rich text (promoting would drop real formatting).
+    /// Insignificant RTF/HTML (browser/Notes chrome) aligns with `DisplayType`: those copies are
+    /// already classified as text — refusing them here left text+#hex forks vs Color Picker MCS1.
+    public static func promotingLoneCSSColor(_ items: [CanonicalItem]) -> [CanonicalItem] {
+        guard items.count == 1 else { return items }
+        let item = items[0]
+        let types = Set(item.representations.map(\.type))
+        if types.contains(.color) { return items }
+        if types.contains(where: \.isFileReference)
+            || types.contains(where: \.isRasterImage)
+            || types.contains(.pdf) { return items }
+        if !types.isDisjoint(with: PasteboardType.richTextTypes),
+           FormattingSignificance.isSignificant(item) {
+            return items
+        }
+        // RichText: HTML/RTF-only copies (no utf8) still expose a lone CSS string.
+        guard let text = RichText.plainText(of: items) else { return items }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let values = ColorValues(css: trimmed) else { return items }
+        let format = ColorPasteFormat.matching(trimmed) ?? .hex
+        let promoted = PasteboardWriter.colorItems(values, textFormat: format)
+        return promoted.isEmpty ? items : promoted
+    }
+
+    /// Replace opaque NSColor archives with deterministic sRGB `colorItems` for the same channels.
+    /// Paste format comes from the CSS string's *shape* (`hsl(` / `rgb(` / `#`), not channel equality:
+    /// HSL↔RGB routinely drifts ±1, and requiring `ColorValues` equality forced HEX and forked MCS1.
+    public static func canonicalizingColorItems(_ items: [CanonicalItem]) -> [CanonicalItem] {
+        items.map { item in
+            guard let colorData = item.representations.first(where: { $0.type == .color })?.bytes,
+                  let hex = ColorHex.string(fromPasteboardColor: colorData),
+                  let values = ColorValues(hex: hex) else { return item }
+            // UTI channels win; format enum from a parseable CSS paste string (else HEX).
+            let format = pasteFormat(forPlainText: pastePlainText(of: item))
+            let rebuilt = PasteboardWriter.colorItems(values, textFormat: format)
+            return rebuilt.first ?? item
+        }
+    }
+
+    /// Logical colour identity: canonical sRGB HEX + paste-format shape (§8.5).
+    public struct Identity: Sendable, Equatable {
+        public let hex: String
+        public let format: ColorPasteFormat
+    }
+
+    /// Payload-derived identity (UTI channels + CSS shape). Nil when there is no readable colour UTI.
+    public static func identity(of items: [CanonicalItem]) -> Identity? {
+        let reps = items.flatMap(\.representations)
+        guard let data = reps.first(where: { $0.type == .color })?.bytes,
+              let hex = ColorHex.string(fromPasteboardColor: data).flatMap({ ColorValues(hex: $0)?.hex })
+        else { return nil }
+        return Identity(hex: hex, format: pasteFormat(forPlainText: pastePlainText(of: items)))
+    }
+
+    /// Trimmed paste string of the first colour-bearing item (or first item).
+    public static func pastePlainText(of items: [CanonicalItem]) -> String? {
+        if let item = items.first(where: { $0.representations.contains(where: { $0.type == .color }) }) {
+            return pastePlainText(of: item)
+        }
+        return items.first.flatMap(pastePlainText(of:))
+    }
+
+    /// HEX / RGB / HSL from a stored paste string when it is a CSS colour; otherwise HEX.
+    public static func pasteFormat(forPlainText text: String?) -> ColorPasteFormat {
+        guard let text, ColorValues(css: text) != nil else { return .hex }
+        return ColorPasteFormat.matching(text) ?? .hex
+    }
+
+    /// Record-window Choose: honour a picker change; otherwise trust the stored paste string so ↩
+    /// before `details` heals an empty preview does not rewrite RGB/HSL cards as HEX.
+    public static func chooseFormat(
+        picker: ColorPasteFormat,
+        openTimePreview: String,
+        payloadPlainText: String?
+    ) -> ColorPasteFormat {
+        let seeded = ColorPasteFormat.matching(openTimePreview) ?? .hex
+        if picker != seeded { return picker }
+        return pasteFormat(forPlainText: payloadPlainText)
+    }
+
+    /// Plain text on a colour item in the same preference order as `TextDecoding` (utf8 before utf16).
+    /// Decoding utf16 as UTF-8 used to miss HSL/RGB and force HEX. Always trimmed.
+    public static func pastePlainText(of item: CanonicalItem) -> String? {
+        let order: [PasteboardType] = [.utf8PlainText, .plainText, .utf16PlainText]
+        for type in order {
+            guard let data = item.representations.first(where: { $0.type == type })?.bytes,
+                  let text = TextDecoding.decode(data, as: type)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else { continue }
+            return text
+        }
+        return nil
+    }
+
+    /// Rebuild via `colorItems` so format changes never keep a legacy NSColor archive (forked MCS1).
+    public static func replacingPasteText(in items: [CanonicalItem], text: String) -> [CanonicalItem] {
+        let format = pasteFormat(forPlainText: text)
+        return items.map { item in
+            guard let colorData = item.representations.first(where: { $0.type == .color })?.bytes,
+                  let hex = ColorHex.string(fromPasteboardColor: colorData),
+                  let values = ColorValues(hex: hex) else { return item }
+            return PasteboardWriter.colorItems(values, textFormat: format).first ?? item
+        }
+    }
+
+    /// UI channels from caches: paste string when it parses as CSS, else `colorHex`.
+    /// Never let a stale HEX cache override a readable paste string (same class of bug as
+    /// cache-first Choose rewriting RGB/HSL cards).
+    public static func displayValues(preview: String, colorHex: String?) -> ColorValues? {
+        let trimmed = preview.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty, let values = ColorValues(css: trimmed) { return values }
+        if let hex = colorHex, let values = ColorValues(hex: hex) { return values }
+        return nil
+    }
+
+    /// Rehash after normalisation so ingest stores the same bytes Choose will write.
+    public static func normalizedSnapshot(_ snapshot: OwnedSnapshot) -> OwnedSnapshot {
+        let items = normalized(snapshot.items)
+        guard items != snapshot.items else { return snapshot }
+        return OwnedSnapshot(
+            changeCount: snapshot.changeCount,
+            observedAt: snapshot.observedAt,
+            identity: snapshot.identity,
+            settings: snapshot.settings,
+            items: items,
+            contentHash: MCS1.contentHash(of: items),
+            payloadSizeBytes: MCS1.payloadSize(of: items),
+            displayType: DisplayType.classify(items),
+            skippedTypes: snapshot.skippedTypes,
+            sourceURL: snapshot.sourceURL,
+            sensitiveKind: snapshot.sensitiveKind
+        )
     }
 }

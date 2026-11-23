@@ -349,18 +349,43 @@ final class StackSessionController {
     private func writeCurrent(_ recordID: UUID, stackID: UUID) async -> Bool {
         guard let model else { return false }
         do {
+            var writeID = recordID
+            var items: [CanonicalItem]
+            var source: String?
             let payload = try await model.store.payload(for: recordID)
+            let looksColour = ColorPayload.identity(of: ColorPayload.normalized(payload.items)) != nil
+            if looksColour {
+                // Clipboard ≡ card: canonicalize colour before stack write (§8.5).
+                switch await model.monitor.destructive({ opSeq in
+                    try await model.store.ensureCanonicalColorRecord(recordID, opSeq: opSeq)
+                }) {
+                case .success(let result):
+                    writeID = result.id
+                    items = result.items
+                    source = result.sourceBundleID
+                    if writeID != recordID { model.history.storeDidChange() }
+                case .failure(.busy):
+                    model.toasts.error(String(localized: "Another change is in progress. Try again."))
+                    return false
+                case .failure(.failed):
+                    model.toasts.error(String(localized: "Could not put this on the clipboard."))
+                    return false
+                }
+            } else {
+                items = payload.items
+                source = payload.sourceBundleID
+            }
             switch await model.monitor.writeAsync(
-                payload.items,
-                sourceBundleID: payload.sourceBundleID,
-                recordID: recordID,
+                items,
+                sourceBundleID: source,
+                recordID: writeID,
                 stackID: stackID
             ) {
             case .written:
                 // Unconfirmed pasteboard writes clear identity but still return `.written` —
                 // do not arm/advance without stack chrome on the pasteboard.
                 guard model.monitor.clipboardStackID == stackID,
-                      model.monitor.clipboardRecordID == recordID else {
+                      model.monitor.clipboardRecordID == writeID else {
                     model.toasts.error(String(localized: "Could not put this on the clipboard."))
                     return false
                 }

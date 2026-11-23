@@ -218,8 +218,20 @@ public struct HistoryCard: Sendable, Identifiable, Equatable {
     public let hasThumbnail: Bool
     public let codeLanguage: String?
 
-    /// Plain text can be produced for Copy as plain text and text actions.
-    public var hasText: Bool { textLength != nil }
+    /// Colour face / format picker / drag types: caches can lag independently — any one signal counts.
+    /// `colorHex` alone covers empty `storedTypes` while UTI rows still exist (heal restores the rest).
+    public var looksLikeColor: Bool {
+        displayType == .color
+            || colorHex != nil
+            || storedTypes.contains(PasteboardType.color.rawValue)
+    }
+
+    /// Plain text for Duplicate As / text actions — not colour cards (they use the paste-format picker).
+    /// Colour rows still store a CSS `textLength`; treating that as `hasText` reopened text transforms.
+    public var hasText: Bool {
+        guard textLength != nil else { return false }
+        return !looksLikeColor
+    }
 
     public init(
         id: UUID,
@@ -337,6 +349,41 @@ public struct HistoryCard: Sendable, Identifiable, Equatable {
             sourceAppName: sourceAppName,
             sourceURL: sourceURL,
             isEdited: isEdited,
+            expiresAt: expiresAt,
+            hasRecognizedText: hasRecognizedText,
+            storedTypes: storedTypes,
+            skippedTypes: skippedTypes,
+            hasThumbnail: hasThumbnail,
+            codeLanguage: codeLanguage
+        )
+    }
+
+    /// Optimistic colour paste-format patch (grid label / ←→ seed from preview).
+    public func withColorPreview(_ preview: String) -> HistoryCard {
+        let trimmed = preview.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed != self.preview else { return self }
+        return HistoryCard(
+            id: id,
+            displayType: displayType,
+            preview: trimmed,
+            customTitle: customTitle,
+            textLength: trimmed.count,
+            lineCount: 1,
+            sensitiveKind: sensitiveKind,
+            pixelWidth: pixelWidth,
+            pixelHeight: pixelHeight,
+            filePaths: filePaths,
+            colorHex: colorHex,
+            payloadSizeBytes: payloadSizeBytes,
+            firstCopiedAt: firstCopiedAt,
+            lastCopiedAt: lastCopiedAt,
+            copyCount: copyCount,
+            useCount: useCount,
+            isFavorite: isFavorite,
+            sourceAppBundleID: sourceAppBundleID,
+            sourceAppName: sourceAppName,
+            sourceURL: sourceURL,
+            isEdited: true,
             expiresAt: expiresAt,
             hasRecognizedText: hasRecognizedText,
             storedTypes: storedTypes,
