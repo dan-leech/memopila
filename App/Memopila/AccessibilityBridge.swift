@@ -26,15 +26,63 @@ enum AccessibilityBridge {
     /// explicitly, so ⇧ still held from ⇧↩ does not turn it into Paste and Match Style.
     @MainActor
     static func paste() {
+        postCommandKey(producing: "v", fallback: CGKeyCode(kVK_ANSI_V))
+    }
+
+    /// Presses ⌘C in the frontmost app (layout convert selection fallback).
+    @MainActor
+    static func copy() {
+        postCommandKey(producing: "c", fallback: CGKeyCode(kVK_ANSI_C))
+    }
+
+    @MainActor
+    private static func postCommandKey(producing character: String, fallback: CGKeyCode) {
         guard isTrusted else { return }
         let source = CGEventSource(stateID: .combinedSessionState)
-        let keyCode = keyCode(producing: "v") ?? CGKeyCode(kVK_ANSI_V)
+        let keyCode = character.first.flatMap { self.keyCode(producing: $0) } ?? fallback
         let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true)
         let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
         down?.flags = .maskCommand
         up?.flags = .maskCommand
         down?.post(tap: .cgSessionEventTap)
         up?.post(tap: .cgSessionEventTap)
+    }
+
+    /// Selected text in the focused element of `pid`, when Accessibility exposes it.
+    static func selectedText(pid: pid_t) -> (text: String, range: CFRange)? {
+        guard isTrusted else { return nil }
+        let application = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(application, 0.25)
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(application, "AXFocusedUIElement" as CFString, &focused) == .success,
+              let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else { return nil }
+        let element = unsafeDowncast(focused, to: AXUIElement.self)
+        AXUIElementSetMessagingTimeout(element, 0.25)
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, "AXSelectedText" as CFString, &value) == .success,
+              let text = value as? String, !text.isEmpty else { return nil }
+        var rangeValue: CFTypeRef?
+        var range = CFRange(location: 0, length: (text as NSString).length)
+        if AXUIElementCopyAttributeValue(element, "AXSelectedTextRange" as CFString, &rangeValue) == .success,
+           let rangeValue {
+            let axRange = rangeValue as! AXValue
+            AXValueGetValue(axRange, .cfRange, &range)
+        }
+        return (text, range)
+    }
+
+    @discardableResult
+    static func setSelectedTextRange(pid: pid_t, range: CFRange) -> Bool {
+        guard isTrusted else { return false }
+        let application = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(application, 0.25)
+        var focused: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(application, "AXFocusedUIElement" as CFString, &focused) == .success,
+              let focused, CFGetTypeID(focused) == AXUIElementGetTypeID() else { return false }
+        let element = unsafeDowncast(focused, to: AXUIElement.self)
+        var mutable = range
+        guard let axRange = AXValueCreate(.cfRange, &mutable) else { return false }
+        return AXUIElementSetAttributeValue(element, "AXSelectedTextRange" as CFString, axRange) == .success
     }
 
     /// The key that types `character` in the current Latin layout: ⌘V is on another key with

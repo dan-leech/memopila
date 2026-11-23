@@ -122,6 +122,13 @@ struct RecordView: View {
                 ToolbarIcon(systemImage: "arrow.uturn.forward", help: String(localized: "Redo (⇧⌘Z)")) { state.redo() }
                 Divider().frame(height: 18).padding(.horizontal, 4)
                 transformMenu
+                ToolbarIcon(
+                    systemImage: "keyboard",
+                    help: String(localized: "Convert layout of the selection (or all text); press again for the next layout")
+                        + " (\(model.settings.layoutConvertShortcut.displayString))"
+                ) {
+                    model.layoutConvert.cycle()
+                }
                 if state.hasRichSource {
                     Divider().frame(height: 18).padding(.horizontal, 4)
                     formattingToggle

@@ -55,7 +55,7 @@ enum SettingsTab: String, Hashable, CaseIterable {
 }
 
 enum HotKeyRole: CaseIterable {
-    case window, pause, skip
+    case window, pause, skip, layoutConvert
 }
 
 /// Wires settings, store, monitor, history and the panel together and owns every user command
@@ -95,6 +95,8 @@ final class AppModel {
     private(set) var stackSession: StackSessionController!
     /// Synthetic ⌘V delivery (third flight; panel defers while `isInFlight`).
     private(set) var pasteDelivery: PasteDelivery!
+    /// In-place keyboard-layout convert (⌥⌘B).
+    @ObservationIgnored private(set) var layoutConvert: LayoutConvertController!
     /// Panel card-drag SSOT (§3.11 drop contract). Not ObservationIgnored: Favorites/Collections
     /// chrome (`reorderGap` / End slot) must invalidate the History grid while dragging.
     private(set) var stackDrag = StackDragSession()
@@ -169,6 +171,7 @@ final class AppModel {
             memopilaUIKey: { [weak self] in self?.memopilaUIKey ?? false },
             yieldKeyFocus: { [weak self] in self?.panel.yieldKeyFocus() }
         )
+        layoutConvert = LayoutConvertController(model: self)
 
         // The panel, or a window of Memopila's own while it is the active app (the record window,
         // Settings): what is copied there is Memopila's (review finding: it was Unknown).
@@ -3158,6 +3161,7 @@ final class AppModel {
         case .window: settings.shortcut
         case .pause: settings.pauseShortcut
         case .skip: settings.skipShortcut
+        case .layoutConvert: settings.layoutConvertShortcut
         }
     }
 
@@ -3172,6 +3176,13 @@ final class AppModel {
             }
             guard register(shortcut, for: role) else { return false }
         } else {
+            // Window and layout convert always keep a binding.
+            if role == .window || role == .layoutConvert {
+                return setShortcut(
+                    role == .window ? .defaultShortcut : .defaultLayoutConvert,
+                    for: role
+                )
+            }
             hotKeyIDs[role] = nil
             hotKeyErrors[role] = nil
         }
@@ -3180,6 +3191,7 @@ final class AppModel {
         case .window: settings.shortcut = shortcut ?? .defaultShortcut
         case .pause: settings.pauseShortcut = shortcut
         case .skip: settings.skipShortcut = shortcut
+        case .layoutConvert: settings.layoutConvertShortcut = shortcut ?? .defaultLayoutConvert
         }
         return true
     }
@@ -3192,6 +3204,7 @@ final class AppModel {
             case .window: panel.toggle()
             case .pause: monitor.togglePause()
             case .skip: monitor.toggleSkip()
+            case .layoutConvert: layoutConvert.cycle()
             }
         }
         switch result {
@@ -3212,6 +3225,7 @@ extension HotKeyRole {
         case .window: String(localized: "Open Memopila")
         case .pause: String(localized: "Pause or Resume Capture")
         case .skip: String(localized: "Skip Next Copy")
+        case .layoutConvert: String(localized: "Convert Layout")
         }
     }
 }

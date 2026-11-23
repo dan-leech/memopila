@@ -9,6 +9,7 @@ public enum IdleReason: Sendable, Equatable {
 
 public enum SkipConsumeReason: Sendable, Equatable {
     case skipArmed
+    case ignoreNext
     case confidentialStable
 }
 
@@ -45,6 +46,8 @@ public struct CaptureCoordinator: Sendable, Equatable {
     public private(set) var opSeq = 0
     public private(set) var token: Int?
     public private(set) var skipArmed = false
+    /// Silent consume of the next `.hasContent` change (layout-convert Cmd+C, etc.). No UI chrome.
+    public private(set) var ignoreNextContentChange = false
     public private(set) var pausedUntil: Date?
     public private(set) var pausedIndefinitely = false
     public private(set) var consecutiveSaveFailures = 0
@@ -58,6 +61,9 @@ public struct CaptureCoordinator: Sendable, Equatable {
     }
 
     public var isPaused: Bool { pausedIndefinitely || pausedUntil != nil }
+
+    /// User-facing Skip Next or a silent ignore is waiting for a content change.
+    public var isIgnoringNextContent: Bool { skipArmed || ignoreNextContentChange }
 
     public var isBusy: Bool { !flight.isIdle || destructiveInProgress }
 
@@ -102,7 +108,7 @@ public struct CaptureCoordinator: Sendable, Equatable {
     // MARK: Phase B
 
     public mutating func applyPeek(_ peek: TypesPeek, changeCount: Int) -> ApplyPeekResult {
-        if skipArmed {
+        if skipArmed || ignoreNextContentChange {
             return .skip(applySkipPeek(peek, changeCount: changeCount))
         }
         switch peek {
@@ -134,16 +140,19 @@ public struct CaptureCoordinator: Sendable, Equatable {
         case .empty, .ephemeralPrivacy, .peekFailed:
             return .keepArmed(peek)
         case .hasContent:
+            let reason: SkipConsumeReason = skipArmed ? .skipArmed : .ignoreNext
             skipArmed = false
+            ignoreNextContentChange = false
             markHandled(changeCount)
             openGeneration.reset()
-            return .consume(changeCount: changeCount, reason: .skipArmed)
+            return .consume(changeCount: changeCount, reason: reason)
         case .confidential(let type):
             switch openGeneration.noteConfidential(changeCount, type: type) {
             case .progress:
                 return .keepArmed(peek)
             case .stable:
                 skipArmed = false
+                ignoreNextContentChange = false
                 markHandled(changeCount)
                 openGeneration.reset()
                 return .consume(changeCount: changeCount, reason: .confidentialStable)
@@ -231,6 +240,13 @@ public struct CaptureCoordinator: Sendable, Equatable {
     public mutating func cancelSkip() {
         skipArmed = false
         openGeneration.reset()
+    }
+
+    /// Arms a silent one-shot ignore (no Skip UI). Does not set `skipArmed`.
+    public mutating func armIgnoreNextContentChange() { ignoreNextContentChange = true }
+
+    public mutating func cancelIgnoreNextContentChange() {
+        ignoreNextContentChange = false
     }
 
     // MARK: Clear / Delete / Edit (§3.2 rule 5)

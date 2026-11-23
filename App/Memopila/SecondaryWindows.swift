@@ -57,6 +57,9 @@ final class SecondaryWindows: NSObject, NSWindowDelegate {
     /// Stack Window is key — panel overlays (confirm unfavorite, …) are invisible behind it.
     var stackIsKey: Bool { stack?.isKeyWindow == true }
 
+    /// Edit Record is key (layout convert prefers the editor path).
+    var recordIsKey: Bool { record?.isKeyWindow == true }
+
     /// Host for sheets while editing a stack (same role as the record window for save alerts).
     var stackWindowForSheet: NSWindow? { stack }
 

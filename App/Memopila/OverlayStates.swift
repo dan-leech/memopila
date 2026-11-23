@@ -693,6 +693,24 @@ final class ItemState {
         textView.setSelectedRange(NSRange(location: 0, length: 0))
     }
 
+    /// Selection for layout convert, or all text when nothing is selected.
+    func layoutConvertSelection() -> (text: String, range: NSRange)? {
+        guard let textView, isEditable, isLoaded, let storage = textView.textStorage else { return nil }
+        let selection = textView.selectedRange()
+        let range = selection.length > 0 ? selection : NSRange(location: 0, length: storage.length)
+        guard range.length > 0 else { return nil }
+        return (storage.mutableString.substring(with: range), range)
+    }
+
+    /// Replaces a range with layout-converted text (one undo step).
+    func replaceLayoutConvert(range: NSRange, with output: String) {
+        guard let textView else { return }
+        guard textView.shouldChangeText(in: range, replacementString: output) else { return }
+        textView.textStorage?.replaceCharacters(in: range, with: output)
+        textView.didChangeText()
+        textView.setSelectedRange(NSRange(location: range.location, length: (output as NSString).length))
+    }
+
     /// Runs a text action on the selection, or on everything when nothing is selected (§3.9).
     /// Long text is worked on off the main thread and replaced only if it did not change meanwhile
     /// (review finding: formatting a 10 MB JSON froze the app).

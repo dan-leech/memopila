@@ -178,6 +178,8 @@ final class ClipboardMonitor {
             switch reason {
             case .skipArmed:
                 record("skip next copy: change \(count) skipped without reading")
+            case .ignoreNext:
+                record("ignore next content: change \(count) skipped without reading")
             case .confidentialStable:
                 record("skip next copy: confidential change \(count) consumed after stable peek")
             }
@@ -749,6 +751,32 @@ final class ClipboardMonitor {
 
     func toggleSkip() {
         if coordinator.skipArmed { coordinator.cancelSkip() } else { coordinator.armSkip() }
+    }
+
+    /// Silent one-shot ignore for synthetic Cmd+C (layout convert). Does not show Skip chrome.
+    func armIgnoreNextContentChange() {
+        coordinator.armIgnoreNextContentChange()
+    }
+
+    func cancelIgnoreNextContentChange() {
+        coordinator.cancelIgnoreNextContentChange()
+    }
+
+    /// Restores arbitrary pasteboard items as an owned write (layout-convert clipboard dance).
+    @discardableResult
+    func restorePasteboardItems(_ items: [NSPasteboardItem]) async -> OwnedMutationResult {
+        await ownedMutate(kind: .ownedWrite) {
+            let pasteboard = NSPasteboard.general
+            let before = pasteboard.clearContents()
+            guard !items.isEmpty else { return .written(ownedCount: before) }
+            guard pasteboard.writeObjects(items) else { return .writeFailed }
+            let after = pasteboard.changeCount
+            return after > before ? .written(ownedCount: after) : .unconfirmed
+        } onOwned: { [self] ownedCount in
+            if current != nil { current = nil }
+            setClipboardIdentity(recordID: nil, stackID: nil, changeCount: nil)
+            record("pasteboard restored as own change \(ownedCount)")
+        }
     }
 
     private func persistPause() {

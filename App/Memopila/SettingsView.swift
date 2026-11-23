@@ -60,6 +60,8 @@ private struct GeneralSettings: View {
             Section {
                 LabeledContent("Open Memopila") { ShortcutRecorder(model: model, role: .window) }
                     .floatingHelp(String(localized: "Global hotkey to open or close the history panel (default ⌥⌘V)."))
+                LabeledContent("Convert layout") { ShortcutRecorder(model: model, role: .layoutConvert) }
+                    .floatingHelp(String(localized: "Convert selected text between keyboard layouts in place (default ⌥⌘B). Press again to try the next layout."))
                 LabeledContent("Pause or resume capture") { ShortcutRecorder(model: model, role: .pause) }
                     .floatingHelp(String(localized: "Optional global hotkey. In the panel, ⌘. always pauses or resumes — no shortcut needed here."))
                 LabeledContent("Skip next copy") { ShortcutRecorder(model: model, role: .skip) }
@@ -67,7 +69,7 @@ private struct GeneralSettings: View {
             } header: {
                 Text("Shortcuts")
             } footer: {
-                Text("A shortcut needs ⌘ or ⌃. Only one app can hold ⌥⌘V: quit Pasta or choose another shortcut. Pause and Skip are optional globals; ⌘. in the panel always pauses or resumes.")
+                Text("A shortcut needs ⌘ or ⌃. Only one app can hold ⌥⌘V: quit Pasta or choose another shortcut. Convert layout needs Accessibility in other apps. Pause and Skip are optional; ⌘. in the panel always pauses or resumes.")
             }
 
             Section {
@@ -181,6 +183,10 @@ struct ShortcutRecorder: View {
                 if role == .window {
                     if model.settings.shortcut != .defaultShortcut {
                         Button("Reset") { model.setShortcut(.defaultShortcut, for: role) }
+                    }
+                } else if role == .layoutConvert {
+                    if model.settings.layoutConvertShortcut != .defaultLayoutConvert {
+                        Button("Reset") { model.setShortcut(.defaultLayoutConvert, for: role) }
                     }
                 } else if model.shortcut(for: role) != nil {
                     Button("Clear") { model.setShortcut(nil, for: role) }

@@ -54,7 +54,7 @@
 | **Memory** | History lives on disk. No in-memory mirror of history. RAM budgets (§7.3) are phase acceptance criteria |
 | **App presentation** | Menu-bar only (`NSApplication.ActivationPolicy.accessory` / `LSUIElement`). No Dock icon and no Dock toggle in v1 (§8.7) |
 | **Window** | Non-activating `NSPanel` **(spike)**; fallback: activating window + remembered previous app (§8.1) |
-| **Hotkey** | Default **⌥⌘V** (same as Pasta), rebindable in Settings. Carbon `RegisterEventHotKey` (no standing global key monitor / Accessibility). While registered it overrides Finder's ⌥⌘V *Move Item Here* — accepted. Only one app can hold a combination: if registration fails (`eventHotKeyExistsErr`, e.g. Pasta is still running), keep the previous binding and show a Settings error that names the likely cause. Rebind order: (1) if new equals current, no-op; (2) register **new** while **old remains active**; (3) on success unregister old; (4) on failure keep old active and show the error. If an API path requires unregistering old first, **re-register old** on new-register failure. Optional hotkeys for Pause and Skip next copy (§3.7) follow the same rules, unset by default. **Armed-session exception (§3.11):** while a paste stack is armed, an ephemeral global observer may watch ⌘V (keyUp + delay) to advance the deal; torn down on disarm. Escape may be registered as a session-scoped Carbon hotkey for Stop while armed and Memopila UI is not key |
+| **Hotkey** | Default **⌥⌘V** (same as Pasta), rebindable in Settings. Carbon `RegisterEventHotKey` (no standing global key monitor / Accessibility). While registered it overrides Finder's ⌥⌘V *Move Item Here* — accepted. Only one app can hold a combination: if registration fails (`eventHotKeyExistsErr`, e.g. Pasta is still running), keep the previous binding and show a Settings error that names the likely cause. Rebind order: (1) if new equals current, no-op; (2) register **new** while **old remains active**; (3) on success unregister old; (4) on failure keep old active and show the error. If an API path requires unregistering old first, **re-register old** on new-register failure. Default **⌥⌘B** converts keyboard layout of the selection in place (§3.9.1). Optional hotkeys for Pause and Skip next copy (§3.7) follow the same rules, unset by default. **Armed-session exception (§3.11):** while a paste stack is armed, an ephemeral global observer may watch ⌘V (keyUp + delay) to advance the deal; torn down on disarm. Escape may be registered as a session-scoped Carbon hotkey for Stop while armed and Memopila UI is not key |
 
 ---
 
@@ -561,6 +561,18 @@ Fixed v1 set (pure functions on `String`; off the main actor for text over 100 K
 - Unavailable actions are shown disabled with the reason in the tooltip.
 
 **Tests:** golden cases per action; invalid JSON / Base64 / percent-encoding → disabled; Copy As adds no record; editor apply + undo.
+
+### 3.9.1 Layout convert (keyboard remapping)
+
+In-place cycle for mistyped keyboard layout (not translation): each press remaps the selection as if typed on layout *from* toward the next enabled keyboard layout, then selects that layout.
+
+- **Anchor:** first press fixes `original` + `from` (best-fit among enabled keyboard layouts with a coverage threshold). Later presses only advance `target` and always map `original → target` (never chain pairwise through intermediate text).
+- **Hotkey:** default **⌥⌘B** (pair to ⌥⌘V), rebindable. Editor toolbar button uses the same controller.
+- **Delivery:** editor replaces in the text view (undoable). Globally: AX selected text when available, else ⌘C with silent `ignoreNextContentChange`; replace via owned pasteboard write + ⌘V + restore. Accessibility required outside Memopila. Secure Input refused.
+- **Feedback:** toast with the target layout name (system layout HUD does not appear from `TISSelectInputSource`).
+- **Scope:** keyboard layouts only (no IMEs); plain + Shift key maps via `UCKeyTranslate`.
+
+**Tests:** `LayoutConverter` apply / best-fit / anchored cycle (full circle restores original); silent ignore next without Skip UI chrome.
 
 ### 3.10 Secrets in copied text
 

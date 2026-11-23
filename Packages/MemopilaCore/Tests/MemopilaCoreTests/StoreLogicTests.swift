@@ -286,6 +286,18 @@ struct CaptureCoordinatorTests {
         #expect(h.capture(4) == .startReader(readerSeq: 0))
     }
 
+    @Test func silentIgnoreNextSkipsWithoutArmingSkipUI() {
+        let h = CoordinatorHarness()
+        h.coordinator.armIgnoreNextContentChange()
+        #expect(!h.coordinator.skipArmed)
+        #expect(h.coordinator.ignoreNextContentChange)
+        #expect(h.tick(3) == .needsPeek(changeCount: 3))
+        #expect(h.peek(3, .hasContent) == .skip(.consume(changeCount: 3, reason: .ignoreNext)))
+        #expect(!h.coordinator.ignoreNextContentChange)
+        #expect(!h.coordinator.skipArmed)
+        #expect(h.capture(4) == .startReader(readerSeq: 0))
+    }
+
     @Test func skipKeepsArmedOnEmptyAndEphemeral() {
         let h = CoordinatorHarness()
         h.coordinator.armSkip()

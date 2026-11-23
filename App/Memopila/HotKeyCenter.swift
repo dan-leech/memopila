@@ -13,6 +13,9 @@ final class HotKeyCenter {
         /// ⌥⌘V, the same default as Pasta.
         static let defaultShortcut = Shortcut(keyCode: UInt32(kVK_ANSI_V), carbonModifiers: UInt32(cmdKey | optionKey))
 
+        /// ⌥⌘B — layout convert (pair to ⌥⌘V).
+        static let defaultLayoutConvert = Shortcut(keyCode: UInt32(kVK_ANSI_B), carbonModifiers: UInt32(cmdKey | optionKey))
+
         init(keyCode: UInt32, carbonModifiers: UInt32) {
             self.keyCode = keyCode
             self.carbonModifiers = carbonModifiers

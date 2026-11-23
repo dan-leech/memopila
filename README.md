@@ -43,6 +43,7 @@ Memopila lives in the menu bar and keeps a history of what you copy: text, rich 
 ### Edit Record
 - One window to view and edit any record:
   - formatted text, edited with its formatting kept;
+  - **Convert layout** (toolbar or **⌥⌘B**): cycle the selection through your keyboard layouts in place (mistype fix; not translation);
   - syntax highlighting while you type, line numbers for code, and invisible characters;
   - files through Quick Look;
   - colours as HEX / RGB / HSL (each paste format is its own card; the grid shows the other formats in smaller type so the same colour is easy to spot); on images, an eyedropper samples a pixel and Copy makes a Color card;
@@ -122,6 +123,7 @@ CI (`.github/workflows/ci.yml`) runs the core tests on Linux and macOS and the s
 | Keys | Action |
 |------|--------|
 | **⌥⌘V** | Open or close the panel (can be changed in Settings) |
+| **⌥⌘B** | Convert layout of the selected text (cycle layouts; needs Accessibility outside Memopila) |
 | Typing / **⌘F** | Search |
 | **↩** / double-click | Choose for Clipboard — go back to your app (stack: arm / reset deal) |
 | **⌥↩** | Choose and Paste (Accessibility); stack advances once after paste |
@@ -146,7 +148,7 @@ The full keyboard map is in [PLAN §8.3](docs/PLAN.md#83-keyboard).
 - **Secrets in plain copies:** tokens, private keys, JWTs and card numbers are recognized on your Mac. By default they are saved masked on the card and deleted after 8 hours. Settings → Privacy can switch to *Don't save* or *Save as usual*, change the time, or turn off single kinds. ⌘D keeps a secret for good. Detection is pattern-based and cannot catch every secret.
 - **Pause** and **Skip next copy:** content copied while capture is paused or skipped is never read.
 - **Universal Clipboard:** you can ignore content that comes from your other devices.
-- **Accessibility** is used only for auto-paste (and, while it is allowed, to remember the title of the window you copied from).
+- **Accessibility** is used for auto-paste, layout convert in other apps (⌥⌘B), and, while it is allowed, to remember the title of the window you copied from.
 
 > [!NOTE]
 > Per-app settings such as *Don't save* identify the source app by the self-reported `org.nspasteboard.source` pasteboard marker when present, otherwise by the frontmost app at copy time. Neither is authenticated: another app can claim a different bundle ID, and a copy made in the background can be attributed to the wrong app. This is a convenience filter, not a security boundary. *Strict* mode skips copies without a valid marker whenever an app is set to *Don't save*. For one-off secrets use *Pause* or *Skip next copy*. Other clipboard managers may also compete for global hotkeys or pasteboard access.

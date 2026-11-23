@@ -17,6 +17,7 @@ final class SettingsStore {
     var shortcut: HotKeyCenter.Shortcut { didSet { store(shortcut, Key.shortcut) } }
     var pauseShortcut: HotKeyCenter.Shortcut? { didSet { store(pauseShortcut, Key.pauseShortcut) } }
     var skipShortcut: HotKeyCenter.Shortcut? { didSet { store(skipShortcut, Key.skipShortcut) } }
+    var layoutConvertShortcut: HotKeyCenter.Shortcut { didSet { store(layoutConvertShortcut, Key.layoutConvertShortcut) } }
     var identityMode: IdentityMode { didSet { defaults.set(identityMode.rawValue, forKey: Key.identityMode) } }
     var maxItemMiB: Int { didSet { defaults.set(maxItemMiB, forKey: Key.maxItemMiB) } }
     var maxCount: Int {
@@ -71,6 +72,7 @@ final class SettingsStore {
         shortcut = Self.load(HotKeyCenter.Shortcut.self, Key.shortcut, defaults) ?? .defaultShortcut
         pauseShortcut = Self.load(HotKeyCenter.Shortcut.self, Key.pauseShortcut, defaults)
         skipShortcut = Self.load(HotKeyCenter.Shortcut.self, Key.skipShortcut, defaults)
+        layoutConvertShortcut = Self.load(HotKeyCenter.Shortcut.self, Key.layoutConvertShortcut, defaults) ?? .defaultLayoutConvert
         identityMode = defaults.string(forKey: Key.identityMode).flatMap(IdentityMode.init(rawValue:)) ?? .standard
         maxItemMiB = (defaults.object(forKey: Key.maxItemMiB) as? Int ?? 32).clamped(to: Self.itemMiBRange)
         maxCount = (defaults.object(forKey: Key.maxCount) as? Int ?? RetentionPlanner.defaultMaxCount)
@@ -206,6 +208,7 @@ final class SettingsStore {
         static let shortcut = "hotKeyShortcut"
         static let pauseShortcut = "pauseShortcut"
         static let skipShortcut = "skipShortcut"
+        static let layoutConvertShortcut = "layoutConvertShortcut"
         static let identityMode = "identityMode"
         static let maxItemMiB = "maxSinglePayloadMiB"
         static let maxCount = "maxCount"
