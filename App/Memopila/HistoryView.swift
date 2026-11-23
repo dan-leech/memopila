@@ -573,28 +573,34 @@ private struct SidebarView: View {
     private var history: HistoryModel { model.history }
 
     var body: some View {
-        @Bindable var history = model.history
-        return List(selection: $history.sidebarSelection) {
-            Section {
-                Label("History", systemImage: "clock").tag(HistoryScope.all)
-                Label("Favorites", systemImage: "heart").tag(HistoryScope.favorites)
-            }
-            if !history.apps.isEmpty {
-                Section("Apps") {
-                    ForEach(history.apps) { app in
-                        appRow(app)
+        // ScrollView+LazyVStack — not List. macOS List is NSTableView; mutating apps/collections
+        // (or selection) during its update re-enters the delegate ("will become an assert").
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 1) {
+                sidebarRow(
+                    scope: .all,
+                    label: { Label("History", systemImage: "clock") }
+                )
+                sidebarRow(
+                    scope: .favorites,
+                    label: { Label("Favorites", systemImage: "heart") }
+                )
+
+                sidebarSectionTitle("Apps")
+                ForEach(history.apps) { app in
+                    appRow(app)
+                }
+
+                sidebarSectionTitle("Collections")
+                ForEach(history.collections) { collection in
+                    sidebarRow(scope: .collection(collection.id)) {
+                        CollectionRow(collection: collection, model: model)
                     }
                 }
             }
-            Section("Collections") {
-                ForEach(history.collections) { collection in
-                    CollectionRow(collection: collection, model: model)
-                        .tag(HistoryScope.collection(collection.id))
-                }
-            }
+            .padding(.horizontal, 8)
+            .padding(.top, 8)
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             Button {
                 model.present(.newCollection(addingRecord: nil))
@@ -610,18 +616,50 @@ private struct SidebarView: View {
         }
     }
 
+    private func sidebarSectionTitle(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.top, 12)
+            .padding(.bottom, 4)
+    }
+
+    private func sidebarRow<Label: View>(
+        scope: HistoryScope,
+        @ViewBuilder label: () -> Label
+    ) -> some View {
+        let selected = history.sidebarSelection == scope
+        return Button {
+            history.sidebarSelection = scope
+        } label: {
+            label()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(
+                    selected ? Color.accentColor.opacity(0.18) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 6)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
     private func appRow(_ app: AppSummary) -> some View {
         let name = AppInfo.displayName(for: app.bundleID, fallback: app.name)
-        return Label {
-            Text(name).lineLimit(1)
-        } icon: {
-            if let icon = AppInfo.icon(for: app.bundleID) {
-                Image(nsImage: icon).resizable().frame(width: 16, height: 16)
-            } else {
-                Image(systemName: "app")
+        let scope = HistoryScope.app(app.bundleID)
+        return sidebarRow(scope: scope) {
+            Label {
+                Text(name).lineLimit(1)
+            } icon: {
+                if let icon = AppInfo.icon(for: app.bundleID) {
+                    Image(nsImage: icon).resizable().frame(width: 16, height: 16)
+                } else {
+                    Image(systemName: "app")
+                }
             }
         }
-        .tag(HistoryScope.app(app.bundleID))
         .contextMenu {
             ActionMenuItems(items: ActionRegistry.appActions(
                 bundleID: app.bundleID,
@@ -1226,6 +1264,7 @@ private struct ShortcutsOverlay: View {
             Row(keys: "⌥⌘S", action: String(localized: "Show or hide the sidebar")),
             Row(keys: "⌘+ / ⌘−", action: String(localized: "Bigger or smaller cards")),
             Row(keys: "⌘.", action: String(localized: "Pause or resume capture (in the panel)")),
+            Row(keys: "⌥⌘B", action: String(localized: "Convert layout of the selected text (cycle)")),
             Row(keys: "⌘,", action: String(localized: "Settings")),
         ]),
     ]

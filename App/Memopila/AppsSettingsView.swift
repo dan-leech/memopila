@@ -24,29 +24,26 @@ struct AppsSettings: View {
         @Bindable var model = model
         return HStack(spacing: 0) {
             VStack(spacing: 0) {
-                // Same NSTableView class as History sidebar: ignore nil List sync writes and defer
-                // Observation (detail `.id` swap) off the selection-delegate stack.
-                List(selection: Binding(
-                    get: { model.settingsApp ?? Self.anyApp },
-                    set: { newValue in
-                        guard let newValue else { return }
-                        guard newValue != (model.settingsApp ?? Self.anyApp) else { return }
-                        Task { @MainActor in
-                            model.settingsApp = newValue
+                // ScrollView — not List. Same NSTableView reentrancy class as History sidebar when
+                // `seen`/profiles grow while selection updates the detail pane.
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 1) {
+                        settingsAppRow(Self.anyApp) {
+                            Label("All Apps", systemImage: "square.grid.2x2")
                         }
-                    }
-                )) {
-                    Label("All Apps", systemImage: "square.grid.2x2").tag(Self.anyApp)
-                    ForEach(bundleIDs, id: \.self) { bundleID in
-                        HStack {
-                            appIcon(bundleID)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(AppInfo.displayName(for: bundleID, fallback: seen.first { $0.bundleID == bundleID }?.name)).lineLimit(1)
-                                Text(summary(settings.settings(for: bundleID))).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        ForEach(bundleIDs, id: \.self) { bundleID in
+                            settingsAppRow(bundleID) {
+                                HStack {
+                                    appIcon(bundleID)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(AppInfo.displayName(for: bundleID, fallback: seen.first { $0.bundleID == bundleID }?.name)).lineLimit(1)
+                                        Text(summary(settings.settings(for: bundleID))).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    }
+                                }
                             }
                         }
-                        .tag(bundleID)
                     }
+                    .padding(8)
                 }
                 Divider()
                 HStack {
@@ -73,7 +70,30 @@ struct AppsSettings: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .task { seen = (try? await model.store.apps()) ?? [] }
+        .task {
+            seen = (try? await model.store.apps()) ?? []
+        }
+    }
+
+    private func settingsAppRow<Label: View>(
+        _ id: String,
+        @ViewBuilder label: () -> Label
+    ) -> some View {
+        let selected = (model.settingsApp ?? Self.anyApp) == id
+        return Button {
+            model.settingsApp = id == Self.anyApp ? nil : id
+        } label: {
+            label()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(
+                    selected ? Color.accentColor.opacity(0.18) : Color.clear,
+                    in: RoundedRectangle(cornerRadius: 6)
+                )
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder

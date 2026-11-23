@@ -275,9 +275,10 @@ final class HistoryModel {
     /// Sidebar has no stack rows — map leftover `.stack` scope to no selection.
     /// Ignore `nil` writes so a List sync cannot clear the sidebar.
     ///
-    /// Scope side effects (`scope.didSet` → filter resets + `reload`) must not run on the same
-    /// stack as the List write: macOS `List(selection:)` is an `NSTableView`, and sync Observation
-    /// rebuilds re-enter its selection delegate ("reentrant operation… will become an assert").
+    /// Scope side effects (`scope.didSet` → filter resets + `reload`) stay off the click stack via
+    /// `Task` so Observation rebuilds cannot nest inside the gesture that set selection.
+    /// (Sidebar itself is ScrollView now — not `List`/`NSTableView` — but defer still avoids
+    /// mid-gesture `reload` races.)
     var sidebarSelection: HistoryScope? {
         get {
             if let presentedSidebarSelection { return presentedSidebarSelection }
@@ -588,9 +589,20 @@ final class HistoryModel {
             async let types = store.displayTypes()
             async let collections = store.collections()
             guard let result = try? await (apps, types, collections), !Task.isCancelled else { return }
+            // Publish apps/collections on the next main turn so a mid-layout Observation update
+            // cannot nest with the panel's first paint (defense in depth; sidebar is not NSTableView).
+            await Self.nextMainRunLoopTurn()
+            guard !Task.isCancelled else { return }
             self.apps = result.0
             self.types = result.1
             self.collections = result.2
+        }
+    }
+
+    /// Resume after the current main-queue turn (exits nested AppKit/SwiftUI table updates).
+    private static func nextMainRunLoopTurn() async {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            DispatchQueue.main.async { cont.resume() }
         }
     }
 
