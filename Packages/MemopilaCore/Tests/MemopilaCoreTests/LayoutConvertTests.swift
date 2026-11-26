@@ -246,9 +246,9 @@ struct LayoutConvertTests {
         }
 
         @Test func keepsPunctuationTypedOnLetterKeys() {
-            let span = span("Я k.,k. nt,z", current: us)
-            #expect(span?.text == "k.,k. nt,z")
-            #expect(span?.boundaryLayoutID == ru)
+            let found = span("Я k.,k. nt,z", current: us)
+            #expect(found?.text == "k.,k. nt,z")
+            #expect(found?.boundaryLayoutID == ru)
         }
 
         @Test func worksFromRussianToLatin() {
@@ -288,11 +288,11 @@ struct LayoutConvertTests {
 
         @Test func detectsTheSourceWhenCurrentIsAlreadyTheTarget() throws {
             // Our own switch had made Russian current; «Пhbdtn vbh» still converts.
-            let span = try #require(span("Пhbdtn vbh", current: ru))
-            #expect(span == .init(text: "hbdtn vbh", boundaryLayoutID: ru, sourceLayoutID: us))
+            let found = try #require(span("Пhbdtn vbh", current: ru))
+            #expect(found == .init(text: "hbdtn vbh", boundaryLayoutID: ru, sourceLayoutID: us))
             let step = try #require(cycle(
-                span.text, current: span.sourceLayoutID, layouts: [us, ru], charsets: charsets,
-                preferredTarget: span.boundaryLayoutID
+                found.text, current: found.sourceLayoutID, layouts: [us, ru], charsets: charsets,
+                preferredTarget: found.boundaryLayoutID
             ).output)
             #expect(step.targetID == ru)
             #expect(step.text == "ривет мир")
@@ -303,13 +303,13 @@ struct LayoutConvertTests {
             // first target is ru, not ua.
             var sets = charsets
             sets[ua]?.formUnion(" ")
-            let span = try #require(LayoutConverter.caretSpan(
+            let found = try #require(LayoutConverter.caretSpan(
                 prefix: "Мыhbdtn vbh", currentID: us, layoutIDs: [us, ua, ru], charsets: sets
             ))
-            #expect(span.text == "hbdtn vbh")
-            #expect(span.boundaryLayoutID == ru)
+            #expect(found.text == "hbdtn vbh")
+            #expect(found.boundaryLayoutID == ru)
             let step = try #require(cycle(
-                span.text, current: us, layouts: [us, ua, ru], charsets: sets, preferredTarget: span.boundaryLayoutID
+                found.text, current: us, layouts: [us, ua, ru], charsets: sets, preferredTarget: found.boundaryLayoutID
             ).output)
             #expect(step.targetID == ru)
             #expect(step.text == "ривет мир")
