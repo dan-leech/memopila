@@ -681,12 +681,12 @@
         }
       }
     },
-    "A shortcut needs ⌘ or ⌃. Only one app can hold ⌥⌘V: quit Pasta or choose another shortcut. Pause and Skip are optional globals; ⌘. in the panel always pauses or resumes.": {
+    "A shortcut needs ⌘ or ⌃. Only one app can hold ⌥⌘V: quit Pasta or choose another shortcut. Convert layout needs Accessibility in other apps. Pause and Skip are optional; ⌘. in the panel always pauses or resumes.": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сочетание должно включать ⌘ или ⌃. Только одно приложение может держать ⌥⌘V: закройте Pasta или выберите другое сочетание. Пауза и Пропуск — необязательные глобальные; в панели ⌘. всегда ставит или снимает паузу."
+            "value": "Сочетание должно включать ⌘ или ⌃. Только одно приложение может держать ⌥⌘V: закройте Pasta или выберите другое сочетание. Смене раскладки в других приложениях нужен Универсальный доступ. Пауза и Пропуск необязательны; в панели ⌘. всегда ставит или снимает паузу."
           }
         }
       }
@@ -807,6 +807,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Добавить приложение"
+          }
+        }
+      }
+    },
+    "Add another keyboard layout in System Settings → Keyboard → Input Sources.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавьте ещё одну раскладку в Системных настройках → Клавиатура → Источники ввода."
           }
         }
       }
@@ -1343,6 +1353,26 @@
         }
       }
     },
+    "Can’t convert concealed text (password manager).": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скрытый текст (из менеджера паролей) не конвертируется."
+          }
+        }
+      }
+    },
+    "Can’t convert layout in a secure field.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В защищённом поле раскладку сменить нельзя."
+          }
+        }
+      }
+    },
     "Capture": {
       "localizations": {
         "ru": {
@@ -1853,6 +1883,36 @@
         }
       }
     },
+    "Convert Layout": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сменить раскладку"
+          }
+        }
+      }
+    },
+    "Convert layout of the selection, or of all text; press again for the next layout": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сменить раскладку выделения или всего текста; нажмите ещё раз для следующей раскладки"
+          }
+        }
+      }
+    },
+    "Convert layout: the selection, or the mistyped text before the caret": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сменить раскладку: выделение или ошибочно набранный текст перед курсором"
+          }
+        }
+      }
+    },
     "Copied from %@": {
       "localizations": {
         "ru": {
@@ -2043,12 +2103,42 @@
         }
       }
     },
+    "Could not read keyboard layout maps. Try toggling an input source once.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось прочитать раскладки клавиатуры. Попробуйте один раз переключить источник ввода."
+          }
+        }
+      }
+    },
+    "Could not read the current keyboard layout. Try switching layout once in the menu bar.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось определить текущую раскладку. Попробуйте один раз переключить её в строке меню."
+          }
+        }
+      }
+    },
     "Could not register %@ (error %lld).": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Не удалось зарегистрировать %@ (ошибка %lld)."
+          }
+        }
+      }
+    },
+    "Could not replace the selection.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось заменить выделенный текст."
           }
         }
       }
@@ -3031,6 +3121,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Вписать изображение в окно (⌘0)"
+          }
+        }
+      }
+    },
+    "Fixes text typed in the wrong keyboard layout, in place (default ⌥⌘B): the selection, or with nothing selected the mistyped text before the caret. Press again for the next layout.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Исправляет текст, набранный не в той раскладке, прямо на месте (по умолчанию ⌥⌘B): выделение, а без выделения — ошибочно набранный текст перед курсором. Нажмите ещё раз для следующей раскладки."
           }
         }
       }
@@ -6045,6 +6145,16 @@
         }
       }
     },
+    "Select a shorter fragment (up to 120 characters).": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выделите фрагмент покороче (до 120 символов)."
+          }
+        }
+      }
+    },
     "Select records to put in a stack.": {
       "localizations": {
         "ru": {
@@ -6061,6 +6171,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Выделить несколько карточек"
+          }
+        }
+      }
+    },
+    "Select text with letters to convert.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выделите текст с буквами, чтобы сменить раскладку."
+          }
+        }
+      }
+    },
+    "Select the text to convert, then press %@.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выделите текст и нажмите %@, чтобы сменить раскладку."
           }
         }
       }
@@ -7101,6 +7231,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Каждое Слово С Заглавной"
+          }
+        }
+      }
+    },
+    "To convert layout in other apps, allow Memopila in System Settings → Privacy & Security → Accessibility.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Чтобы менять раскладку текста в других приложениях, разрешите Memopila в Системных настройках → Конфиденциальность и безопасность → Универсальный доступ."
           }
         }
       }

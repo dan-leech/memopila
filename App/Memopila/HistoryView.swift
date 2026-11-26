@@ -1264,7 +1264,7 @@ private struct ShortcutsOverlay: View {
             Row(keys: "⌥⌘S", action: String(localized: "Show or hide the sidebar")),
             Row(keys: "⌘+ / ⌘−", action: String(localized: "Bigger or smaller cards")),
             Row(keys: "⌘.", action: String(localized: "Pause or resume capture (in the panel)")),
-            Row(keys: "⌥⌘B", action: String(localized: "Convert layout of the selected text (cycle)")),
+            Row(keys: "⌥⌘B", action: String(localized: "Convert layout: the selection, or the mistyped text before the caret")),
             Row(keys: "⌘,", action: String(localized: "Settings")),
         ]),
     ]

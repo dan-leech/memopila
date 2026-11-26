@@ -54,7 +54,7 @@
 | **Memory** | History lives on disk. No in-memory mirror of history. RAM budgets (§7.3) are phase acceptance criteria |
 | **App presentation** | Menu-bar only (`NSApplication.ActivationPolicy.accessory` / `LSUIElement`). No Dock icon and no Dock toggle in v1 (§8.7) |
 | **Window** | Non-activating `NSPanel` **(spike)**; fallback: activating window + remembered previous app (§8.1) |
-| **Hotkey** | Default **⌥⌘V** (same as Pasta), rebindable in Settings. Carbon `RegisterEventHotKey` (no standing global key monitor / Accessibility). While registered it overrides Finder's ⌥⌘V *Move Item Here* — accepted. Only one app can hold a combination: if registration fails (`eventHotKeyExistsErr`, e.g. Pasta is still running), keep the previous binding and show a Settings error that names the likely cause. Rebind order: (1) if new equals current, no-op; (2) register **new** while **old remains active**; (3) on success unregister old; (4) on failure keep old active and show the error. If an API path requires unregistering old first, **re-register old** on new-register failure. Default **⌥⌘B** converts keyboard layout of the selection in place (§3.9.1). Optional hotkeys for Pause and Skip next copy (§3.7) follow the same rules, unset by default. **Armed-session exception (§3.11):** while a paste stack is armed, an ephemeral global observer may watch ⌘V (keyUp + delay) to advance the deal; torn down on disarm. Escape may be registered as a session-scoped Carbon hotkey for Stop while armed and Memopila UI is not key |
+| **Hotkey** | Default **⌥⌘V** (same as Pasta), rebindable in Settings. Carbon `RegisterEventHotKey` (no standing global key monitor / Accessibility). While registered it overrides Finder's ⌥⌘V *Move Item Here* — accepted. Only one app can hold a combination: if registration fails (`eventHotKeyExistsErr`, e.g. Pasta is still running), keep the previous binding and show a Settings error that names the likely cause. Rebind order: (1) if new equals current, no-op; (2) register **new** while **old remains active**; (3) on success unregister old; (4) on failure keep old active and show the error. If an API path requires unregistering old first, **re-register old** on new-register failure. Default **⌥⌘B** fixes the keyboard layout of the selection, or of the mistyped text before the caret, in place (§3.9.1). Optional hotkeys for Pause and Skip next copy (§3.7) follow the same rules, unset by default. **Armed-session exception (§3.11):** while a paste stack is armed, an ephemeral global observer may watch ⌘V (keyUp + delay) to advance the deal; torn down on disarm. Escape may be registered as a session-scoped Carbon hotkey for Stop while armed and Memopila UI is not key |
 
 ---
 
@@ -564,15 +564,81 @@ Fixed v1 set (pure functions on `String`; off the main actor for text over 100 K
 
 ### 3.9.1 Layout convert (keyboard remapping)
 
-In-place cycle for mistyped keyboard layout (not translation): each press remaps the selection as if typed on layout *from* toward the next enabled keyboard layout, then selects that layout.
+In-place fix for text typed in the wrong keyboard layout (not translation). Each ⌥⌘B press remaps a **live selection** — or, with nothing selected, the text typed after the layout flipped — as if typed on layout *from* toward the next layout of the orbit, then selects that layout so further typing is correct.
 
-- **Anchor:** first press fixes `original` + `from` (best-fit among enabled keyboard layouts with a coverage threshold). Later presses only advance `target` and always map `original → target` (never chain pairwise through intermediate text).
-- **Hotkey:** default **⌥⌘B** (pair to ⌥⌘V), rebindable. Editor toolbar button uses the same controller.
-- **Delivery:** editor replaces in the text view (undoable). Globally: AX selected text when available, else ⌘C with silent `ignoreNextContentChange`; replace via owned pasteboard write + ⌘V + restore. Accessibility required outside Memopila. Secure Input refused.
-- **Feedback:** toast with the target layout name (system layout HUD does not appear from `TISSelectInputSource`).
-- **Scope:** keyboard layouts only (no IMEs); plain + Shift key maps via `UCKeyTranslate`.
+**Priorities:** (P0) fix the text, never lose it; (P1) `TISSelectInputSource` to the target on the hotkey press, so the user keeps typing in it; (P2) a user selection **stays selected** so the next press cycles it; with no selection the caret stays where the user typed and the next press continues the orbit from memory; (P3) feedback is the **system input-source indicator** only (no custom badge — user), plus a floating toast for errors and “nothing to convert”.
 
-**Tests:** `LayoutConverter` apply / best-fit / anchored cycle (full circle restores original); silent ignore next without Skip UI chrome.
+#### One press
+
+1. **Coalesce:** while a cycle runs, at most one pending press is queued; a generation counter keeps a late task from delivering an older step. **No release wait anywhere** — act on Carbon's keyDown with ⌥⌘ still held (evidence below).
+2. **Target:** Memopila's own card editor when its record window is key, else the frontmost other app (else the last other app). Accessibility is required outside Memopila; Secure Input is refused.
+3. **Host class** (table below) decides how to read and how to deliver.
+4. **Read:** a selection, else the **caret span**; nothing usable → hint toast. Hard cap **120 UTF-16** per cycle (over → toast, no I/O).
+5. **Remap** (`LayoutConverter.cycle`, pure): `UCKeyTranslate` maps of the orbit (below).
+6. **Deliver** per host class; a refused or unproven delivery restores what it can and toasts.
+7. **Switch:** `TISSelectInputSource(target)` — hotkey only; the editor toolbar button converts without switching (user: “only the hotkey switches the layout”). When the layout already is the target nothing switches and macOS shows nothing.
+8. **Log:** one `os_log` line per press (subsystem `io.github.dan-leech.Memopila`, category `layout-convert`): host, class, mode (`selection` / `caret` / `whole-text`), delivery, ok, ms, and what was learned — never text content.
+
+#### Orbit and session
+
+- **Orbit = recent pair:** a mistype happens between the current layout and the previously used one (user: “only between two neighbouring layouts”). Previous = the first other enabled layout in HIToolbox's MRU `AppleInputSourceHistory` — what ⌃Space “Select the previous input source” switches to (entries carry the layout name, matched to the TIS id suffix). All enabled layouts only when the history is unknown or the text has letters neither layout of the pair types (text copied from someone typing in a third layout, e.g. `ñ`). With ABC / Russian / Spanish-ISO this keeps Spanish out of a Russian↔ABC fix.
+- **Anchor:** the first press fixes `original` + `from` (= current layout, or for a caret span the layout detected from the text — after our own switch the current layout is often already the target). Later presses advance `target`, skipping letter-noop neighbours (Spanish ≈ ABC for letters), and always map `original → target` — never chained through intermediate output. Full circle restores the original.
+- **Mixed script** («отдаёт AX»): characters only `from` types go `from→target`, characters only `target` types go `target→from`; characters **both** type (`[ ] "` in Apple Russian and ABC) follow the majority of unambiguous characters in their word (else the whole text) — `[jhjij]` with Russian current → `хорошоъ`, not `~орошо``.
+- **Session** = remap state only (`original`, `fromID`, `targetIndex`, `lastOutput`, caret tail), scoped to the editor or a global PID, TTL 60 s. A live selection that differs from `lastOutput` starts a new orbit. A caret span continues the orbit when the line still ends with `lastOutput + tail`.
+
+#### Host classes
+
+Classes are learned per host and persisted, so the first press in a new app may take the slow path once.
+
+| Class | Detected by | Selection read | Caret span | Delivery |
+|-------|-------------|----------------|------------|----------|
+| **Card editor** (Memopila) | record window key | `NSTextView` | line prefix from the text view; the **toolbar button** with no selection converts the **whole text** (≤100 000 UTF-16, a document action like the other transforms) | undoable replace; selection kept |
+| **Native AX** (TextEdit, Notes) | default | `AXSelectedText` (+ range) | `AXStringForRange` (≤600 UTF-16 back, last line) + `AXSelectedTextRange`, verified by readback | AX write, **verified** by reading the range back; then the range is re-stuck around TIS |
+| **Fake AX** (Telegram, WhatsApp, Safari, KeePassium) | the first AX write that is refused or reads back wrong → `LayoutConvertFakeAXBundles` | ⌘C (their AX selection is decoupled: Telegram reported our last output as “selected” while nothing was) | AX caret + ⌫ × span, type, caret back, AX readback check | one ⌫ + `AXValue` diff (below); no AX range afterwards |
+| **Keys only** (every Electron app, Mail) | `Contents/Frameworks/Electron Framework.framework` (Cursor, Slack, Discord, Signal, Claude…); a known list; an app with no AX focus; a focused element with no caret whose 150 ms tree walk finds no selection (Mail: a 1.5 s walk, then an AX write that “succeeded” without changing the text) | ⌘C | ⌘⇧← + ⌘C (below) | Unicode inject or transient ⌘V, re-select, prove with ⌘C |
+| **Terminal** | bundle (Terminal, iTerm, Warp, kitty, Alacritty, Ghostty, Hyper, WezTerm); inside an **Electron** host a selection copy without Blink's `org.chromium.internal.source-rfh-token` (VS Code's terminal copies through Electron's clipboard API; confirmed by behaviour in Cursor's terminal, not yet by a logged copy) | ⌘C / AX | **refused** in every path (the AX path once read iTerm's screen buffer and typed into it) | selection only, no line breaks: ⌫ × its characters (2 ms apart), 30 ms, type |
+
+**Selection authority:**
+
+- ⌘C runs under a History `suppressExternalCapture` transaction; the user's pasteboard is restored after every copy. Proof of a selection is `changeCount` advancing — pre-existing pasteboard text is never taken for the selection.
+- A copy flagged `isFromEmptySelection` (VS Code's whole-line copy) is **no selection**; so is a change with no text type (Cursor chat writes only Chromium-internal types) and no change at all (Slack, Discord, browser fields).
+- A copy marked `org.nspasteboard.ConcealedType` is **never converted** (password managers — KeePassium copies a field value even with nothing selected): toast, no I/O.
+- When AX reports a plain caret (`AXSelectedTextRange.length == 0`) there is no selection: never re-select a previous span (searching for the last output re-converted it after the user clicked elsewhere — TextEdit) and no ⌘C.
+- Never ⌘X as a read; never ⌘Z to recover.
+
+#### Caret span (no selection)
+
+“Everything back to the first correctly typed letter” — the macOS bug where only the first letter of a word comes out in the intended layout. `LayoutConverter.caretSpan` (pure) gets the last line before the caret. **Source** = current layout when it types the last character, else the layout covering most of the trailing word. Rules in order:
+
+1. The source run starts **inside a word** right after a letter only another layout types («Пhbdtn vbh») → the whole run; target = that letter's layout.
+2. With a spelling verdict (`NSSpellChecker`, offline, per layout by `kTISPropertyInputSourceLanguages[0]`) → the **last group of words misspelled as typed but spelled right after conversion** (`ghbdtn vtldtl bp ktcf` → all; `use React ghbdtn` → `ghbdtn`). Words right both ways (`bp` / «из») join inside or after the group, never lead it; target = the layout yielding most such words. When the trailing run is right as typed («… bp леса»), apply this to the run before it and keep the trailing text as the **tail**.
+3. The dictionary judged every word and none is mistyped → the user is toggling correct text on purpose → the whole run.
+4. No verdict → the run back to a correctly typed letter, else the last word.
+
+**Keys-only hosts:** ⌘⇧← then ⌘C gives the exact text from line start to the caret. The copy is retried while empty (Cursor chat's copy lags the selection ~30 ms) and — **in Electron hosts only** — twice on an unchanged pasteboard (Discord lags the same way but writes nothing); never elsewhere (Mail beeps on every empty ⌘C). The ⌘⇧← highlight is reused to avoid flicker: span == prefix → type over it; a short suffix (≤16) → shrink with ⇧→; otherwise ← × tail, ⇧← × N. Then **prove** with ⌘C (≤4 tries, 30 ms) and replace only when the proof equals the span. **After delivery no re-select and no collapse:** any caret move reaching the host after the input-source switch hides the system indicator (Cursor chat applies keys ~30 ms late), so only → × tail when the span is not at the caret, 60 ms to apply it, then TIS. A caret-mode paste is ordered by an empty-selection ⌘C before the pasteboard restore. Toasts in keys-only hosts anchor at the mouse pointer (their AX geometry is meaningless).
+
+#### Delivery
+
+- **Typing vs paste:** Unicode inject (`CGEvent.keyboardSetUnicodeString`, chunks ≤20 UTF-16, keyDown+keyUp). Output containing `[ ] ( ) { } < > ' " `` ` `` or a line break goes through a **transient ⌘V** instead: Monaco auto-surrounds / auto-closes typed brackets and quotes (`хорошо` selected + typed `[jhjij` → `[jhjij]`), and a typed `\n` is an Enter command (Cursor chat lost the first line of a 2-line selection; chat apps send).
+- **Keystroke selection replace:** type or paste over the live selection, re-select the output with ⇧← × N and prove it with ⌘C. The proof copy is ordered after the paste, so the user's pasteboard is restored only once the host consumed our buffer (+300 ms if the proof never changed).
+- **AX writes** only for selections read via AX (range known), verified by reading back; a false success counts as a refusal. The first refusal types nothing, marks the host fake-AX and re-runs the cycle via ⌘C.
+- **Fake-AX selection — one ⌫, then read the field** (`LayoutConvertDelivery`, pure; `AXValue` lengths are real there, content can lag one step — Telegram):
+  - the whole selection gone → **standard**;
+  - one character gone → keys ignore the selection and the insertion point sits at its end (Telegram; a → first moved it one past the end when text followed) → ⌫ × the rest;
+  - the selection + 1–2 whitespace gone → **Cocoa smart delete** → type the whitespace back with the result (“␣word” and “word␣” leave the same text; Cocoa takes the space *before* the word, so the leading side wins);
+  - anything else → **roll back** by typing the removed block back, and fail. No readable `AXValue` → never ⌫ blind, type over the selection.
+  - The learned semantics are persisted per bundle (`LayoutConvertKeySemantics`): standard hosts are typed over directly next time (no ⌫ → no smart delete).
+  - Afterwards no AX range is set there: an AX “stick” moved the real selection to stale offsets and each next press converted a shifted window.
+- **Events:** `.combinedSessionState` source, `.cghidEventTap`, explicit flags on every event. ⌘C / ⌘V / ⌘⇧← post keyDown with their flags and keyUp with **empty flags** — the last posted event's flags stick in `hidSystemState` (≥1.5 s measured).
+- **Layout maps:** plain + Shift via `UCKeyTranslate` (main-block keys before keypad on collisions), keyboard layouts only (no IMEs), built off the main actor and cached until enabled input sources change. The layout list uses Carbon `kTIS*` keys + `kCFBooleanTrue` (string-literal property keys read as nil in-app and dropped every layout — a false “add a layout” toast).
+
+#### Evidence (2026-11-26)
+
+- **Held modifiers are not merged:** LC Receiver (Electron 43.8.9 + Monaco 0.58 with VS Code defaults — the same Electron as Cursor) logged our ⌘C, ⇧←, F13 and Unicode inject with exactly their explicit flags while ⌥⌘ were physically held (convert done 31–42 ms after keyDown). The merge would happen in the WindowServer, so this holds for native apps too (WhatsApp had waited up to 5.8 s for the release; iTerm's ⌫ does not turn into delete-word). Residual risk: an app that reads the global modifier state instead of the event's flags — none seen.
+- `flagsState(.hidSystemState)` is rewritten by every posted event; per-key `keyState` stays true while a key is held. 10/10 back-to-back ⇧← moved the selection exactly.
+- **Manual host matrix** (user-run, all passing): Memopila card (button and hotkey), Cursor chat / editor / built-in browser / terminal (selection), Slack, Discord, Telegram, WhatsApp, Safari, Mail, Notes, TextEdit, iTerm (Claude Code), KeePassium. **Known:** Mail beeps once on a press with no selection (its empty ⌘C). **Not yet tried:** Messages, Xcode, Google Docs, Chrome.
+
+**Tests** (`MemopilaCore`): remap and length cap; source detection; orbit (original never chained, full circle, redundant Latin skipped, new orbit); ambiguous punctuation; caret span rules 1–4 with and without a dictionary (tail, cap, last line only, boundary layout as the first target among three); delivery decisions (typing vs paste, VS Code empty-selection flag in UTF-8 / UTF-16 blobs, ⌫ classification, smart-delete give-back on each side, rollback on partial / non-contiguous / non-whitespace removal, UTF-16 lengths); `CaptureCoordinator` suppress window and acknowledged ignore. Keystroke and AX behaviour per host is manual (matrix above), read from the log line.
 
 ### 3.10 Secrets in copied text
 
@@ -860,6 +926,9 @@ flowchart LR
   MB -->|pause_skip| PB
   HK --> Panel
   Settings --> HK
+  HK -->|layout_convert| LC[LayoutConvertController]
+  LC -->|AX_and_CGEvent| FrontApp[Frontmost_app]
+  LC -.->|suppressExternalCapture| PB
 ```
 
 ### 7.1 Components
@@ -880,7 +949,9 @@ No mandatory Repository / UseCase / Coordinator layers. Add test seams only wher
 | Read models | Immutable `Sendable` DTOs; card DTOs carry no payload bytes and no thumbnail data |
 | `PasteboardWriter` | Verify → build items → synchronous clear/write/confirm on the main actor; variants; auto-paste (§3.4) |
 | `WindowPresenter` | Non-activating panel, screen choice, pin, frame per display (§8.1) |
-| `HotKeyMonitor` | Carbon register/unregister for the window, Pause and Skip hotkeys; rebind keeps old until new succeeds (§2) |
+| `HotKeyMonitor` | Carbon register/unregister for the window, layout-convert, Pause and Skip hotkeys; rebind keeps old until new succeeds (§2) |
+| `LayoutConvertController` (`@MainActor`) | §3.9.1: one press end to end — host class, read (AX / ⌘C under capture suppress), deliver (AX / keystrokes / paste), input-source switch, log line. Uses `AccessibilityBridge` (AX + `CGEvent` posting) and `InputSourceController` (TIS list, MRU pair, cached `UCKeyTranslate` maps) |
+| `LayoutConverter`, `LayoutConvertDelivery` (pure) | §3.9.1 remap, orbit, caret span; how a host's ⌫ treated a selection and what to type back |
 | `LoginItemManager` | `SMAppService.mainApp` |
 | Activation policy | Accessory (menu bar) only in v1 — no Dock icon toggle (§8.7) |
 | SwiftUI | Renders DTOs; issues commands to `ClipboardStore`; never reads or writes persistent models directly |
@@ -951,7 +1022,7 @@ Full payload stays in `PayloadRepresentation` regardless of these caps.
 
 ### 7.5 Repository layout
 
-- `Packages/MemopilaCore` — Swift package with everything that does not need AppKit, SwiftData or Vision: privacy markers, app identity and per-app admission, format policy, file paths, MCS1 hashing, `SnapshotReader` behind a `PasteboardSource` protocol, text decoding and actions, source page parsing, retention and dedup planning, payload integrity, `CaptureCoordinator` and `IngestStaleGuard`. Builds and tests on Linux and macOS (`swift test --package-path Packages/MemopilaCore`).
+- `Packages/MemopilaCore` — Swift package with everything that does not need AppKit, SwiftData or Vision: privacy markers, app identity and per-app admission, format policy, file paths, MCS1 hashing, `SnapshotReader` behind a `PasteboardSource` protocol, text decoding and actions, layout convert (remap, caret span, delivery decisions), source page parsing, retention and dedup planning, payload integrity, `CaptureCoordinator` and `IngestStaleGuard`. Builds and tests on Linux and macOS (`swift test --package-path Packages/MemopilaCore`).
 - `Packages/MemopilaServices` — macOS-only package: SwiftData store (`ClipboardStore`, models, DTOs), pasteboard adapters (`GeneralPasteboardSource`, `PasteboardWriter`, an Objective-C exception boundary), ingest enrichment and thumbnails (ImageIO, PDFKit), text recognition (Vision). Tested on macOS (`swift test --package-path Packages/MemopilaServices`).
 - `App/Memopila.xcodeproj` + `App/Memopila/` — the macOS app (monitor, history model, panel, hotkeys, views, settings); the target uses a synchronized folder, so new source files need no project edits. Strings in `Localizable.xcstrings` (English, Russian).
 - `.github/workflows/ci.yml` — core tests on Linux (Swift container) and macOS, app build with Xcode on macOS.
@@ -1162,9 +1233,9 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 
 | Level | Scope (by contract ref) | Approach |
 |-------|-------------------------|----------|
-| Unit | §3.1 markers; §3.2 size budget; §3.2.2 format policy; §3.3 paths/coalesce; §3.9 text actions; §4 MCS1/file list; §5 identity / per-app settings; §5.2 source page parsing; §6 retention / expiry / preflight; §3.6 edit/merge; §7.4 decode | TDD on the owning section |
+| Unit | §3.1 markers; §3.2 size budget; §3.2.2 format policy; §3.3 paths/coalesce; §3.9 text actions; §3.9.1 layout convert; §4 MCS1/file list; §5 identity / per-app settings; §5.2 source page parsing; §6 retention / expiry / preflight; §3.6 edit/merge; §7.4 decode | TDD on the owning section |
 | Integration | §3.2 coordination (Clear/Delete/Edit races, save failures); §3.4 Writer + token; §3.5 SwiftData rows, integrity, rollback; §3.7 pause / skip; §3.8 recognition queue | Contract test first; seams for store failures and the frontmost app |
-| System / manual | §3.1 access alerts on each OS of the matrix; §2 hotkeys; §8.1 panel focus; login; auto-paste | Automate stable cases; OS dialogs on concrete versions |
+| System / manual | §3.1 access alerts on each OS of the matrix; §2 hotkeys; §8.1 panel focus; login; auto-paste; §3.9.1 layout convert per host class (host matrix, `layout-convert` log line) | Automate stable cases; OS dialogs on concrete versions |
 | Performance | §7.3 memory budgets; §8.6 search budget | Scripted scenarios + `phys_footprint`; Instruments before each phase is done |
 
 **Rules:**
@@ -1172,6 +1243,7 @@ A click on the icon opens the panel (as in Pasta); the commands live in the pane
 - One SSOT: link §3–§8 instead of restating invariants; put new race cases next to the owning contract.
 - Pasteboard tests use named pasteboards (`NSPasteboard(name:)` / `withUniqueName()`); since only the General pasteboard is gated, access-policy behavior is tested through an injected `PasteboardAccessPolicy` seam, plus manual checks on real OS versions.
 - Capture logic is tested in `MemopilaCore` against an in-memory `PasteboardSource` fake (no AppKit), so it runs on Linux CI as well; MCS1 golden values come from an independent implementation.
+- Behaviour that depends on another app's keys or AX (layout convert) keeps its decisions pure in `MemopilaCore` and tests them there; the posting side is checked by hand per host class. Diagnostics log paths and outcomes, never content.
 - Do **not:** chase 100 % coverage; build mock/DI stacks for ceremony; add a custom blob store before a failed spike and a PLAN amendment.
 
 ---

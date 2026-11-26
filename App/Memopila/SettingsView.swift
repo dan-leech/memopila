@@ -61,7 +61,7 @@ private struct GeneralSettings: View {
                 LabeledContent("Open Memopila") { ShortcutRecorder(model: model, role: .window) }
                     .floatingHelp(String(localized: "Global hotkey to open or close the history panel (default ⌥⌘V)."))
                 LabeledContent("Convert layout") { ShortcutRecorder(model: model, role: .layoutConvert) }
-                    .floatingHelp(String(localized: "Convert selected text between keyboard layouts in place (default ⌥⌘B). Press again to try the next layout."))
+                    .floatingHelp(String(localized: "Fixes text typed in the wrong keyboard layout, in place (default ⌥⌘B): the selection, or with nothing selected the mistyped text before the caret. Press again for the next layout."))
                 LabeledContent("Pause or resume capture") { ShortcutRecorder(model: model, role: .pause) }
                     .floatingHelp(String(localized: "Optional global hotkey. In the panel, ⌘. always pauses or resumes — no shortcut needed here."))
                 LabeledContent("Skip next copy") { ShortcutRecorder(model: model, role: .skip) }

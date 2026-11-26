@@ -693,13 +693,35 @@ final class ItemState {
         textView.setSelectedRange(NSRange(location: 0, length: 0))
     }
 
-    /// Selection for layout convert, or all text when nothing is selected.
+    /// Non-empty selection for layout convert.
     func layoutConvertSelection() -> (text: String, range: NSRange)? {
         guard let textView, isEditable, isLoaded, let storage = textView.textStorage else { return nil }
         let selection = textView.selectedRange()
-        let range = selection.length > 0 ? selection : NSRange(location: 0, length: storage.length)
-        guard range.length > 0 else { return nil }
-        return (storage.mutableString.substring(with: range), range)
+        guard selection.length > 0 else { return nil }
+        return (storage.mutableString.substring(with: selection), selection)
+    }
+
+    /// The whole text and the caret (toolbar button with nothing selected — like the other
+    /// toolbar text actions, it works on everything).
+    func layoutConvertWholeText() -> (text: String, range: NSRange, caret: Int)? {
+        guard let textView, isEditable, isLoaded, let storage = textView.textStorage else { return nil }
+        let selection = textView.selectedRange()
+        guard selection.length == 0 else { return nil }
+        let ns = storage.mutableString
+        return (ns as String, NSRange(location: 0, length: ns.length), min(selection.location, ns.length))
+    }
+
+    /// No selection: text from the start of the caret's line to the caret (UTF-16 caret offset).
+    /// Layout convert applies the same caret-span rules as in other apps (was: the word at the
+    /// caret only — «ghbdtn vtldtl bp ktcf» in a card converted just the last word).
+    func layoutConvertLinePrefix() -> (prefix: String, caret: Int)? {
+        guard let textView, isEditable, isLoaded, let storage = textView.textStorage else { return nil }
+        let selection = textView.selectedRange()
+        guard selection.length == 0 else { return nil }
+        let ns = storage.mutableString
+        let caret = min(max(0, selection.location), ns.length)
+        let lineStart = ns.lineRange(for: NSRange(location: caret, length: 0)).location
+        return (ns.substring(with: NSRange(location: lineStart, length: caret - lineStart)), caret)
     }
 
     /// Replaces a range with layout-converted text (one undo step).

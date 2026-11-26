@@ -298,6 +298,33 @@ struct CaptureCoordinatorTests {
         #expect(h.capture(4) == .startReader(readerSeq: 0))
     }
 
+    @Test func suppressExternalCaptureSkipsMultipleHasContentUntilEnded() {
+        let h = CoordinatorHarness()
+        h.coordinator.beginSuppressExternalCapture()
+        #expect(h.coordinator.suppressExternalCaptureDepth == 1)
+        #expect(h.tick(3) == .needsPeek(changeCount: 3))
+        #expect(h.peek(3, .hasContent) == .skip(.consume(changeCount: 3, reason: .ignoreNext)))
+        #expect(h.coordinator.suppressExternalCaptureDepth == 1)
+        #expect(h.tick(4) == .needsPeek(changeCount: 4))
+        #expect(h.peek(4, .hasContent) == .skip(.consume(changeCount: 4, reason: .ignoreNext)))
+        h.coordinator.endSuppressExternalCapture(markHandled: 4)
+        #expect(h.coordinator.suppressExternalCaptureDepth == 0)
+        #expect(h.capture(5) == .startReader(readerSeq: 0))
+    }
+
+    @Test func acknowledgeIgnoredContentChangeClearsArmBeforeOwnedRestore() {
+        // Layout-convert Cmd+C then owned restore: without acknowledge, restore marks a newer
+        // count handled while ignoreNext stays armed → the user's next real copy is dropped.
+        let h = CoordinatorHarness()
+        h.coordinator.armIgnoreNextContentChange()
+        h.coordinator.acknowledgeIgnoredContentChange(changeCount: 5)
+        #expect(!h.coordinator.ignoreNextContentChange)
+        #expect(h.coordinator.lastHandledChangeCount == 5)
+        h.coordinator.publishToken(7)
+        #expect(h.tick(7) == .suppressedOwnWrite(7))
+        #expect(h.capture(8) == .startReader(readerSeq: 0))
+    }
+
     @Test func skipKeepsArmedOnEmptyAndEphemeral() {
         let h = CoordinatorHarness()
         h.coordinator.armSkip()

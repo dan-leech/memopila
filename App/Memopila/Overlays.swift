@@ -124,10 +124,10 @@ struct RecordView: View {
                 transformMenu
                 ToolbarIcon(
                     systemImage: "keyboard",
-                    help: String(localized: "Convert layout of the selection (or all text); press again for the next layout")
+                    help: String(localized: "Convert layout of the selection, or of all text; press again for the next layout")
                         + " (\(model.settings.layoutConvertShortcut.displayString))"
                 ) {
-                    model.layoutConvert.cycle()
+                    model.layoutConvert.cycle(switchLayout: false)
                 }
                 if state.hasRichSource {
                     Divider().frame(height: 18).padding(.horizontal, 4)

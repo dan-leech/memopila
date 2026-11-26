@@ -201,8 +201,13 @@ final class AppModel {
 
     func start() {
         for role in HotKeyRole.allCases {
-            if let shortcut = shortcut(for: role) { register(shortcut, for: role) }
+            if let shortcut = shortcut(for: role) {
+                if !register(shortcut, for: role), role == .layoutConvert {
+                    monitor.record("layout convert hotkey failed: \(hotKeyErrors[role] ?? "unknown")")
+                }
+            }
         }
+        layoutConvert.warmCaches()
         monitor.start()
         runRetention()
         prunePreviewFiles(all: true)

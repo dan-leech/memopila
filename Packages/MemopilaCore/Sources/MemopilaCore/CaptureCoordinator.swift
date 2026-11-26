@@ -48,6 +48,9 @@ public struct CaptureCoordinator: Sendable, Equatable {
     public private(set) var skipArmed = false
     /// Silent consume of the next `.hasContent` change (layout-convert Cmd+C, etc.). No UI chrome.
     public private(set) var ignoreNextContentChange = false
+    /// Nested suppress for multi-step clipboard dances (⌘C → write → ⌘V → restore). While > 0,
+    /// every external `.hasContent` is markHandled without ingest — owned writes still use the token.
+    public private(set) var suppressExternalCaptureDepth = 0
     public private(set) var pausedUntil: Date?
     public private(set) var pausedIndefinitely = false
     public private(set) var consecutiveSaveFailures = 0
@@ -63,7 +66,9 @@ public struct CaptureCoordinator: Sendable, Equatable {
     public var isPaused: Bool { pausedIndefinitely || pausedUntil != nil }
 
     /// User-facing Skip Next or a silent ignore is waiting for a content change.
-    public var isIgnoringNextContent: Bool { skipArmed || ignoreNextContentChange }
+    public var isIgnoringNextContent: Bool {
+        skipArmed || ignoreNextContentChange || suppressExternalCaptureDepth > 0
+    }
 
     public var isBusy: Bool { !flight.isIdle || destructiveInProgress }
 
@@ -108,7 +113,7 @@ public struct CaptureCoordinator: Sendable, Equatable {
     // MARK: Phase B
 
     public mutating func applyPeek(_ peek: TypesPeek, changeCount: Int) -> ApplyPeekResult {
-        if skipArmed || ignoreNextContentChange {
+        if skipArmed || ignoreNextContentChange || suppressExternalCaptureDepth > 0 {
             return .skip(applySkipPeek(peek, changeCount: changeCount))
         }
         switch peek {
@@ -140,6 +145,12 @@ public struct CaptureCoordinator: Sendable, Equatable {
         case .empty, .ephemeralPrivacy, .peekFailed:
             return .keepArmed(peek)
         case .hasContent:
+            // Layout-convert session: keep skipping until endSuppress — do not clear the depth.
+            if suppressExternalCaptureDepth > 0 {
+                markHandled(changeCount)
+                openGeneration.reset()
+                return .consume(changeCount: changeCount, reason: .ignoreNext)
+            }
             let reason: SkipConsumeReason = skipArmed ? .skipArmed : .ignoreNext
             skipArmed = false
             ignoreNextContentChange = false
@@ -151,6 +162,11 @@ public struct CaptureCoordinator: Sendable, Equatable {
             case .progress:
                 return .keepArmed(peek)
             case .stable:
+                if suppressExternalCaptureDepth > 0 {
+                    markHandled(changeCount)
+                    openGeneration.reset()
+                    return .consume(changeCount: changeCount, reason: .ignoreNext)
+                }
                 skipArmed = false
                 ignoreNextContentChange = false
                 markHandled(changeCount)
@@ -247,6 +263,27 @@ public struct CaptureCoordinator: Sendable, Equatable {
 
     public mutating func cancelIgnoreNextContentChange() {
         ignoreNextContentChange = false
+    }
+
+    /// Caller already read the synthetic Cmd+C change. Clears the arm and marks it handled so a
+    /// following owned restore cannot leave `ignoreNext` armed (which would silently drop the
+    /// user's next real copy when the restore token jumps `lastHandled` past the Cmd+C count).
+    public mutating func acknowledgeIgnoredContentChange(changeCount: Int) {
+        ignoreNextContentChange = false
+        markHandled(changeCount)
+    }
+
+    /// Begin a multi-change silent window (layout convert copy/write/paste/restore).
+    public mutating func beginSuppressExternalCapture() {
+        suppressExternalCaptureDepth += 1
+    }
+
+    /// End one suppress window; when depth hits 0, mark the live changeCount handled.
+    public mutating func endSuppressExternalCapture(markHandled changeCount: Int) {
+        suppressExternalCaptureDepth = max(0, suppressExternalCaptureDepth - 1)
+        if suppressExternalCaptureDepth == 0 {
+            markHandled(changeCount)
+        }
     }
 
     // MARK: Clear / Delete / Edit (§3.2 rule 5)
