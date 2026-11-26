@@ -33,6 +33,13 @@ Memopila lives in the menu bar and keeps a history of what you copy: text, rich 
 - **Cards** in a grid you can resize (⌘+ / ⌘−). Drag a card into another app. A thin green line marks the card that is on the clipboard right now.
 - **History on disk** (SwiftData). RAM holds only the visible cards and a small thumbnail cache.
 
+### Fix text typed in the wrong layout (⌥⌘B)
+- Typed `ghbdtn` instead of `привет`? Press **⌥⌘B** in any app and the text is remapped in place, key for key (a mistype fix, not translation). Memopila also switches to the layout you meant, so you keep typing in it; the system input-source indicator shows the switch.
+- **With a selection** the selection is converted and stays selected; press again to go back.
+- **Without a selection** put the caret after what you typed and press ⌥⌘B. It converts back to the first correctly typed letter: the macOS slip where only the first letter comes out in the right layout (`Пhbdtn` → `Привет`), a whole line typed in the wrong layout, or the words before one you already retyped correctly. The spell checker on your Mac decides where the mistype starts.
+- Switches only between the layout you are in and the one you used before (what ⌃Space selects), unless the text needs another one.
+- Works in native apps, Electron apps (Cursor, Slack, Discord…), browsers, Mail, Telegram, WhatsApp and terminals (select what you just typed at the end of the command line). Needs Accessibility. Your clipboard is restored after every press; secure fields and password-manager copies are never touched.
+
 ### Capture you control
 - **Duplicates are merged.** Copying the same thing again moves the existing record to the top.
 - **Current — not saved** card: when a copy is too large, unsupported or failed, a red card says why and offers *Save Anyway* and per-app quick fixes.
@@ -43,7 +50,7 @@ Memopila lives in the menu bar and keeps a history of what you copy: text, rich 
 ### Edit Record
 - One window to view and edit any record:
   - formatted text, edited with its formatting kept;
-  - **Convert layout** (toolbar or **⌥⌘B**): cycle the selection through your keyboard layouts in place (mistype fix; not translation);
+  - **Convert layout** (toolbar or **⌥⌘B**): the selection, or the whole text when nothing is selected (see above);
   - syntax highlighting while you type, line numbers for code, and invisible characters;
   - files through Quick Look;
   - colours as HEX / RGB / HSL (each paste format is its own card; the grid shows the other formats in smaller type so the same colour is easy to spot); on images, an eyedropper samples a pixel and Copy makes a Color card;
@@ -78,7 +85,7 @@ Memopila lives in the menu bar and keeps a history of what you copy: text, rich 
      ```
 
 4. **Allow clipboard access.** Choose **Enable Capture** in the panel banner or the menu bar menu. When macOS asks whether Memopila may read the clipboard, choose **Always Allow**. If capture stays paused, open **System Settings → Privacy & Security** and set Memopila to *Always Allow*.
-5. **Optional: Accessibility.** Needed for *Settings → General → Auto-Paste After Choosing*, for ⌥↩, and for paste-stack ⌘V advance while a stack is armed. Memopila asks for it when you turn auto-paste on. You can also add it in **System Settings → Privacy & Security → Accessibility**. Esc stops an armed stack without Accessibility.
+5. **Optional: Accessibility.** Needed for *Settings → General → Auto-Paste After Choosing*, for ⌥↩, for **⌥⌘B** layout convert in other apps, and for paste-stack ⌘V advance while a stack is armed. Memopila asks for it when you turn auto-paste on. You can also add it in **System Settings → Privacy & Security → Accessibility**. Esc stops an armed stack without Accessibility.
 
 > [!IMPORTANT]
 > macOS ties clipboard access and Accessibility to the app's signature, and an unsigned (ad-hoc signed) build gets a new one with every release. After an update you may need to choose **Always Allow** again. If you use auto-paste, remove Memopila from the Accessibility list and add it back.
@@ -112,7 +119,7 @@ CI (`.github/workflows/ci.yml`) runs the core tests on Linux and macOS and the s
 
 ### Layout
 
-- `Packages/MemopilaCore`: capture decisions, canonical hashing, format policy, retention, text tools and code highlighting (no AppKit).
+- `Packages/MemopilaCore`: capture decisions, canonical hashing, format policy, retention, text tools, layout convert rules and code highlighting (no AppKit).
 - `Packages/MemopilaServices`: SwiftData store, pasteboard reader and writer, thumbnails and text recognition (macOS).
 - `App/`: the macOS app (SwiftUI + AppKit). Sources live in `App/Memopila` and are picked up by the Xcode project automatically.
 - `site/`: the project website (one static page).
@@ -123,7 +130,7 @@ CI (`.github/workflows/ci.yml`) runs the core tests on Linux and macOS and the s
 | Keys | Action |
 |------|--------|
 | **⌥⌘V** | Open or close the panel (can be changed in Settings) |
-| **⌥⌘B** | Convert layout of the selected text (cycle layouts; needs Accessibility outside Memopila) |
+| **⌥⌘B** | Fix the keyboard layout of the selection, or of the mistyped text before the caret, in any app (Accessibility) |
 | Typing / **⌘F** | Search |
 | **↩** / double-click | Choose for Clipboard — go back to your app (stack: arm / reset deal) |
 | **⌥↩** | Choose and Paste (Accessibility); stack advances once after paste |
@@ -148,7 +155,7 @@ The full keyboard map is in [PLAN §8.3](docs/PLAN.md#83-keyboard).
 - **Secrets in plain copies:** tokens, private keys, JWTs and card numbers are recognized on your Mac. By default they are saved masked on the card and deleted after 8 hours. Settings → Privacy can switch to *Don't save* or *Save as usual*, change the time, or turn off single kinds. ⌘D keeps a secret for good. Detection is pattern-based and cannot catch every secret.
 - **Pause** and **Skip next copy:** content copied while capture is paused or skipped is never read.
 - **Universal Clipboard:** you can ignore content that comes from your other devices.
-- **Accessibility** is used for auto-paste, layout convert in other apps (⌥⌘B), and, while it is allowed, to remember the title of the window you copied from.
+- **Accessibility** is used for auto-paste, layout convert in other apps (⌥⌘B), and, while it is allowed, to remember the title of the window you copied from. Layout convert reads the text through the clipboard and puts your clipboard back; it never saves that text to history, and its diagnostic log records which path ran, never the text.
 
 > [!NOTE]
 > Per-app settings such as *Don't save* identify the source app by the self-reported `org.nspasteboard.source` pasteboard marker when present, otherwise by the frontmost app at copy time. Neither is authenticated: another app can claim a different bundle ID, and a copy made in the background can be attributed to the wrong app. This is a convenience filter, not a security boundary. *Strict* mode skips copies without a valid marker whenever an app is set to *Don't save*. For one-off secrets use *Pause* or *Skip next copy*. Other clipboard managers may also compete for global hotkeys or pasteboard access.

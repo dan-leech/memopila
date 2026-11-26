@@ -316,7 +316,17 @@
         <article class="card">
           <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="m13.5 6.5 4 4"/></svg></div>
           <h3>Edit any record</h3>
-          <p>Edit formatted text without losing its formatting. You also get syntax highlighting and line numbers for code, colours as HEX / RGB / HSL (each paste format is its own card; the grid shows the other formats in smaller type so the same colour is easy to spot), an eyedropper on images, Quick Look for files, and a <em>Changes…</em> view before you save.</p>
+          <p>Edit formatted text without losing its formatting. You also get syntax highlighting and line numbers for code, Quick Look for files, a <em>Convert layout</em> button, and a <em>Changes…</em> view before you save.</p>
+        </article>
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.6 3.8 5.6 3.8 9s-1.3 6.4-3.8 9M12 3c-2.5 2.6-3.8 5.6-3.8 9s1.3 6.4 3.8 9"/></svg></div>
+          <h3>Fix the wrong layout</h3>
+          <p>Typed <code>ghbdtn</code> instead of <code>привет</code>? Press <kbd>⌥</kbd><kbd>⌘</kbd><kbd>B</kbd> in any app. With nothing selected it converts back to the first correctly typed letter, even a whole line, and switches to the layout you meant so you keep typing. Works in native and Electron apps (Cursor, Slack, Discord), browsers, chats and terminals.</p>
+        </article>
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5c3 3.6 6 7 6 10.5a6 6 0 0 1-12 0c0-3.5 3-6.9 6-10.5z"/></svg></div>
+          <h3>Colours</h3>
+          <p>Colours from the system Color Picker or a lone HEX / RGB / HSL paste become Color cards. Each paste format is its own card, with the other formats in smaller type so the same colour is easy to spot, and an eyedropper samples a pixel from any image in your history.</p>
         </article>
         <article class="card">
           <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M8 9h8M12 9v7"/></svg></div>
@@ -335,8 +345,13 @@
         </article>
         <article class="card">
           <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7.5A2.5 2.5 0 0 1 5.5 5H9l2 2h7.5A2.5 2.5 0 0 1 21 9.5v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 3 16.5z"/></svg></div>
-          <h3>Favorites, collections and stacks</h3>
-          <p>Favorites and collections are ordered pinboards — drag to rearrange; Choose leaves that order alone. Paste stacks are reusable playlists: Choose resets, each <kbd>⌘</kbd><kbd>V</kbd> advances, <kbd>Esc</kbd> stops. In the Stack Window, reorder members and use <em>Duplicate &amp; Edit</em> for an independent copy. Favorites and members of live stacks are never deleted automatically; stale non-favorite stacks age out together when their freshest activity is past the keep period.</p>
+          <h3>Favorites and collections</h3>
+          <p>Favorites and collections are ordered pinboards: drag to rearrange, and Choose leaves that order alone. Favorites and members of live paste stacks are never deleted automatically.</p>
+        </article>
+        <article class="card">
+          <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3.5 8.5 4.75L12 13 3.5 8.25z"/><path d="m3.5 12.5 8.5 4.75 8.5-4.75"/><path d="m3.5 16.5 8.5 4.75 8.5-4.75"/></svg></div>
+          <h3>Paste stacks</h3>
+          <p>Reusable playlists of history records: Choose resets, each <kbd>⌘</kbd><kbd>V</kbd> pastes the next one, <kbd>Esc</kbd> stops. Deal in order, shuffled or at random. In the Stack Window, reorder members and use <em>Duplicate &amp; Edit</em> for an independent copy. Stale non-favorite stacks age out together.</p>
         </article>
         <article class="card">
           <div class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h12l-3-3M20 16H8l3 3"/></svg></div>
@@ -363,10 +378,11 @@
         <p class="eyebrow">Keyboard</p>
         <h2>Hands stay on the keys.</h2>
         <p class="section-intro">The panel opens over any app, even in full screen, without taking focus from it. Start typing to search, move with the arrows, and press <kbd>↩</kbd>.</p>
-        <p class="note">Press <kbd>⌘</kbd> <kbd>/</kbd> in the panel for the full list. The panel shortcut can be changed in Settings; only one app can hold <kbd>⌥</kbd> <kbd>⌘</kbd> <kbd>V</kbd>.</p>
+        <p class="note">Press <kbd>⌘</kbd> <kbd>/</kbd> in the panel for the full list. Both global shortcuts can be changed in Settings; only one app can hold <kbd>⌥</kbd> <kbd>⌘</kbd> <kbd>V</kbd>.</p>
       </div>
       <ul class="keys">
         <li><span>Open or close the panel</span><span class="combo"><kbd>⌥</kbd><kbd>⌘</kbd><kbd>V</kbd></span></li>
+        <li><span>Fix the keyboard layout, in any app</span><span class="combo"><kbd>⌥</kbd><kbd>⌘</kbd><kbd>B</kbd></span></li>
         <li><span>Choose for Clipboard</span><span class="combo"><kbd>↩</kbd></span></li>
         <li><span>Choose and Paste</span><span class="combo"><kbd>⌥</kbd><kbd>↩</kbd></span></li>
         <li><span>Choose for Clipboard: the first nine cards</span><span class="combo"><kbd>⌘</kbd><kbd>1…9</kbd></span></li>
@@ -399,7 +415,7 @@
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>Password managers respected.</strong> Copies marked as concealed, transient or auto-generated are never saved.</p></li>
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>Secrets expire.</strong> Tokens, private keys, JWTs and card numbers are recognized on your Mac. By default they are masked on the card and deleted after 8 hours, or you can choose not to save them at all. Detection is pattern-based and cannot catch everything.</p></li>
         <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>Pause and Skip mean it.</strong> What you copy while capture is paused or skipped is never read.</p></li>
-        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>Minimal permissions.</strong> Clipboard access is needed to capture. Accessibility is optional: auto-paste, and ⌘V advance while a paste stack is armed (Esc still stops without it). You can ignore content from your other devices.</p></li>
+        <li><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg><p><strong>Minimal permissions.</strong> Clipboard access is needed to capture. Accessibility is optional: auto-paste, <kbd>⌥</kbd><kbd>⌘</kbd><kbd>B</kbd> layout convert in other apps, and ⌘V advance while a paste stack is armed (Esc still stops without it). You can ignore content from your other devices.</p></li>
       </ul>
     </div>
   </section>
@@ -415,7 +431,7 @@
           <ul>
             <li><strong>macOS 15.4</strong> (Sequoia) or later.</li>
             <li><strong>Clipboard access</strong> set to <em>Always Allow</em> when macOS asks.</li>
-            <li><strong>Accessibility</strong>, optional, for auto-paste and paste-stack ⌘V advance.</li>
+            <li><strong>Accessibility</strong>, optional, for auto-paste, ⌥⌘B layout convert and paste-stack ⌘V advance.</li>
             <li>To build from source: <strong>Xcode 26</strong> or later (macOS 15.6 or later).</li>
           </ul>
         </div>

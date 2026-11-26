@@ -21,6 +21,7 @@
 - **Search text inside images** with on-device recognition, plus copying that text, selected or all, as a new card (§3.8).
 - **Source page**: *Copied from example.com* for browser copies (§5.2).
 - **Text actions** (§3.9) and **syntax-highlighted code preview** (§8.5).
+- **Layout convert** (§3.9.1): ⌥⌘B fixes text typed in the wrong keyboard layout in place, in any app — the selection, or with nothing selected the mistyped run before the caret.
 - Organize with **Favorites** and **Collections** (UI name for tags, many-to-many); search; filter by source app, type, collection.
 - **Paste stacks** (§3.11): reusable ordered playlists of history records; Choose resets the deal; each ⌘V advances; optional loop / shuffle / random.
 - **Low memory footprint**: history lives on disk; RAM stays within explicit budgets (§7.3).
