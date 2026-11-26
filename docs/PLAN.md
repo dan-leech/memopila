@@ -1,7 +1,7 @@
 # Memopila — Clipboard Manager Plan
 
 **Document type:** DESIGN  
-**Status:** app at **1.2.0** (1.1.1 + ⌥⌘B layout convert in any app (§3.9.1), Color cards and sampling, pasteboard / store / History stability). Statements marked **(spike)** are follow-up OS checks; access on 15.6 / 26.6 / 27.0 is recorded in §3.1 — **27.2+** still open until Apple releases it.  
+**Status:** app at **1.2.1** (1.1.1 + ⌥⌘B layout convert in any app (§3.9.1), Color cards and sampling, pasteboard / store / History stability; 1.2.1: colour lookups without `#Predicate` force unwraps for SwiftData before macOS 27). Statements marked **(spike)** are follow-up OS checks; access on 15.6 / 26.6 / 27.0 is recorded in §3.1 — **27.2+** still open until Apple releases it.  
 **SSOT:** §3–§6 = normative contracts; §7 = architecture + memory budgets; §8 = UI; §10 = phase done-when; §11 = test matrix by reference (do not restate contracts)  
 **Product:** Memopila — native macOS clipboard manager that replaces [Pasta](https://getpasta.com/): the same UI model (§8) plus what Pasta lacks, starting with record editing (§3.6).
 
