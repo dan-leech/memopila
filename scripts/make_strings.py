@@ -766,6 +766,62 @@ T = {
 "Save this copy into history anyway": "Всё равно сохранить эту копию в историю",
 "The app that copied this is unknown": "Приложение, из которого скопировали, неизвестно",
 "types": "types",
+# Colours, stacks and retention (1.2.0)
+"Copied to the clipboard": "Скопировано в буфер обмена",
+"Clipboard is busy. Try again.": "Буфер обмена занят. Повторите попытку.",
+"On the clipboard. Could not paste into the other app — press ⌘V there.": "В буфере обмена. Не удалось вставить в другое приложение — нажмите там ⌘V.",
+"No collections yet": "Коллекций пока нет",
+"Create a collection first.": "Сначала создайте коллекцию.",
+"The colour could not be copied.": "Не удалось скопировать цвет.",
+"The colour could not be prepared for the clipboard.": "Не удалось подготовить цвет для буфера обмена.",
+"The colour format could not be saved.": "Не удалось сохранить формат цвета.",
+"Copy as a Color card; pastes %@ into text and the colour into Color Wells": "Скопировать как карточку цвета: в текст вставится %@, а в поля выбора цвета — сам цвет",
+"Paste format": "Формат вставки",
+"Paste format for text fields when you Copy this sample": "Формат вставки в текстовые поля, когда вы копируете этот образец",
+"Paste format for text fields — saved on this card; Choose (↩) puts it on the clipboard": "Формат вставки в текстовые поля — сохраняется в карточке; «В буфер» (↩) кладёт его в буфер обмена",
+"Sample a colour from the image": "Взять цвет с изображения",
+"Stop sampling colours (Esc)": "Прекратить выбор цвета (Esc)",
+"Click to sample · Esc stops sampling · Copy from the panel below": "Щёлкните, чтобы взять цвет · Esc — прекратить · копируйте в панели ниже",
+"Sampled Colour": "Взятый цвет",
+"Preview — pin is below": "Просмотр — метка ниже",
+"Pick a format, then Copy": "Выберите формат и нажмите «Скопировать»",
+"Click a pixel to sample · Esc cancels": "Щёлкните пиксель, чтобы взять цвет · Esc — отмена",
+"Save & Close": "Сохранить и закрыть",
+"Save and return to the stack (⌘S)": "Сохранить и вернуться к стеку (⌘S)",
+"⌘S Save & Close · ⌘↩ Save and Choose · Esc asks to save": "⌘S сохранить и закрыть · ⌘↩ Сохранить и в буфер · Esc спросит о сохранении",
+"Edit Stack": "Редактировать стек",
+"Duplicate & Edit": "Дублировать и редактировать",
+"Insert a copy after this card and open it to edit. The original stays.": "Вставить копию после этой карточки и открыть её для редактирования. Оригинал останется.",
+"Edit Original": "Редактировать оригинал",
+"Edit this shared history card (Space). Changes apply everywhere it appears.": "Редактировать эту общую карточку истории (пробел). Изменения применятся везде, где она есть.",
+"Move": "Переместить",
+"Move to end": "Переместить в конец",
+"Position %lld in stack": "Позиция %lld в стеке",
+"Position %lld · first is pasted first": "Позиция %lld · первая вставляется первой",
+"Drop here to move the card to the end": "Перетащите сюда, чтобы переместить карточку в конец",
+"Drop on the left edge to reorder; on the card to add to this stack": "Перетащите на левый край, чтобы изменить порядок, или на карточку, чтобы добавить в этот стек",
+"Clear the search, then close; stop an armed stack": "Очистить поиск, затем закрыть; остановить вооружённый стек",
+"Stop Stack (%@)": "Остановить стек (%@)",
+"Stack %@ — Esc or right-click to stop": "Стек %@ — Esc или правый щелчок, чтобы остановить",
+"This stack was deleted.": "Этот стек удалён.",
+"Delete this stack?": "Удалить этот стек?",
+"Delete this favorite stack?": "Удалить этот избранный стек?",
+"Delete this stack and %lld old cards?": "Удалить этот стек и старые карточки (%lld)?",
+"Delete this favorite stack and %lld old cards?": "Удалить этот избранный стек и старые карточки (%lld)?",
+"Delete this stack. Cards stay in History unless they are older than History keeps.": "Удалить этот стек. Карточки останутся в истории, кроме тех, что старше срока её хранения.",
+"Remove from stack and delete?": "Убрать из стека и удалить?",
+"Cards stay in History. You can Undo for a few seconds.": "Карточки останутся в истории. Отменить можно в течение нескольких секунд.",
+"Its cards stay in History unless they are older than History keeps. You can Undo for a few seconds.": "Его карточки останутся в истории, кроме тех, что старше срока её хранения. Отменить можно в течение нескольких секунд.",
+"Cards older than History keeps (%lld days) are deleted with the stack. You can Undo for a few seconds.": "Карточки старше срока хранения истории (%lld дн.) удаляются вместе со стеком. Отменить можно в течение нескольких секунд.",
+"Cards older than History keeps (%lld days) that are only in this stack are deleted. You can Undo for a few seconds.": "Карточки старше срока хранения истории (%lld дн.), которые есть только в этом стеке, будут удалены. Отменить можно в течение нескольких секунд.",
+"Favorites or stack members among them: %lld. They are kept unless you delete them too.": "Среди них избранное или участники стеков: %lld. Они останутся, если не удалить и их.",
+"%lld items that are not favorites or stack members (including stale stacks) are deleted now. This can't be undone.": "Сейчас будут удалены объекты не из избранного и не из стеков, включая устаревшие стеки: %lld. Это нельзя отменить.",
+"Clear History keeps favorites and stack members. Clear Everything removes them too.": "«Очистить историю» сохраняет избранное и участников стеков. «Очистить всё» удаляет и их.",
+"Favorites and paste-stack members are never deleted automatically. When all items together reach the storage limit, the oldest make room; lowering it does that at once.": "Избранное и участники стеков вставки никогда не удаляются автоматически. Когда все элементы вместе достигают лимита хранилища, самые старые освобождают место; при уменьшении лимита это происходит сразу.",
+"History is larger than the new limit. The oldest items that are not favorites or stack members are deleted until it fits; pinned items stay. This can't be undone.": "История больше нового лимита. Самые старые элементы, кроме избранного и участников стеков, будут удалены, пока она не поместится; закреплённые элементы останутся. Это нельзя отменить.",
+"Choose for Clipboard (double-click, ↩ or ⌘1…⌘9) puts an item on the clipboard and takes you back to the app you were in. With this option Memopila also presses ⌘V there for you, which needs Accessibility. When allowed, Memopila also remembers the title of the window you copied from. Paste stacks also need Accessibility (and possibly Input Monitoring) so each ⌘V can advance the deal; Esc stops an armed stack. Menu Paste and Secure Input fields do not advance.": "«В буфер обмена» (двойной щелчок, ↩ или ⌘1…⌘9) кладёт запись в буфер и возвращает вас в приложение, в котором вы были. С этим параметром Memopila ещё и нажимает там за вас ⌘V — для этого нужен Универсальный доступ. С ним Memopila также запоминает заголовок окна, из которого вы копировали. Стекам вставки тоже нужен Универсальный доступ (и, возможно, Мониторинг ввода), чтобы каждое ⌘V листало дальше; Esc останавливает вооружённый стек. Вставка через меню и поля защищённого ввода стек не листают.",
+"Convert layout": "Сменить раскладку",
+"·": "·",
 }
 # Count strings: (en one, en other, ru one, few, many, other)
 P = {
@@ -779,11 +835,16 @@ P = {
     "Удалить %lld элемент, включая избранное?", "Удалить %lld элемента, включая избранное?", "Удалить %lld элементов, включая избранное?", "Удалить %lld элемента, включая избранное?"),
 "Also Delete %lld Existing": ("Also Delete %lld Existing", "Also Delete %lld Existing",
     "Удалить и %lld существующий", "Удалить и %lld существующих", "Удалить и %lld существующих", "Удалить и %lld существующих"),
+"Deleted %lld stacks": ("Deleted %lld stack", "Deleted %lld stacks", "Удалён %lld стек", "Удалено %lld стека", "Удалено %lld стеков", "Удалено %lld стека"),
+"Delete %lld stacks?": ("Delete %lld stack?", "Delete %lld stacks?", "Удалить %lld стек?", "Удалить %lld стека?", "Удалить %lld стеков?", "Удалить %lld стека?"),
+"%lld members": ("%lld member", "%lld members", "%lld участник", "%lld участника", "%lld участников", "%lld участника"),
 }
 # Two-argument strings: positional specifiers in Russian (no plural agreement needed).
 T["%lld of %lld"] = "%1$lld из %2$lld"
 T["Deleted %lld items from %@"] = "Удалено элементов из «%2$@»: %1$lld"
 T["%lld items from %@ are already in history."] = "Элементов из «%2$@» уже в истории: %1$lld"
+T["%lld of %lld members"] = "%1$lld из %2$lld участников"
+T["%lld card(s) older than History keeps (%lld days) are deleted. You can Undo for a few seconds."] = "Будут удалены карточки старше срока хранения истории (%2$lld дн.): %1$lld. Отменить можно в течение нескольких секунд."
 
 def unit(v): return {"stringUnit": {"state": "translated", "value": v}}
 strings = {}

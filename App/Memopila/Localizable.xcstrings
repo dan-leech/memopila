@@ -171,6 +171,16 @@
         }
       }
     },
+    "%lld card(s) older than History keeps (%lld days) are deleted. You can Undo for a few seconds.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Будут удалены карточки старше срока хранения истории (%2$lld дн.): %1$lld. Отменить можно в течение нескольких секунд."
+          }
+        }
+      }
+    },
     "%lld characters": {
       "localizations": {
         "en": {
@@ -409,6 +419,16 @@
         }
       }
     },
+    "%lld items that are not favorites or stack members (including stale stacks) are deleted now. This can't be undone.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сейчас будут удалены объекты не из избранного и не из стеков, включая устаревшие стеки: %lld. Это нельзя отменить."
+          }
+        }
+      }
+    },
     "%lld lines": {
       "localizations": {
         "en": {
@@ -461,6 +481,58 @@
         }
       }
     },
+    "%lld members": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld member"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld members"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld участник"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld участника"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld участников"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld участника"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld of %lld": {
       "localizations": {
         "ru": {
@@ -477,6 +549,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Выделено символов: %1$lld из %2$lld"
+          }
+        }
+      }
+    },
+    "%lld of %lld members": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld из %2$lld участников"
           }
         }
       }
@@ -1483,6 +1565,36 @@
         }
       }
     },
+    "Cards older than History keeps (%lld days) are deleted with the stack. You can Undo for a few seconds.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Карточки старше срока хранения истории (%lld дн.) удаляются вместе со стеком. Отменить можно в течение нескольких секунд."
+          }
+        }
+      }
+    },
+    "Cards older than History keeps (%lld days) that are only in this stack are deleted. You can Undo for a few seconds.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Карточки старше срока хранения истории (%lld дн.), которые есть только в этом стеке, будут удалены. Отменить можно в течение нескольких секунд."
+          }
+        }
+      }
+    },
+    "Cards stay in History. You can Undo for a few seconds.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Карточки останутся в истории. Отменить можно в течение нескольких секунд."
+          }
+        }
+      }
+    },
     "Case": {
       "localizations": {
         "ru": {
@@ -1613,6 +1725,16 @@
         }
       }
     },
+    "Choose for Clipboard (double-click, ↩ or ⌘1…⌘9) puts an item on the clipboard and takes you back to the app you were in. With this option Memopila also presses ⌘V there for you, which needs Accessibility. When allowed, Memopila also remembers the title of the window you copied from. Paste stacks also need Accessibility (and possibly Input Monitoring) so each ⌘V can advance the deal; Esc stops an armed stack. Menu Paste and Secure Input fields do not advance.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«В буфер обмена» (двойной щелчок, ↩ или ⌘1…⌘9) кладёт запись в буфер и возвращает вас в приложение, в котором вы были. С этим параметром Memopila ещё и нажимает там за вас ⌘V — для этого нужен Универсальный доступ. С ним Memopila также запоминает заголовок окна, из которого вы копировали. Стекам вставки тоже нужен Универсальный доступ (и, возможно, Мониторинг ввода), чтобы каждое ⌘V листало дальше; Esc останавливает вооружённый стек. Вставка через меню и поля защищённого ввода стек не листают."
+          }
+        }
+      }
+    },
     "Choose for Clipboard without pasting": {
       "localizations": {
         "ru": {
@@ -1703,6 +1825,16 @@
         }
       }
     },
+    "Clear History keeps favorites and stack members. Clear Everything removes them too.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "«Очистить историю» сохраняет избранное и участников стеков. «Очистить всё» удаляет и их."
+          }
+        }
+      }
+    },
     "Clear History keeps favorites. Clear Everything removes them too.": {
       "localizations": {
         "ru": {
@@ -1763,6 +1895,26 @@
         }
       }
     },
+    "Clear the search, then close; stop an armed stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Очистить поиск, затем закрыть; остановить вооружённый стек"
+          }
+        }
+      }
+    },
+    "Click a pixel to sample · Esc cancels": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Щёлкните пиксель, чтобы взять цвет · Esc — отмена"
+          }
+        }
+      }
+    },
     "Click the text to edit · ← → other records · ↩ to clipboard · Esc closes": {
       "localizations": {
         "ru": {
@@ -1783,6 +1935,16 @@
         }
       }
     },
+    "Click to sample · Esc stops sampling · Copy from the panel below": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Щёлкните, чтобы взять цвет · Esc — прекратить · копируйте в панели ниже"
+          }
+        }
+      }
+    },
     "Clipboard Access": {
       "localizations": {
         "ru": {
@@ -1799,6 +1961,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "История буфера обмена, которая остаётся на вашем Mac."
+          }
+        }
+      }
+    },
+    "Clipboard is busy. Try again.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Буфер обмена занят. Повторите попытку."
           }
         }
       }
@@ -1893,6 +2065,16 @@
         }
       }
     },
+    "Convert layout": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сменить раскладку"
+          }
+        }
+      }
+    },
     "Convert layout of the selection, or of all text; press again for the next layout": {
       "localizations": {
         "ru": {
@@ -1919,6 +2101,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Скопировано с %@"
+          }
+        }
+      }
+    },
+    "Copied to the clipboard": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировано в буфер обмена"
           }
         }
       }
@@ -2029,6 +2221,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Скопировать выделенное"
+          }
+        }
+      }
+    },
+    "Copy as a Color card; pastes %@ into text and the colour into Color Wells": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Скопировать как карточку цвета: в текст вставится %@, а в поля выбора цвета — сам цвет"
           }
         }
       }
@@ -2149,6 +2351,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Создать"
+          }
+        }
+      }
+    },
+    "Create a collection first.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сначала создайте коллекцию."
           }
         }
       }
@@ -2338,6 +2550,58 @@
                 "stringUnit": {
                   "state": "translated",
                   "value": "Удалить %lld элемента, включая избранное?"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Delete %lld stacks?": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Delete %lld stack?"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Delete %lld stacks?"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалить %lld стек?"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалить %lld стека?"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалить %lld стеков?"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалить %lld стека?"
                 }
               }
             }
@@ -2565,6 +2829,26 @@
         }
       }
     },
+    "Delete this favorite stack and %lld old cards?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить этот избранный стек и старые карточки (%lld)?"
+          }
+        }
+      }
+    },
+    "Delete this favorite stack?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить этот избранный стек?"
+          }
+        }
+      }
+    },
     "Delete this favorite?": {
       "localizations": {
         "ru": {
@@ -2575,12 +2859,42 @@
         }
       }
     },
+    "Delete this stack and %lld old cards?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить этот стек и старые карточки (%lld)?"
+          }
+        }
+      }
+    },
+    "Delete this stack. Cards stay in History unless they are older than History keeps.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить этот стек. Карточки останутся в истории, кроме тех, что старше срока её хранения."
+          }
+        }
+      }
+    },
     "Delete this stack; its cards stay in History": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Удалить стек; карточки останутся в History"
+          }
+        }
+      }
+    },
+    "Delete this stack?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Удалить этот стек?"
           }
         }
       }
@@ -2621,6 +2935,58 @@
           "stringUnit": {
             "state": "translated",
             "value": "Удалено элементов из «%2$@»: %1$lld"
+          }
+        }
+      }
+    },
+    "Deleted %lld stacks": {
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Deleted %lld stack"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Deleted %lld stacks"
+                }
+              }
+            }
+          }
+        },
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалён %lld стек"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалено %lld стека"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалено %lld стеков"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Удалено %lld стека"
+                }
+              }
+            }
           }
         }
       }
@@ -2785,6 +3151,16 @@
         }
       }
     },
+    "Drop here to move the card to the end": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перетащите сюда, чтобы переместить карточку в конец"
+          }
+        }
+      }
+    },
     "Drop here to move the card to the end of the stack": {
       "localizations": {
         "ru": {
@@ -2821,6 +3197,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Перетащите карточки истории в это окно. Закрепите панель, чтобы тянуть из History."
+          }
+        }
+      }
+    },
+    "Drop on the left edge to reorder; on the card to add to this stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Перетащите на левый край, чтобы изменить порядок, или на карточку, чтобы добавить в этот стек"
+          }
+        }
+      }
+    },
+    "Duplicate & Edit": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Дублировать и редактировать"
           }
         }
       }
@@ -2875,6 +3271,16 @@
         }
       }
     },
+    "Edit Original": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Редактировать оригинал"
+          }
+        }
+      }
+    },
     "Edit Record": {
       "localizations": {
         "ru": {
@@ -2895,12 +3301,32 @@
         }
       }
     },
+    "Edit Stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Редактировать стек"
+          }
+        }
+      }
+    },
     "Edit Stack…": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Изменить стек…"
+          }
+        }
+      }
+    },
+    "Edit this shared history card (Space). Changes apply everywhere it appears.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Редактировать эту общую карточку истории (пробел). Изменения применятся везде, где она есть."
           }
         }
       }
@@ -3005,6 +3431,16 @@
         }
       }
     },
+    "Favorites and paste-stack members are never deleted automatically. When all items together reach the storage limit, the oldest make room; lowering it does that at once.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Избранное и участники стеков вставки никогда не удаляются автоматически. Когда все элементы вместе достигают лимита хранилища, самые старые освобождают место; при уменьшении лимита это происходит сразу."
+          }
+        }
+      }
+    },
     "Favorites are never deleted automatically. When all items together reach the storage limit, the oldest make room; lowering it does that at once.": {
       "localizations": {
         "ru": {
@@ -3031,6 +3467,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Избранное никогда не удаляется автоматически. После удаления несколько секунд доступен Undo."
+          }
+        }
+      }
+    },
+    "Favorites or stack members among them: %lld. They are kept unless you delete them too.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Среди них избранное или участники стеков: %lld. Они останутся, если не удалить и их."
           }
         }
       }
@@ -3555,6 +4001,16 @@
         }
       }
     },
+    "History is larger than the new limit. The oldest items that are not favorites or stack members are deleted until it fits; pinned items stay. This can't be undone.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "История больше нового лимита. Самые старые элементы, кроме избранного и участников стеков, будут удалены, пока она не поместится; закреплённые элементы останутся. Это нельзя отменить."
+          }
+        }
+      }
+    },
     "History stays on this Mac and is never sent anywhere.": {
       "localizations": {
         "ru": {
@@ -3685,6 +4141,16 @@
         }
       }
     },
+    "Insert a copy after this card and open it to edit. The original stays.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Вставить копию после этой карточки и открыть её для редактирования. Оригинал останется."
+          }
+        }
+      }
+    },
     "Insert before this card": {
       "localizations": {
         "ru": {
@@ -3761,6 +4227,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Элементы"
+          }
+        }
+      }
+    },
+    "Its cards stay in History unless they are older than History keeps. You can Undo for a few seconds.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Его карточки останутся в истории, кроме тех, что старше срока её хранения. Отменить можно в течение нескольких секунд."
           }
         }
       }
@@ -4235,6 +4711,16 @@
         }
       }
     },
+    "Move": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переместить"
+          }
+        }
+      }
+    },
     "Move Down": {
       "localizations": {
         "ru": {
@@ -4301,6 +4787,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "В начало"
+          }
+        }
+      }
+    },
+    "Move to end": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Переместить в конец"
           }
         }
       }
@@ -4421,6 +4917,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Следующая запись (→)"
+          }
+        }
+      }
+    },
+    "No collections yet": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Коллекций пока нет"
           }
         }
       }
@@ -4715,6 +5221,16 @@
         }
       }
     },
+    "On the clipboard. Could not paste into the other app — press ⌘V there.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В буфере обмена. Не удалось вставить в другое приложение — нажмите там ⌘V."
+          }
+        }
+      }
+    },
     "One image pixel per screen pixel": {
       "localizations": {
         "ru": {
@@ -5005,6 +5521,36 @@
         }
       }
     },
+    "Paste format": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Формат вставки"
+          }
+        }
+      }
+    },
+    "Paste format for text fields when you Copy this sample": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Формат вставки в текстовые поля, когда вы копируете этот образец"
+          }
+        }
+      }
+    },
+    "Paste format for text fields — saved on this card; Choose (↩) puts it on the clipboard": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Формат вставки в текстовые поля — сохраняется в карточке; «В буфер» (↩) кладёт его в буфер обмена"
+          }
+        }
+      }
+    },
     "Paste into the app you were in": {
       "localizations": {
         "ru": {
@@ -5111,6 +5657,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Пауза, очистка истории, настройки и другое"
+          }
+        }
+      }
+    },
+    "Pick a format, then Copy": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выберите формат и нажмите «Скопировать»"
           }
         }
       }
@@ -5225,6 +5781,26 @@
         }
       }
     },
+    "Position %lld in stack": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Позиция %lld в стеке"
+          }
+        }
+      }
+    },
+    "Position %lld · first is pasted first": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Позиция %lld · первая вставляется первой"
+          }
+        }
+      }
+    },
     "Prefix": {
       "localizations": {
         "ru": {
@@ -5261,6 +5837,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Просмотр"
+          }
+        }
+      }
+    },
+    "Preview — pin is below": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Просмотр — метка ниже"
           }
         }
       }
@@ -5655,6 +6241,16 @@
         }
       }
     },
+    "Remove from stack and delete?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Убрать из стека и удалить?"
+          }
+        }
+      }
+    },
     "Remove from “%@”": {
       "localizations": {
         "ru": {
@@ -5885,12 +6481,42 @@
         }
       }
     },
+    "Sample a colour from the image": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Взять цвет с изображения"
+          }
+        }
+      }
+    },
+    "Sampled Colour": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Взятый цвет"
+          }
+        }
+      }
+    },
     "Save": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "Сохранить"
+          }
+        }
+      }
+    },
+    "Save & Close": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить и закрыть"
           }
         }
       }
@@ -5921,6 +6547,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Сохранить и в буфер: сохранить, положить в буфер и вернуться в приложение, в котором вы были (⌘↩)"
+          }
+        }
+      }
+    },
+    "Save and return to the stack (⌘S)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить и вернуться к стеку (⌘S)"
           }
         }
       }
@@ -6605,6 +7241,16 @@
         }
       }
     },
+    "Stack %@ — Esc or right-click to stop": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Стек %@ — Esc или правый щелчок, чтобы остановить"
+          }
+        }
+      }
+    },
     "Stack actions": {
       "localizations": {
         "ru": {
@@ -6795,6 +7441,26 @@
         }
       }
     },
+    "Stop Stack (%@)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Остановить стек (%@)"
+          }
+        }
+      }
+    },
+    "Stop sampling colours (Esc)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Прекратить выбор цвета (Esc)"
+          }
+        }
+      }
+    },
     "Storage": {
       "localizations": {
         "ru": {
@@ -6931,6 +7597,36 @@
           "stringUnit": {
             "state": "translated",
             "value": "Буфер обмена пуст. Скопируйте что-нибудь и снова выберите «Включить захват»."
+          }
+        }
+      }
+    },
+    "The colour could not be copied.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось скопировать цвет."
+          }
+        }
+      }
+    },
+    "The colour could not be prepared for the clipboard.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось подготовить цвет для буфера обмена."
+          }
+        }
+      }
+    },
+    "The colour format could not be saved.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось сохранить формат цвета."
           }
         }
       }
@@ -7191,6 +7887,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Этот стек слишком большой, чтобы менять порядок здесь."
+          }
+        }
+      }
+    },
+    "This stack was deleted.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Этот стек удалён."
           }
         }
       }
@@ -7775,6 +8481,16 @@
         }
       }
     },
+    "·": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "·"
+          }
+        }
+      }
+    },
     "—": {
       "localizations": {
         "ru": {
@@ -7883,6 +8599,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "⌘+ ⌘− масштаб · ⌘0 вписать · ← → другие записи · ↩ в буфер · Esc закрыть"
+          }
+        }
+      }
+    },
+    "⌘S Save & Close · ⌘↩ Save and Choose · Esc asks to save": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "⌘S сохранить и закрыть · ⌘↩ Сохранить и в буфер · Esc спросит о сохранении"
           }
         }
       }
