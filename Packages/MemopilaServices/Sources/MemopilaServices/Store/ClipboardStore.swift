@@ -2280,16 +2280,23 @@ public actor ClipboardStore {
                 ($0.displayTypeRaw == textType || $0.displayTypeRaw == richType)
                     && $0.contentHash != excludingHash
                     && $0.textLength != nil
-                    && $0.textLength! <= 64
             }
         )
         return try context.fetch(textDescriptor).first { record in
+            guard Self.isColourTextLength(record) else { return false }
             if let excludingID, record.id == excludingID { return false }
             let rows = record.representations.sorted { ($0.itemIndex, $0.repIndex) < ($1.itemIndex, $1.repIndex) }
             let normalized = ColorPayload.normalized(Self.items(from: rows))
             guard let found = ColorPayload.identity(of: normalized) else { return false }
             return found.hex == wantHex && found.format == wantFormat
         }
+    }
+
+    /// Lone CSS colour strings are tiny. Compared after the fetch: SwiftData before macOS 27 throws
+    /// `unsupportedPredicate` for a force unwrap (`$0.textLength! <= 64`) inside `#Predicate`
+    /// (macOS 15 CI runner), which broke colour soft-merge and CSS promotion there.
+    private static func isColourTextLength(_ record: ClipboardRecord) -> Bool {
+        (record.textLength ?? .max) <= 64
     }
 
     /// Type-lag orphans with a colour UTI row but nil `colorHex` / wrong displayType.
@@ -2336,10 +2343,9 @@ public actor ClipboardStore {
             predicate: #Predicate {
                 ($0.displayTypeRaw == textType || $0.displayTypeRaw == richType || $0.displayTypeRaw == colorType)
                     && $0.textLength != nil
-                    && $0.textLength! <= 64
             }
         )
-        let records = try context.fetch(descriptor)
+        let records = try context.fetch(descriptor).filter(Self.isColourTextLength)
         var changed = 0
         for record in records {
             let rows = record.representations.sorted { ($0.itemIndex, $0.repIndex) < ($1.itemIndex, $1.repIndex) }
