@@ -22,7 +22,7 @@
 Memopila lives in the menu bar and keeps a history of what you copy: text, rich text, links, images, PDFs, colours (system Color Picker, or a lone HEX / RGB / HSL paste) and files. Press **⌥⌘V**, find what you need, and press ↩. The record goes back on the clipboard and you are returned to the app you were in.
 
 > [!NOTE]
-> **1.1.1** — stability: Stack Window ♥ / titles stay in sync with History, pinboard and playlist reorders no longer race or drop slots, stack delete has Undo, leave-stack and Settings age cuts ask before deleting old cards, and edit-merge keeps stack and pinboard membership. Pasteboard access is checked on macOS 15.6, 26.6 and 27.0; remaining PLAN §10 spikes (including 27.2+ when Apple ships it) are follow-ups, not missing product.
+> **1.2.0** — **⌥⌘B layout convert** in any app, with or without a selection; **Color cards** from the system Color Picker or a lone HEX / RGB / HSL paste, with an eyedropper on images; a complete Russian translation; and stability fixes for pasteboard reads, store races, History paging and Undo windows. Pasteboard access is checked on macOS 15.6, 26.6 and 27.0; remaining PLAN §10 spikes (including 27.2+ when Apple ships it) are follow-ups, not missing product.
 
 ## Features
 
